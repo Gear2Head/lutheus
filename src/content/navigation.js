@@ -190,7 +190,10 @@ window.GearTech.Navigation = {
         const paginationText = paginationRoot?.innerText || '';
 
         let totalPages = 0;
-        const pageMatch = paginationText.match(/\bof\s+(\d+)\b/i) || paginationText.match(/\/\s*(\d+)\b/);
+        const currentPagePattern = new RegExp(`\\b${currentPage}\\s+of\\s+(\\d+)\\b`, 'i');
+        const pageMatch = paginationText.match(currentPagePattern)
+            || paginationText.match(/\bpage\s+\d+\s+of\s+(\d+)\b/i)
+            || paginationText.match(/\/\s*(\d+)\b/);
         if (pageMatch) totalPages = Number(pageMatch[1]) || 0;
 
         if (!totalPages && totalCases && pageSize) {

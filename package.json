@@ -19,10 +19,14 @@
     "dev:bot": "npm run dev --workspace=apps/discord-bot"
   },
   "dependencies": {
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
     "@vercel/analytics": "^2.0.1",
     "discord.js": "^14.26.4",
     "firebase": "^11.10.0",
-    "firebase-admin": "^13.0.2"
+    "firebase-admin": "^13.0.2",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5"
   },
   "devDependencies": {
     "@babel/preset-env": "^7.26.0",

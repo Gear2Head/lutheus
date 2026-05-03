@@ -4,8 +4,30 @@
 import { escapeHtml } from './utils.js';
 import { FirebaseRepository } from './firebaseRepository.js';
 import { getStoredSession } from '../auth/sessionStore.js';
+import { CUK_RULES } from './cukEngine.js';
+import { SEEDED_ROLE_MEMBERS, normalizeRole } from '../auth/rolePolicy.js';
 
 const LUTHEUS_GUILD_ID = '1223431616081166336';
+
+function cloneDefaultRules() {
+    return JSON.parse(JSON.stringify(CUK_RULES));
+}
+
+function seededRegistryEntry(member, previous = {}) {
+    const role = normalizeRole(member.role);
+    return {
+        ...previous,
+        id: member.id,
+        name: previous.name || member.name,
+        avatar: previous.avatar || null,
+        role,
+        aliases: Array.from(new Set([...(previous.aliases || []), member.name].filter(Boolean))),
+        source: previous.source || 'lutheus-seed',
+        seeded: true,
+        scanCount: Number(previous.scanCount || 0),
+        lastSeen: previous.lastSeen || Date.now()
+    };
+}
 
 export const DEFAULT_POINTTRAIN_CHANNELS = [
     { id: 'genel-sohbet', label: '💬genel-sohbet', weight: 1.0 },
@@ -93,7 +115,8 @@ function normalizeCaseEntry(entry = {}, previous = null) {
         caseId: id,
         authorId: String(entry.authorId || previous?.authorId || '').trim(),
         userId: String(entry.userId || previous?.userId || '').trim(),
-        authorName: entry.authorName || previous?.authorName || 'Bilinmiyor',
+        authorName: entry.authorName || previous?.authorName || (entry.authorMissing ? 'Bilinmeyen Yetkili' : 'Bilinmiyor'),
+        authorMissing: Boolean(entry.authorMissing || (!entry.authorId && (!entry.authorName || entry.authorName === 'Bilinmeyen Yetkili'))),
         user: entry.user || previous?.user || 'Unknown',
         reason: entry.reason || previous?.reason || '',
         duration: entry.duration || previous?.duration || '',
@@ -197,15 +220,16 @@ export const Storage = {
         if (index === -1) return false;
         cases[index] = { ...cases[index], ...metadata };
         await this.set('cases', cases);
+        await FirebaseRepository.saveCases([cases[index]], undefined, await getActor()).catch((error) => {
+            console.warn('Lutheus: Firestore case metadata save failed:', error.message);
+        });
         return true;
     },
 
     async getCases() {
         // ASSUME: Local storage is source of truth; remote merges on top without clobbering local metadata
-        const [localCases, syncCases] = await Promise.all([
-            this.get('cases').then((value) => (Array.isArray(value) ? value : [])),
-            this.getSyncCases()
-        ]);
+        const localCases = await this.get('cases').then((value) => (Array.isArray(value) ? value : []));
+        const syncCases = [];
 
         const caseMap = new Map();
         // Local has priority
@@ -240,21 +264,20 @@ export const Storage = {
     async setSyncCases(cases) {
         if (!chrome.storage.sync) return;
 
-        const syncSubset = cases.slice(0, 300);
-        const json = JSON.stringify(syncSubset);
-        const chunkSize = 7500;
-        const chunks = [];
-
-        for (let index = 0; index < json.length; index += chunkSize) {
-            chunks.push(json.substring(index, index + chunkSize));
-        }
-
-        const syncData = { cases_chunk_count: chunks.length };
-        chunks.forEach((chunk, index) => {
-            syncData[`cases_c${index}`] = chunk;
+        return new Promise((resolve) => {
+            chrome.storage.sync.get(null, (all) => {
+                const keys = Object.keys(all || {}).filter((key) => key.startsWith('cases_'));
+                const writeMeta = () => chrome.storage.sync.set({
+                    cases_chunk_count: 0,
+                    cases_meta: {
+                        count: Array.isArray(cases) ? cases.length : 0,
+                        updatedAt: new Date().toISOString()
+                    }
+                }, resolve);
+                if (keys.length) chrome.storage.sync.remove(keys, writeMeta);
+                else writeMeta();
+            });
         });
-
-        return new Promise((resolve) => chrome.storage.sync.set(syncData, resolve));
     },
 
     async getSyncCases() {
@@ -339,22 +362,32 @@ export const Storage = {
             }
         }
 
-        const managementIds = ['860192567177773076', '758769576778661989'];
-        for (const id of managementIds) {
-            if (!registry[id]) {
-                registry[id] = { id, name: 'Yönetim', role: 'admin', aliases: [], lastSeen: Date.now() };
-                changed = true;
-            } else if (registry[id].role !== 'admin') {
-                registry[id].role = 'admin';
+        for (const member of SEEDED_ROLE_MEMBERS) {
+            const previous = registry[member.id] || {};
+            const next = seededRegistryEntry(member, previous);
+            if (JSON.stringify(previous) !== JSON.stringify(next)) {
+                registry[member.id] = next;
                 changed = true;
             }
         }
 
-        if (changed) await this.setSync('userRegistry', registry);
+        if (changed) {
+            await this.setSync('userRegistry', registry);
+            await this.seedStaffDirectory();
+        }
     },
 
     async getUserRegistry() {
-        return (await this.getSync('userRegistry')) || {};
+        const registry = (await this.getSync('userRegistry')) || {};
+        let changed = false;
+        for (const member of SEEDED_ROLE_MEMBERS) {
+            if (!registry[member.id]) {
+                registry[member.id] = seededRegistryEntry(member);
+                changed = true;
+            }
+        }
+        if (changed) await this.setSync('userRegistry', registry);
+        return registry;
     },
 
     async updateUserRole(id, role, manualAccuracy = null, name = null) {
@@ -364,7 +397,7 @@ export const Storage = {
             id,
             name: name || registry[id]?.name || 'Bilinmiyor',
             avatar: registry[id]?.avatar || null,
-            role,
+            role: normalizeRole(role),
             aliases: registry[id]?.aliases || [],
             manualAccuracy,
             lastSeen: Date.now()
@@ -374,7 +407,7 @@ export const Storage = {
             discordUserId: id,
             sapphireAuthorId: id,
             displayName: registry[id].name,
-            role,
+            role: normalizeRole(role),
             aliases: registry[id].aliases || []
         });
         await FirebaseRepository.setRoleCache(`discord:${id}`, {
@@ -420,7 +453,21 @@ export const Storage = {
     },
 
     async getDynamicRules() {
-        return (await this.getSync('dynamicRules')) || { categories: {}, autoInvalid: { keywords: [] } };
+        const localRules = await this.getSync('dynamicRules');
+        if (localRules?.categories && Object.keys(localRules.categories).length) return localRules;
+
+        const policy = await FirebaseRepository.getRolePolicy().catch(() => null);
+        if (policy?.dynamicRules?.categories && Object.keys(policy.dynamicRules.categories).length) {
+            await this.setSync('dynamicRules', policy.dynamicRules);
+            return policy.dynamicRules;
+        }
+
+        const defaults = cloneDefaultRules();
+        await this.setSync('dynamicRules', defaults);
+        await FirebaseRepository.saveRolePolicy({ dynamicRules: defaults }, await getActor()).catch((error) => {
+            console.warn('Lutheus: Firestore default CUK seed failed:', error.message);
+        });
+        return defaults;
     },
 
     async saveDynamicRules(rules) {
@@ -554,7 +601,25 @@ export const Storage = {
     },
 
     async getStaffDirectory() {
-        return (await this.getSync('staffDirectory')) || {};
+        const directory = (await this.getSync('staffDirectory')) || {};
+        let changed = false;
+        for (const member of SEEDED_ROLE_MEMBERS) {
+            if (!directory[member.id]) {
+                directory[member.id] = {
+                    discordUserId: member.id,
+                    sapphireAuthorId: member.id,
+                    displayName: member.name,
+                    role: normalizeRole(member.role),
+                    aliases: [member.name],
+                    source: 'lutheus-seed',
+                    seeded: true,
+                    updatedAt: new Date().toISOString()
+                };
+                changed = true;
+            }
+        }
+        if (changed) await this.saveStaffDirectory(directory);
+        return directory;
     },
 
     async saveStaffDirectory(directory) {
@@ -601,6 +666,12 @@ export const Storage = {
         }
 
         if (changed) await this.saveStaffDirectory(directory);
+        return directory;
+    },
+
+    async seedStaffDirectory() {
+        const directory = await this.getStaffDirectory();
+        await this.saveStaffDirectory(directory);
         return directory;
     },
 

@@ -1019,6 +1019,119 @@ input[type="email"] {
     border: 1px solid rgba(164, 176, 190, 0.3);
 }
 
+.role-chip {
+    --role-color: var(--accent-primary);
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 9px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--role-color) 18%, transparent);
+    color: color-mix(in srgb, var(--role-color) 82%, #fff);
+    border: 1px solid color-mix(in srgb, var(--role-color) 42%, transparent);
+    font-size: 11px;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.case-link {
+    background: transparent;
+    border: 0;
+    color: var(--accent-light);
+    font: inherit;
+    font-weight: 800;
+    cursor: pointer;
+    padding: 0;
+}
+
+.case-link:hover {
+    color: #fff;
+    text-decoration: underline;
+}
+
+.empty-cell,
+.empty-state {
+    color: var(--text-muted);
+    text-align: center;
+    padding: 22px;
+}
+
+.case-history-card {
+    display: grid;
+    gap: 12px;
+    border: 1px solid var(--border-color);
+    border-left: 3px solid var(--text-muted);
+    border-radius: var(--radius-md);
+    background: var(--bg-card-solid);
+    padding: 14px;
+    margin-bottom: 12px;
+}
+
+.case-history-card.valid {
+    border-left-color: var(--status-valid);
+}
+
+.case-history-card.invalid {
+    border-left-color: var(--status-invalid);
+}
+
+.case-history-card.pending,
+.case-history-card.unknown {
+    border-left-color: var(--status-pending);
+}
+
+.case-history-head,
+.case-chip-row,
+.case-history-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.case-history-head {
+    justify-content: space-between;
+}
+
+.case-history-body {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.case-history-body strong,
+.case-history-body small,
+.case-history-reason,
+.case-history-validation {
+    overflow-wrap: anywhere;
+}
+
+.field-label {
+    display: block;
+    color: var(--text-muted);
+    font-size: 10px;
+    text-transform: uppercase;
+    margin-bottom: 2px;
+}
+
+.case-history-reason {
+    color: var(--text-primary);
+    font-weight: 700;
+}
+
+.case-history-validation {
+    color: var(--text-secondary);
+    font-size: 12px;
+    padding: 8px 10px;
+    background: var(--bg-input);
+    border-radius: var(--radius-xs);
+}
+
+.case-history-actions input {
+    flex: 1;
+    min-width: 160px;
+}
+
 /* ========================================
    MANAGEMENT ACTIONS & BUTTONS
    ======================================== */

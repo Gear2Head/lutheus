@@ -456,7 +456,8 @@ async function updateUserProfile() {
 }
 
 async function updateStats() {
-    const [cases, registry] = await Promise.all([Storage.getCases(), Storage.getUserRegistry()]);
+    const [cases, registry, rules] = await Promise.all([Storage.getCases(), Storage.getUserRegistry(), Storage.getDynamicRules()]);
+    CUKEngine.setRules(rules);
     const visibleCases = filterCasesByRole(cases);
     const weekly = Storage.calculateWeeklyStats(visibleCases);
     state.currentModeratorStats = computeModeratorStats(visibleCases, registry);
@@ -567,7 +568,9 @@ async function enterFocusMode(name, id) {
         return `
             <article class="pointtrain-row">
                 <div>
-                    <strong>#${escapeHtml(String(entry.id || '-'))}</strong>
+                    <button class="case-inline-link open-case-btn" type="button" data-case-id="${escapeHtml(String(entry.id || entry.caseId || ''))}">
+                        #${escapeHtml(String(entry.id || entry.caseId || '-'))}
+                    </button>
                     <div class="pointtrain-meta">
                         <span>${escapeHtml(entry.reason || 'Sebep yok')}</span>
                         <span>${escapeHtml(entry.type || 'tur yok')}</span>
@@ -577,7 +580,7 @@ async function enterFocusMode(name, id) {
                 </div>
                 <div style="display:flex; align-items:center; gap:8px;">
                     <span class="pointtrain-pill">${escapeHtml(validation.status || 'unknown')}</span>
-                    <button class="toolbar-btn open-case-btn" type="button" data-case-id="${escapeHtml(String(entry.id || ''))}">
+                    <button class="toolbar-btn open-case-btn" type="button" data-case-id="${escapeHtml(String(entry.id || entry.caseId || ''))}">
                         <i class="fa-solid fa-arrow-up-right-from-square"></i>
                     </button>
                 </div>
@@ -730,9 +733,11 @@ async function runScan() {
             await Storage.updateCases(response.cases, DOM.chkCumulativeMode?.checked !== false);
         }
 
-        state.scannedPages = response.scanRun?.pagesScanned || pages?.length || response.cases?.length || 0;
-        setScanProgress(1, 1, `${response.cases?.length || 0} ceza alindi`);
-        log(`Tarama tamamlandi, ${response.cases?.length || 0} ceza bulundu, ${response.scanRun?.failures?.length || 0} hata`, 'success');
+        state.scannedPages = response.scanRun?.pagesScanned || pages?.length || 0;
+        const totalPages = response.scanRun?.totalPages || response.scanRun?.pagesRequested || state.scannedPages || 1;
+        const totalCases = response.scanRun?.totalCases || response.cases?.length || 0;
+        setScanProgress(state.scannedPages, totalPages, `${state.scannedPages} / ${totalPages} sayfa - ${response.cases?.length || 0} / ${totalCases} ceza`);
+        log(`Tarama tamamlandi, ${state.scannedPages}/${totalPages} sayfa, ${response.cases?.length || 0}/${totalCases} ceza, ${response.scanRun?.failures?.length || 0} hata`, 'success');
 
         if (settings.autoSaveWeekly) {
             await Storage.saveWeeklySnapshot();
@@ -935,7 +940,7 @@ function bindEvents() {
             setScanProgress(
                 payload.scannedCount || 0,
                 payload.totalPages || 1,
-                `Sayfa ${payload.currentPage || '-'} / ${payload.totalPages || '-'} - ${payload.casesFound || 0} ceza`
+                `Sayfa ${payload.currentPage || '-'} / ${payload.totalPages || '-'} - ${payload.casesFound || 0}${payload.totalCases ? ` / ${payload.totalCases}` : ''} ceza`
             );
         }
         if (message.action === ACTIONS.POINTTRAIN_PROGRESS_EVENT) {

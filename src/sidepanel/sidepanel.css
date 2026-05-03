@@ -1242,6 +1242,22 @@ small {
     font-weight: 500;
 }
 
+.case-inline-link {
+    background: transparent;
+    border: 0;
+    color: var(--accent-light);
+    font: inherit;
+    font-weight: 800;
+    cursor: pointer;
+    padding: 0;
+    text-align: left;
+}
+
+.case-inline-link:hover {
+    color: #fff;
+    text-decoration: underline;
+}
+
 .c-date {
     color: var(--text-muted);
 }

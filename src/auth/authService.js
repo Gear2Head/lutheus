@@ -88,14 +88,16 @@ async function signInWithCustomToken(customToken, oauthProfile = {}) {
         returnSecureToken: true
     });
 
-    const discordAvatarUrl = oauthProfile.avatar && oauthProfile.discordId
-        ? `https://cdn.discordapp.com/avatars/${oauthProfile.discordId}/${oauthProfile.avatar}.png?size=128`
-        : (oauthProfile.avatar || null);
+    const rawAvatar = oauthProfile.avatar || null;
+    const discordId = oauthProfile.discordId || oauthProfile.id || null;
+    const discordAvatarUrl = rawAvatar && /^https?:\/\//i.test(rawAvatar)
+        ? rawAvatar
+        : (rawAvatar && discordId ? `https://cdn.discordapp.com/avatars/${discordId}/${rawAvatar}.png?size=128` : rawAvatar);
 
     const profile = {
         uid: payload.localId,
         provider: oauthProfile.provider || 'discord',
-        discordId: oauthProfile.discordId || oauthProfile.id || null,
+        discordId,
         username: oauthProfile.username || null,
         globalName: oauthProfile.globalName || oauthProfile.global_name || null,
         displayName: oauthProfile.globalName || oauthProfile.global_name || oauthProfile.username || payload.localId,

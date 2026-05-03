@@ -7,6 +7,7 @@ function isAllowedAvatarUrl(url) {
         const parsed = new URL(url, window.location.href);
         if (parsed.protocol === 'chrome-extension:') return true;
         if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return false;
+        if (/https?:/i.test(decodeURIComponent(parsed.pathname))) return false;
 
         const host = parsed.hostname.toLowerCase();
         return host === 'cdn.discordapp.com'

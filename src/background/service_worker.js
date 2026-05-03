@@ -343,7 +343,7 @@ async function runAutonomousScan(options = {}) {
     await new Promise((resolve) => setTimeout(resolve, 1000));
 
     let pageInfo = null;
-    for (let attempt = 0; attempt < 3 && !pageInfo?.total; attempt++) {
+    for (let attempt = 0; attempt < 3 && !pageInfo?.totalPages && !pageInfo?.total; attempt++) {
         if (attempt > 0) {
             await injectContentScripts(tabId);
             await new Promise((resolve) => setTimeout(resolve, 1500));
@@ -351,11 +351,16 @@ async function runAutonomousScan(options = {}) {
         pageInfo = await sendToContentScript(tabId, { action: 'GET_PAGE_INFO' });
     }
 
-    if (!pageInfo?.total) {
+    const detectedTotalPages = Number(pageInfo?.totalPages || pageInfo?.total || 0);
+    const detectedTotalCases = Number(pageInfo?.totalCases || 0);
+
+    if (!detectedTotalPages) {
         const failedRun = {
             id: runId,
             mode: effectiveMode,
             guildId,
+            totalPages: 0,
+            totalCases: 0,
             pagesScanned: 0,
             casesFound: 0,
             failures: [{ page: null, error: 'Page info unavailable' }],
@@ -367,9 +372,11 @@ async function runAutonomousScan(options = {}) {
         return { success: false, error: 'Page info unavailable', scanRun: failedRun };
     }
 
-    const pagesToScan = pages?.length ? pages : Array.from({ length: pageInfo.total }, (_, index) => index + 1);
+    const pagesToScan = pages?.length ? pages : Array.from({ length: detectedTotalPages }, (_, index) => index + 1);
     let allCases = [];
     let scannedCount = 0;
+    let duplicatePageHits = 0;
+    let previousPageSignature = '';
 
     for (const pageNum of pagesToScan) {
         if (autonomousScanCancelled) {
@@ -378,8 +385,25 @@ async function runAutonomousScan(options = {}) {
         }
 
         if (pageInfo.current !== pageNum) {
-            await sendToContentScript(tabId, { action: 'GO_TO_PAGE', page: pageNum });
-            await new Promise((resolve) => setTimeout(resolve, scanDelay));
+            const previousFirstCase = pageInfo.firstCase || '';
+            const navigated = await sendToContentScript(tabId, { action: 'GO_TO_PAGE', page: pageNum });
+            if (!navigated?.success) {
+                failures.push({ page: pageNum, error: navigated?.error || 'PAGE_NAV_FAILED' });
+                scannedCount++;
+                continue;
+            }
+            const waited = await sendToContentScript(tabId, {
+                action: 'WAIT_FOR_PAGE',
+                page: pageNum,
+                previousFirstCase,
+                timeout: Math.max(6000, scanDelay * 4)
+            });
+            if (!waited?.success) {
+                failures.push({ page: pageNum, error: waited?.error || 'PAGE_NAV_TIMEOUT' });
+                scannedCount++;
+                continue;
+            }
+            pageInfo = await sendToContentScript(tabId, { action: 'GET_PAGE_INFO' }) || pageInfo;
         }
 
         let result = await sendToContentScript(tabId, { action: 'SCRAPE_PAGE' });
@@ -413,6 +437,17 @@ async function runAutonomousScan(options = {}) {
         }
         if (result?.success && Array.isArray(result.data)) {
             let filtered = result.data.filter((entry) => isInDateRange(entry, parsedStart, parsedEnd));
+            const pageSignature = `${pageNum}:${filtered.map((entry) => entry.id || entry.caseId).filter(Boolean).join(',')}`;
+            if (pageSignature === previousPageSignature) {
+                duplicatePageHits += 1;
+                failures.push({ page: pageNum, error: 'DUPLICATE_PAGE_SIGNATURE' });
+                if (duplicatePageHits > Math.max(1, retryCount)) {
+                    break;
+                }
+            } else {
+                duplicatePageHits = 0;
+                previousPageSignature = pageSignature;
+            }
             if (effectiveMode === 'detail' && filtered.length) {
                 const limit = detailLimit > 0 ? detailLimit : filtered.length;
                 const enriched = await enrichCaseDetails(guildId, filtered.slice(0, limit), scanDelay, (payload) => {
@@ -443,7 +478,9 @@ async function runAutonomousScan(options = {}) {
                 currentPage: pageNum,
                 totalPages: pagesToScan.length,
                 scannedCount,
-                casesFound: allCases.length
+                casesFound: allCases.length,
+                totalCases: detectedTotalCases,
+                visibleRows: result.data.length
             });
         }
         emitRuntimeEvent(ACTIONS.SCAN_PROGRESS_EVENT, {
@@ -452,6 +489,8 @@ async function runAutonomousScan(options = {}) {
             totalPages: pagesToScan.length,
             scannedCount,
             casesFound: allCases.length,
+            totalCases: detectedTotalCases,
+            visibleRows: result?.data?.length || 0,
             failures: failures.length
         });
     }
@@ -468,9 +507,13 @@ async function runAutonomousScan(options = {}) {
         id: runId,
         mode: effectiveMode,
         guildId,
+        totalPages: detectedTotalPages,
+        totalCases: detectedTotalCases || allCases.length,
         pagesRequested: pagesToScan.length,
         pagesScanned: scannedCount,
         casesFound: allCases.length,
+        authorMissingCount: allCases.filter((entry) => entry.authorMissing || !entry.authorId).length,
+        duplicatePageHits,
         failures,
         startedAt,
         finishedAt: new Date().toISOString(),

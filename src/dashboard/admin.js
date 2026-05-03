@@ -5,11 +5,18 @@ import {
     parseDate,
     escapeHtml
 } from '../lib/utils.js';
-import { CUKEngine, PenaltyStatus, LUTHEUS_RANKS } from '../lib/cukEngine.js';
+import { CUKEngine, PenaltyStatus } from '../lib/cukEngine.js';
 import { buildPointtrainMarkdown, buildPointtrainCsv } from '../lib/pointtrainEngine.js';
 import { AuthService } from '../auth/authService.js';
 import { FirebaseRepository } from '../lib/firebaseRepository.js';
-import { DEFAULT_GROQ_LIMITS, canAccessAdmin, normalizeRole } from '../auth/rolePolicy.js';
+import {
+    DEFAULT_GROQ_LIMITS,
+    canAccessAdmin,
+    getRoleColor,
+    getRoleLabel,
+    getRoleLevel,
+    normalizeRole
+} from '../auth/rolePolicy.js';
 import { analyzeCaseWithGroq } from '../lib/aiAnalysisClient.js';
 import { bindAvatarFallbacks, resolveAvatar } from '../lib/avatar.js';
 
@@ -93,6 +100,8 @@ const state = {
     selectedRuleCategory: '',
     allCases: [],
     userRegistry: {},
+    staffDirectory: {},
+    roleCache: [],
     dynamicRules: { categories: {}, autoInvalid: { keywords: [] } },
     latestPointtrainRun: null
 };
@@ -159,7 +168,7 @@ async function copyText(text) {
 }
 
 function getRankLevel(role) {
-    return LUTHEUS_RANKS[role]?.level || 0;
+    return getRoleLevel(role);
 }
 
 function getValidation(entry) {
@@ -170,17 +179,36 @@ function avatarImg(url, className, alt) {
     return `<img src="${escapeHtml(resolveAvatar(url))}" class="${className}" alt="${escapeHtml(alt || 'Avatar')}" data-avatar-img>`;
 }
 
+function roleBadge(role) {
+    const normalized = normalizeRole(role);
+    return `<span class="role-chip" style="--role-color:${escapeHtml(getRoleColor(normalized))}">${escapeHtml(getRoleLabel(normalized))}</span>`;
+}
+
+function sapphireCaseUrl(entry) {
+    return entry.sourceUrl || `https://dashboard.sapph.xyz/${entry.guildId || '1223431616081166336'}/moderation/cases/${entry.id || entry.caseId}`;
+}
+
+function openCaseUrl(entry) {
+    const url = sapphireCaseUrl(entry);
+    if (url) window.open(url, '_blank', 'noopener');
+}
+
 function switchTab(tabId) {
     state.activeTab = tabId;
     DOM.navBtns.forEach((button) => {
         button.classList.toggle('active', button.dataset.tab === tabId);
     });
 
-    DOM.dashboardView.classList.toggle('hidden', tabId !== 'dashboard');
-    DOM.managementView.classList.toggle('hidden', tabId !== 'management');
-    DOM.rulesView.classList.toggle('hidden', tabId !== 'rules');
-    DOM.pointtrainView.classList.toggle('hidden', tabId !== 'pointtrain');
-    DOM.authView.classList.toggle('hidden', tabId !== 'auth');
+    [
+        ['dashboard', DOM.dashboardView],
+        ['management', DOM.managementView],
+        ['rules', DOM.rulesView],
+        ['pointtrain', DOM.pointtrainView],
+        ['auth', DOM.authView]
+    ].forEach(([id, view]) => {
+        view?.classList.toggle('hidden', tabId !== id);
+        view?.classList.toggle('active', tabId === id);
+    });
 
     const subtitles = {
         dashboard: 'Moderasyon Analiz Sistemi v2.0',
@@ -197,7 +225,7 @@ function renderAuthTables({ allowlist = [], roleCache = [], policy = {}, audit =
         ? allowlist.map((entry) => `
             <tr class="data-row">
                 <td>${escapeHtml(entry.email || entry.id || '-')}</td>
-                <td>${escapeHtml(entry.role || '-')}</td>
+                <td>${roleBadge(entry.role || '-')}</td>
                 <td>${entry.allowed === false ? 'Kapali' : 'Aktif'}</td>
             </tr>
         `).join('')
@@ -208,7 +236,7 @@ function renderAuthTables({ allowlist = [], roleCache = [], policy = {}, audit =
             <tr class="data-row">
                 <td>${escapeHtml(entry.identityKey || entry.id || '-')}</td>
                 <td>${escapeHtml(entry.displayName || '-')}</td>
-                <td>${escapeHtml(entry.role || '-')}</td>
+                <td>${roleBadge(entry.role || '-')}</td>
             </tr>
         `).join('')
         : '<tr><td colspan="3" style="text-align:center; padding:16px;">Role cache kaydi yok</td></tr>';
@@ -216,7 +244,7 @@ function renderAuthTables({ allowlist = [], roleCache = [], policy = {}, audit =
     const limits = { ...DEFAULT_GROQ_LIMITS, ...(policy.groqLimits || {}) };
     DOM.groqLimitGrid.innerHTML = Object.keys(DEFAULT_GROQ_LIMITS).map((role) => `
         <label class="role-limit-item">
-            <span>${escapeHtml(role)}</span>
+            <span>${escapeHtml(getRoleLabel(role))}</span>
             <input type="number" min="0" step="1" data-role="${escapeHtml(role)}" value="${Number(limits[role] || 0)}">
         </label>
     `).join('');
@@ -235,9 +263,10 @@ async function loadAuthAdminData() {
     const [allowlist, roleCache, policy, audit] = await Promise.all([
         FirebaseRepository.listGoogleAllowlist().catch(() => []),
         FirebaseRepository.listRoleCache().catch(() => []),
-        FirebaseRepository.getRolePolicy().catch(() => null),
+        FirebaseRepository.ensureRolePolicy(state.session?.profile).catch(() => FirebaseRepository.getRolePolicy().catch(() => null)),
         FirebaseRepository.listAuditLogs().catch(() => [])
     ]);
+    state.roleCache = roleCache;
     renderAuthTables({ allowlist, roleCache, policy: policy || {}, audit });
 }
 
@@ -293,16 +322,16 @@ function calculateStats() {
     const reasonMap = new Map();
 
     state.allCases.forEach((entry) => {
-        const key = entry.authorId || entry.authorName || 'unknown';
-        const registryEntry = state.userRegistry[entry.authorId] || {};
+        const key = entry.authorId || (entry.authorMissing ? 'unknown-author' : entry.authorName) || 'unknown-author';
+        const registryEntry = state.userRegistry[entry.authorId] || state.staffDirectory[entry.authorId] || {};
         const validation = getValidation(entry);
 
         if (!moderatorMap.has(key)) {
             moderatorMap.set(key, {
                 id: entry.authorId || '',
-                name: registryEntry.name || entry.authorName || 'Bilinmiyor',
-                role: registryEntry.role || 'moderator',
-                avatar: resolveAvatar(registryEntry.avatar),
+                name: registryEntry.name || registryEntry.displayName || entry.authorName || 'Bilinmeyen Yetkili',
+                role: normalizeRole(registryEntry.role || 'moderator'),
+                avatar: resolveAvatar(registryEntry.avatar || entry.authorAvatar),
                 count: 0,
                 valid: 0,
                 invalid: 0,
@@ -329,8 +358,8 @@ function calculateStats() {
         }))
         .sort((left, right) => right.count - left.count);
 
-    const management = ranked.filter((entry) => getRankLevel(entry.role) >= 80);
-    const staff = ranked.filter((entry) => getRankLevel(entry.role) < 80);
+    const management = ranked.filter((entry) => getRoleLevel(entry.role) >= 68);
+    const staff = ranked.filter((entry) => getRoleLevel(entry.role) < 68);
     const reasons = Array.from(reasonMap.entries()).sort((left, right) => right[1] - left[1]);
 
     return {
@@ -382,7 +411,7 @@ function renderModRow(entry, index) {
                     ${avatarImg(entry.avatar, 'table-avatar small', entry.name)}
                     <div>
                         <div>${escapeHtml(entry.name)}</div>
-                        <small>${escapeHtml(entry.role)}</small>
+                        <small>${escapeHtml(getRoleLabel(entry.role))}</small>
                     </div>
                 </div>
             </td>
@@ -418,11 +447,44 @@ function renderTable(search = '') {
 }
 
 function renderManagement() {
-    const moderators = Object.values(state.userRegistry)
-        .filter((entry) => entry.role)
-        .sort((left, right) => getRankLevel(right.role) - getRankLevel(left.role));
+    const merged = new Map();
+    Object.values(state.staffDirectory || {}).forEach((entry) => {
+        const id = entry.discordUserId || entry.sapphireAuthorId || entry.id;
+        if (!id) return;
+        merged.set(id, {
+            id,
+            name: entry.displayName || entry.name || 'Bilinmiyor',
+            avatar: entry.avatar || null,
+            role: normalizeRole(entry.role || 'moderator'),
+            aliases: entry.aliases || [],
+            source: entry.source || 'staffDirectory'
+        });
+    });
+    Object.values(state.userRegistry || {}).forEach((entry) => {
+        if (!entry.id) return;
+        merged.set(entry.id, {
+            ...(merged.get(entry.id) || {}),
+            ...entry,
+            name: entry.name || merged.get(entry.id)?.name || 'Bilinmiyor',
+            role: normalizeRole(entry.role || merged.get(entry.id)?.role || 'moderator')
+        });
+    });
+    (state.roleCache || []).forEach((entry) => {
+        const id = entry.discordId || String(entry.identityKey || entry.id || '').replace(/^discord:/, '');
+        if (!id) return;
+        merged.set(id, {
+            ...(merged.get(id) || {}),
+            id,
+            name: entry.displayName || merged.get(id)?.name || id,
+            role: normalizeRole(entry.role || merged.get(id)?.role || 'moderator')
+        });
+    });
 
-    DOM.mgmtModList.innerHTML = moderators.map((entry) => `
+    const moderators = Array.from(merged.values())
+        .filter((entry) => entry.role)
+        .sort((left, right) => getRankLevel(right.role) - getRankLevel(left.role) || String(left.name).localeCompare(String(right.name), 'tr'));
+
+    DOM.mgmtModList.innerHTML = moderators.length ? moderators.map((entry) => `
         <tr class="data-row">
             <td>
                 <div style="display:flex; align-items:center; gap:8px;">
@@ -433,11 +495,10 @@ function renderManagement() {
                     </div>
                 </div>
             </td>
-            <td>${escapeHtml(entry.role || 'moderator')}</td>
-            <td>${entry.manualAccuracy ?? '-'}</td>
+            <td>${roleBadge(entry.role || 'moderator')}</td>
             <td><button class="btn-open-role" type="button" data-id="${escapeHtml(entry.id || '')}">Duzenle</button></td>
         </tr>
-    `).join('');
+    `).join('') : '<tr><td colspan="3" class="empty-cell">Yetkili kaydi yok</td></tr>';
 
     const search = DOM.caseSearch.value.trim().toLowerCase();
     const filteredCases = state.allCases.filter((entry) => {
@@ -445,21 +506,26 @@ function renderManagement() {
         return String(entry.id || '').includes(search) || (entry.reason || '').toLowerCase().includes(search);
     });
 
-    DOM.mgmtCaseList.innerHTML = filteredCases.map((entry) => {
+    DOM.mgmtCaseList.innerHTML = filteredCases.length ? filteredCases.map((entry) => {
         const validation = getValidation(entry);
         return `
             <tr class="data-row">
-                <td>#${escapeHtml(String(entry.id || '-'))}</td>
-                <td>${escapeHtml(entry.authorName || 'Bilinmiyor')}</td>
+                <td><button class="case-link" type="button" data-case-id="${escapeHtml(String(entry.id || entry.caseId || ''))}">#${escapeHtml(String(entry.id || entry.caseId || '-'))}</button></td>
+                <td>${escapeHtml(entry.authorMissing ? 'Bilinmeyen Yetkili' : (entry.authorName || 'Bilinmiyor'))}<small>${escapeHtml(entry.authorId || '-')}</small></td>
                 <td>${escapeHtml(entry.reason || '-')}</td>
-                <td>${escapeHtml(validation.status || 'unknown')}</td>
-                <td>${escapeHtml(entry.createdRaw || '-')}</td>
+                <td><span class="status-badge ${escapeHtml(validation.status || 'unknown')}">${escapeHtml(validation.status || 'unknown')}</span></td>
             </tr>
         `;
-    }).join('');
+    }).join('') : '<tr><td colspan="4" class="empty-cell">Ceza kaydi yok</td></tr>';
 
     document.querySelectorAll('.btn-open-role').forEach((button) => {
         button.addEventListener('click', () => openRoleModal(button.dataset.id));
+    });
+    DOM.mgmtCaseList.querySelectorAll('.case-link').forEach((button) => {
+        button.addEventListener('click', () => {
+            const entry = state.allCases.find((item) => String(item.id || item.caseId) === button.dataset.caseId);
+            if (entry) openCaseUrl(entry);
+        });
     });
     bindAvatarFallbacks();
 }
@@ -492,6 +558,12 @@ function bindModalSaveHandlers() {
                 : `AI pasif: ${result.error}`;
         });
     });
+    DOM.modalContent.querySelectorAll('.case-open-source').forEach((button) => {
+        button.addEventListener('click', () => {
+            const entry = state.allCases.find((item) => String(item.id || item.caseId) === String(button.dataset.caseId));
+            if (entry) openCaseUrl(entry);
+        });
+    });
 }
 
 function openModal(moderator) {
@@ -499,19 +571,43 @@ function openModal(moderator) {
         .filter((entry) => String(entry.authorId || '') === String(moderator.id || '') || entry.authorName === moderator.name)
         .sort((left, right) => (parseDate(right.createdRaw)?.getTime() || 0) - (parseDate(left.createdRaw)?.getTime() || 0));
 
-    DOM.modalTitle.textContent = `${moderator.name} - Ceza gecmisi`;
-    DOM.modalContent.innerHTML = list.map((entry) => {
+    DOM.modalTitle.textContent = `${moderator.name} - Ceza geçmişi`;
+    DOM.modalContent.innerHTML = list.length ? list.map((entry) => {
         const validation = getValidation(entry);
         return `
-            <article class="pointtrain-row" style="margin-bottom:12px;">
-                <div>
-                    <div class="pointtrain-meta">
-                        <strong>#${escapeHtml(String(entry.id || '-'))}</strong>
-                        <span>${escapeHtml(entry.reason || '-')}</span>
-                        <span>${escapeHtml(entry.createdRaw || '-')}</span>
+            <article class="case-history-card ${escapeHtml(validation.status || 'unknown')}">
+                <div class="case-history-head">
+                    <button class="case-link case-open-source" type="button" data-case-id="${escapeHtml(String(entry.id || entry.caseId || ''))}">
+                        #${escapeHtml(String(entry.id || entry.caseId || '-'))}
+                    </button>
+                    <div class="case-chip-row">
+                        <span class="penalty-type ${escapeHtml(entry.type || 'unknown')}">${escapeHtml(String(entry.type || 'bilinmiyor').toUpperCase())}</span>
+                        <span class="status-badge ${escapeHtml(validation.status || 'unknown')}">${escapeHtml(validation.status || 'unknown')}</span>
                     </div>
-                    <div class="pointtrain-breakdown">${escapeHtml(validation.reason || '-')}</div>
-                    <div style="display:flex; gap:8px; margin-top:10px;">
+                </div>
+                <div class="case-history-body">
+                    <div>
+                        <span class="field-label">Kullanıcı</span>
+                        <strong>${escapeHtml(entry.user || 'Bilinmiyor')}</strong>
+                        <small>${escapeHtml(entry.userId || '-')}</small>
+                    </div>
+                    <div>
+                        <span class="field-label">Yetkili</span>
+                        <strong>${escapeHtml(entry.authorMissing ? 'Bilinmeyen Yetkili' : (entry.authorName || 'Bilinmiyor'))}</strong>
+                        <small>${escapeHtml(entry.authorId || '-')}</small>
+                    </div>
+                    <div>
+                        <span class="field-label">Süre</span>
+                        <strong>${escapeHtml(entry.duration || '-')}</strong>
+                    </div>
+                    <div>
+                        <span class="field-label">Tarih</span>
+                        <strong>${escapeHtml(entry.createdRaw || '-')}</strong>
+                    </div>
+                </div>
+                <div class="case-history-reason">${escapeHtml(entry.reason || 'Sebep yok')}</div>
+                <div class="case-history-validation">${escapeHtml(validation.reason || 'CUK değerlendirmesi yok')}</div>
+                <div class="case-history-actions">
                         <select data-status-for="${escapeHtml(String(entry.id || ''))}">
                             <option value="">Otomatik</option>
                             <option value="valid" ${entry.reviewStatus === 'valid' ? 'selected' : ''}>Valid</option>
@@ -520,12 +616,11 @@ function openModal(moderator) {
                         <input type="text" value="${escapeHtml(entry.note || '')}" data-note-for="${escapeHtml(String(entry.id || ''))}" placeholder="Not">
                         <button class="case-review-save" type="button" data-case-id="${escapeHtml(String(entry.id || ''))}">Kaydet</button>
                         <button class="case-ai-analyze" type="button" data-case-id="${escapeHtml(String(entry.id || ''))}">AI</button>
-                    </div>
-                    <div class="pointtrain-breakdown hidden" data-ai-for="${escapeHtml(String(entry.id || ''))}"></div>
                 </div>
+                <div class="pointtrain-breakdown hidden" data-ai-for="${escapeHtml(String(entry.id || ''))}"></div>
             </article>
         `;
-    }).join('');
+    }).join('') : '<div class="empty-state">Bu yetkili için ceza kaydı yok.</div>';
     DOM.detailModal.classList.remove('hidden');
     bindModalSaveHandlers();
 }
@@ -538,7 +633,7 @@ function openRoleModal(userId = '') {
     const entry = state.userRegistry[userId] || {};
     DOM.roleUserId.value = userId || '';
     DOM.roleDisplayName.value = entry.name || '';
-    DOM.roleSelect.value = entry.role || 'moderator';
+    DOM.roleSelect.value = normalizeRole(entry.role || 'discord_moderatoru');
     DOM.manualAccuracy.value = entry.manualAccuracy ?? '';
     DOM.roleUserNameHint.textContent = entry.name ? `${entry.name} bulundu` : 'Kullanici secin';
     DOM.roleModal.classList.remove('hidden');
@@ -645,6 +740,7 @@ function commitRuleEditor() {
 async function saveRules() {
     commitRuleEditor();
     await Storage.saveDynamicRules(state.dynamicRules);
+    CUKEngine.setRules(state.dynamicRules);
     renderRuleCategories();
     renderRuleEditor();
     Toast.success('Kurallar kaydedildi', 'CUK editor guncellendi');
@@ -722,9 +818,13 @@ function renderPointtrainTab() {
 }
 
 async function loadData() {
-    const [cases, registry, rules, pointtrainRun, userInfo] = await Promise.all([
+    await FirebaseRepository.ensureRolePolicy(state.session?.profile).catch(() => null);
+    await FirebaseRepository.seedRoleCacheMembers(state.session?.profile).catch(() => null);
+
+    const [cases, registry, staffDirectory, rules, pointtrainRun, userInfo] = await Promise.all([
         Storage.getCases(),
         Storage.getUserRegistry(),
+        Storage.getStaffDirectory(),
         Storage.getDynamicRules(),
         Storage.getLatestPointtrainRun(),
         Storage.getUserInfo()
@@ -732,7 +832,9 @@ async function loadData() {
 
     state.allCases = cases;
     state.userRegistry = registry;
+    state.staffDirectory = staffDirectory;
     state.dynamicRules = rules;
+    CUKEngine.setRules(state.dynamicRules);
     state.latestPointtrainRun = pointtrainRun;
 
     const profile = state.session?.profile || {};

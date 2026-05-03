@@ -96,21 +96,31 @@ waitForModules(() => {
 
             case 'GET_PAGE_INFO':
                 try {
+                    const pageInfo = window.GearTech.Navigation.getPaginationInfo();
                     const info = {
-                        current: window.GearTech.Navigation.getCurrentPage(),
-                        total: window.GearTech.Navigation.getTotalPages(),
-                        guildId: window.GearTech.Navigation.getGuildId(),
-                        isOnCasesPage: window.GearTech.Navigation.isOnCasesPage()
+                        ...pageInfo,
+                        current: pageInfo.currentPage,
+                        total: pageInfo.totalPages
                     };
                     sendResponse(info);
                 } catch (e) {
                     sendResponse({
                         current: 1,
+                        currentPage: 1,
                         total: 1,
+                        totalPages: 1,
+                        totalCases: 0,
+                        visibleRows: 0,
                         error: e.message
                     });
                 }
                 break;
+
+            case 'WAIT_FOR_PAGE':
+                window.GearTech.Navigation.waitForPage(request.page, request.timeout || 8000, request.previousFirstCase || '')
+                    .then((info) => sendResponse({ success: true, ...info }))
+                    .catch((e) => sendResponse({ success: false, error: e.message }));
+                return true;
 
             case 'WAIT_FOR_LOAD':
                 window.GearTech.Navigation.waitForTableLoad(request.timeout || 5000)

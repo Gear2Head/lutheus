@@ -62,6 +62,45 @@ window.GearTech.Navigation = {
         return true;
     },
 
+    getFirstCaseId: function () {
+        const firstRow = Array.from(document.querySelectorAll('.row[class*="svelte-"], [class*="row"][class*="svelte-"], [role="row"], tbody tr'))
+            .find((row) => {
+                const text = row.innerText || '';
+                return !row.classList.contains('dummy') && /\b[A-Za-z0-9]{4,15}\b/.test(text);
+            });
+        const text = firstRow?.innerText || '';
+        const match = text.match(/\b[A-Za-z0-9]{4,15}\b/);
+        return match ? match[0] : '';
+    },
+
+    waitForPage: function (pageNumber, timeout = 8000, previousFirstCase = '') {
+        const target = Number(pageNumber);
+        const start = Date.now();
+        const initialFirstCase = previousFirstCase || this.getFirstCaseId();
+
+        return new Promise((resolve, reject) => {
+            const check = () => {
+                const current = this.getCurrentPage();
+                const firstCase = this.getFirstCaseId();
+                const pageMatched = current === target;
+                const rowChanged = !initialFirstCase || !firstCase || firstCase !== initialFirstCase;
+
+                if (pageMatched && rowChanged) {
+                    resolve({ current, firstCase });
+                    return;
+                }
+
+                if (Date.now() - start > timeout) {
+                    reject(new Error(`PAGE_NAV_TIMEOUT_${target}_CURRENT_${current}`));
+                    return;
+                }
+
+                setTimeout(check, 250);
+            };
+            check();
+        });
+    },
+
     /**
      * Click next page button
      */
@@ -102,40 +141,73 @@ window.GearTech.Navigation = {
         return 1;
     },
 
+    getTotalCases: function () {
+        const text = document.body.innerText || '';
+        const foundMatch = text.match(/Found\s+(\d+)\s+cases/i);
+        if (foundMatch) return Number(foundMatch[1]) || 0;
+
+        const showingMatch = text.match(/Showing\s+\d+\s+cases\s+of\s+(\d+)/i);
+        if (showingMatch) return Number(showingMatch[1]) || 0;
+
+        const caseRows = window.GearTech?.Scraper?.findCaseRows?.() || [];
+        return caseRows.length;
+    },
+
+    getVisibleRowCount: function () {
+        const rows = window.GearTech?.Scraper?.findCaseRows?.() || [];
+        return rows.filter((row) => {
+            const text = row.innerText || '';
+            return !row.classList.contains('dummy') && /\b[A-Za-z0-9]{4,15}\b/.test(text);
+        }).length;
+    },
+
+    getPageSize: function () {
+        const text = document.body.innerText || '';
+        const showingMatch = text.match(/Showing\s+(\d+)\s+cases\s+of\s+\d+/i);
+        if (showingMatch) return Number(showingMatch[1]) || 25;
+        const select = Array.from(document.querySelectorAll('select')).find((item) => /\d+/.test(item.value || item.innerText || ''));
+        return Number(select?.value) || this.getVisibleRowCount() || 25;
+    },
+
     /**
-     * Get total number of pages
+     * Get total number of pages. This must not read "cases of 79" as pages.
      */
     getTotalPages: function () {
-        // Look for "of XXX" or "/ XXX" text
-        const pageText = document.body.innerText;
+        return this.getPaginationInfo().totalPages;
+    },
 
-        // Try "of 400" pattern
-        let match = pageText.match(/of\s+(\d+)/i);
-        if (match) return parseInt(match[1]);
+    getPaginationInfo: function () {
+        const currentPage = this.getCurrentPage();
+        const totalCases = this.getTotalCases();
+        const pageSize = this.getPageSize();
+        const visibleRows = this.getVisibleRowCount();
 
-        // Try "/ 400" pattern
-        match = pageText.match(/\/\s*(\d+)(?:\s|$)/);
-        if (match) return parseInt(match[1]);
+        const numberInput = Array.from(document.querySelectorAll('input[type="number"]')).find((input) => {
+            const value = Number(input.value || 0);
+            return value === currentPage || value > 0;
+        });
+        const paginationRoot = numberInput?.closest('div')?.parentElement || numberInput?.parentElement || document.querySelector('[class*="pagination"]');
+        const paginationText = paginationRoot?.innerText || '';
 
-        // Try finding in pagination area
-        const paginationEl = document.querySelector('[class*="pagination"]');
-        if (paginationEl) {
-            const spans = paginationEl.querySelectorAll('span');
-            for (const span of spans) {
-                const num = parseInt(span.innerText);
-                if (num > 100) return num;
-            }
+        let totalPages = 0;
+        const pageMatch = paginationText.match(/\bof\s+(\d+)\b/i) || paginationText.match(/\/\s*(\d+)\b/);
+        if (pageMatch) totalPages = Number(pageMatch[1]) || 0;
+
+        if (!totalPages && totalCases && pageSize) {
+            totalPages = Math.max(1, Math.ceil(totalCases / pageSize));
         }
+        if (!totalPages) totalPages = 1;
 
-        // Look for "Found XXXX cases" 
-        match = pageText.match(/Found\s+(\d+)\s+cases/i);
-        if (match) {
-            // Assuming 25 cases per page
-            return Math.ceil(parseInt(match[1]) / 25);
-        }
-
-        console.warn('GearTech Nav: Could not determine total pages');
-        return 1;
+        return {
+            currentPage,
+            totalPages,
+            totalCases,
+            visibleRows,
+            pageSize,
+            firstCase: this.getFirstCaseId(),
+            guildId: this.getGuildId(),
+            isOnCasesPage: this.isOnCasesPage()
+        };
     },
 
     /**

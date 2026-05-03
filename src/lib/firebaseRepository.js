@@ -1,6 +1,6 @@
 import { FirestoreRest } from './firestoreRest.js';
 import { APP_CONFIG } from '../config/appConfig.js';
-import { normalizeRole, ROLES, getDefaultGroqLimit } from '../auth/rolePolicy.js';
+import { normalizeRole, ROLES, getDefaultGroqLimit, getDefaultRolePolicy, SEEDED_ROLE_MEMBERS } from '../auth/rolePolicy.js';
 
 function safeDocId(value) {
     return String(value || 'unknown').trim().toLowerCase().replace(/\//g, '_');
@@ -128,12 +128,55 @@ export const FirebaseRepository = {
     },
 
     async getRolePolicy() {
-        return FirestoreRest.getDocument('rolePolicy/settings').catch(() => null);
+        const policy = await FirestoreRest.getDocument('rolePolicy/settings').catch(() => null);
+        return policy || getDefaultRolePolicy();
+    },
+
+    async ensureRolePolicy(actor = null) {
+        const existing = await FirestoreRest.getDocument('rolePolicy/settings').catch(() => null);
+        if (existing) {
+            const defaults = getDefaultRolePolicy();
+            return {
+                ...defaults,
+                ...existing,
+                roleHierarchy: existing.roleHierarchy || defaults.roleHierarchy,
+                roleLabels: { ...defaults.roleLabels, ...(existing.roleLabels || {}) },
+                roleColors: { ...defaults.roleColors, ...(existing.roleColors || {}) },
+                seededRoleMembers: existing.seededRoleMembers || defaults.seededRoleMembers,
+                groqLimits: { ...defaults.groqLimits, ...(existing.groqLimits || {}) }
+            };
+        }
+        const created = getDefaultRolePolicy();
+        await this.addAuditLog('role_policy_seeded', { version: created.version }, actor);
+        return FirestoreRest.setDocument('rolePolicy/settings', created);
+    },
+
+    async seedRoleCacheMembers(actor = null) {
+        const existing = await this.listRoleCache().catch(() => []);
+        const existingIds = new Set(existing.map((entry) => entry.discordId || String(entry.identityKey || entry.id || '').replace(/^discord:/, '')));
+        const writes = [];
+        for (const member of SEEDED_ROLE_MEMBERS) {
+            if (existingIds.has(member.id)) continue;
+            writes.push(FirestoreRest.setDocument(`roleCache/${safeDocId(`discord:${member.id}`)}`, {
+                identityKey: `discord:${member.id}`,
+                discordId: member.id,
+                displayName: member.name,
+                role: normalizeRole(member.role),
+                source: 'lutheus-seed',
+                updatedBy: actor?.uid || actor?.email || 'system',
+                updatedAt: new Date().toISOString()
+            }));
+        }
+        const result = await Promise.all(writes);
+        if (result.length) await this.addAuditLog('role_cache_seeded', { count: result.length }, actor);
+        return result;
     },
 
     async saveRolePolicy(policy, actor = null) {
+        const current = await this.getRolePolicy().catch(() => getDefaultRolePolicy());
         await this.addAuditLog('role_policy_updated', policy, actor);
         return FirestoreRest.setDocument('rolePolicy/settings', {
+            ...(current || {}),
             ...policy,
             updatedAt: new Date().toISOString()
         });

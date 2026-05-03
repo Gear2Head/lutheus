@@ -82,6 +82,18 @@ describe('Storage.updateCases', () => {
         expect(cases[0].note).toBe('keep-me');
         expect(cases[0].reason).toBe('New');
     });
+
+    test('does not store case payloads in chrome sync quota', async () => {
+        await Storage.updateCases([{ id: 'abc123', reason: 'Reklam', authorName: 'Mod2' }], true);
+        expect(syncStore.cases_meta.count).toBe(1);
+        expect(Object.keys(syncStore).some((key) => /^cases_c\d+$/.test(key))).toBe(false);
+    });
+
+    test('seeds editable staff roles into registry', async () => {
+        const registry = await Storage.getUserRegistry();
+        expect(registry['758769576778661989'].role).toBe('kidemli_discord_moderatoru');
+        expect(registry['529357404882599966'].role).toBe('discord_moderatoru');
+    });
 });
 
 describe('Storage session snapshot', () => {

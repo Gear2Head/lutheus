@@ -19,9 +19,11 @@ window.GearTech.Scraper = {
             if (row.classList.contains('dummy')) return;
             if (row.innerText.includes('ID') && row.innerText.includes('User') && row.innerText.includes('Reason')) return;
 
-            // Must have columns
             const cols = row.querySelectorAll('[class*="column"]');
-            if (cols.length >= 5) {
+            const text = row.innerText || '';
+            const hasCaseId = /\b[A-Za-z0-9]{4,15}\b/.test(text);
+            const looksLikeCase = hasCaseId && /(mute|ban|warn|kick|timeout|permanent|\d{1,2}\.\d{1,2}\.\d{4})/i.test(text);
+            if (cols.length >= 5 || looksLikeCase) {
                 dataRows.push(row);
             }
         });
@@ -120,7 +122,7 @@ window.GearTech.Scraper = {
         // Get all column elements
         const columns = Array.from(row.querySelectorAll('[class*="column"]'));
 
-        if (columns.length < 6) return null;
+        if (columns.length < 6) return this.extractCompactRowData(row, rowIdx);
 
         let colOffset = 0;
         const firstColText = columns[0].innerText.trim();
@@ -224,6 +226,64 @@ window.GearTech.Scraper = {
             sourceUrl: this.buildCaseUrl(caseId),
             scrapedAt: Date.now()
         };
+    },
+
+    extractCompactRowData: function (row) {
+        const rawText = (row.innerText || '').trim();
+        if (!rawText) return null;
+
+        const caseId = this.extractCaseIdFromText(rawText);
+        if (!caseId) return null;
+
+        const lines = rawText.split('\n').map((line) => line.trim()).filter(Boolean);
+        const compactLine = lines.find((line) => line.includes('•')) || rawText.replace(/\n/g, ' • ');
+        const parts = compactLine.split('•').map((part) => part.trim()).filter(Boolean);
+
+        const dateMatch = rawText.match(/(\d{1,2}\.\d{1,2}\.\d{4})/);
+        const typeMatch = rawText.match(/\b(MUTE|BAN|WARN|KICK|TIMEOUT)\b/i);
+        const idMatches = rawText.match(/\b\d{17,20}\b/g) || [];
+        const images = Array.from(row.querySelectorAll('img'));
+        const firstDiscordIcon = images.find((img) => /discord/i.test(img.alt || img.src || ''));
+        const userAvatar = images.find((img) => img !== firstDiscordIcon)?.currentSrc
+            || images.find((img) => img !== firstDiscordIcon)?.src
+            || null;
+
+        let user = '';
+        let reason = '';
+        let duration = '';
+
+        if (parts.length >= 5) {
+            user = parts[1] || '';
+            reason = parts[2] || '';
+            duration = parts[3] || '';
+        } else {
+            const withoutCase = rawText.replace(caseId, '').replace(/\b\d{17,20}\b/g, '').trim();
+            reason = parts.find((part) => !/^(mute|ban|warn|kick|timeout|permanent)$/i.test(part) && !/\d{1,2}\.\d{1,2}\.\d{4}/.test(part)) || withoutCase;
+        }
+
+        return {
+            id: caseId,
+            caseId,
+            user: user || 'Bilinmiyor',
+            userId: idMatches[0] || '',
+            userAvatar,
+            reason: reason || '',
+            authorName: 'Bilinmeyen Yetkili',
+            authorId: '',
+            authorAvatar: null,
+            authorMissing: true,
+            duration: duration || '',
+            createdRaw: dateMatch ? dateMatch[1] : '',
+            type: typeMatch ? typeMatch[1].toLowerCase() : 'unknown',
+            sourceUrl: this.buildCaseUrl(caseId),
+            scrapedAt: Date.now(),
+            parseMode: 'compact'
+        };
+    },
+
+    extractCaseIdFromText: function (text) {
+        const candidates = String(text || '').match(/\b[A-Za-z0-9]{4,15}\b/g) || [];
+        return candidates.find((candidate) => !/^(mute|ban|warn|kick|timeout|user|reason|author|duration|created)$/i.test(candidate)) || '';
     },
 
     buildCaseUrl: function (caseId) {

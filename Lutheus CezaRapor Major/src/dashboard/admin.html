@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="tr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lutheus CezaRapor - Admin Konsolu</title>
+    <link rel="stylesheet" href="../sidepanel/sidepanel.css">
+    <link rel="stylesheet" href="admin.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+</head>
+
+<body>
+    <!-- Toast Notification Container -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <div class="app-layout">
+        <!-- Sidebar (Shared Style) -->
+        <nav class="sidebar">
+            <div class="logo-area">
+                <img src="../../assets/icon48.png" alt="GT" class="brand-icon">
+            </div>
+            <div class="nav-links">
+                <button class="nav-btn active" data-tab="dashboard" title="Dashboard">
+                    <i class="fa-solid fa-chart-line"></i>
+                </button>
+                <button class="nav-btn" data-tab="management" title="Yönetim" id="mgmtBtn">
+                    <i class="fa-solid fa-user-gear"></i>
+                </button>
+                <button class="nav-btn" data-tab="rules" title="AI Kural Eğitimi" id="aiRulesBtn">
+                    <i class="fa-solid fa-brain"></i>
+                </button>
+                <button class="nav-btn" data-tab="pointtrain" title="Pointtrain" id="pointtrainBtn">
+                    <i class="fa-solid fa-ranking-star"></i>
+                </button>
+                <button class="nav-btn" data-tab="auth" title="Erişim Yönetimi" id="authBtn">
+                    <i class="fa-solid fa-id-card-clip"></i>
+                </button>
+            </div>
+            <div class="nav-footer">
+                <div class="status-dot"></div>
+            </div>
+        </nav>
+
+        <main class="content-area">
+            <!-- Header -->
+            <header class="top-header">
+                <div>
+                    <h1 class="welcome-text">Lutheus <span class="highlight">CezaRapor</span></h1>
+                    <p class="subtitle" id="pageSubtitle">Moderasyon Analiz Sistemi v2.0</p>
+                </div>
+                <div class="header-actions">
+                    <div class="admin-profile-area" id="adminProfileArea">
+                        <img id="adminProfileAvatar" src="../../assets/icon48.png" alt="Profile">
+                        <div class="profile-text-info">
+                            <span id="adminProfileName">Yetkili</span>
+                            <span id="adminProfileRole" class="role-hint">Giriş Yapılmadı</span>
+                        </div>
+                    </div>
+                    <div class="header-btn-row">
+                        <button class="btn secondary-btn" id="roleBtn">
+                            <i class="fa-solid fa-user-shield"></i> Rütbe Yönetimi
+                        </button>
+                        <button class="btn secondary-btn" id="revalidateBtn" title="Tüm Cezaları Yeniden Doğrula">
+                            <i class="fa-solid fa-check-double"></i> Yeniden Doğrula
+                        </button>
+                        <button class="btn secondary-btn" id="copyDiscordBtn" title="Discord Formatında Kopyala">
+                            <i class="fa-brands fa-discord"></i> Kopyala
+                        </button>
+                        <button class="btn secondary-btn" id="refreshBtn">
+                            <i class="fa-solid fa-arrows-rotate"></i> Yenile
+                        </button>
+                        <button class="btn primary-btn" id="exportBtn">
+                            <i class="fa-solid fa-file-arrow-down"></i> Rapor Al
+                        </button>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Dashboard View -->
+            <div id="dashboardView" class="tab-view active">
+                <!-- Stats Overview -->
+                <div class="stats-scroll">
+                    <div class="stat-widget dark">
+                        <div class="stat-icon"><i class="fa-solid fa-gavel"></i></div>
+                        <div class="stat-info">
+                            <span class="stat-num" id="totalCases">0</span>
+                            <span class="stat-label">Toplam Ceza</span>
+                        </div>
+                    </div>
+                    <div class="stat-widget purple">
+                        <div class="stat-icon"><i class="fa-solid fa-trophy"></i></div>
+                        <div class="stat-info">
+                            <span class="stat-num" id="topModName">—</span>
+                            <span class="stat-label">En Aktif Yetkili</span>
+                            <small id="topModCount" class="stat-sub">0 işlem</small>
+                        </div>
+                    </div>
+                    <div class="stat-widget green">
+                        <div class="stat-icon"><i class="fa-solid fa-tags"></i></div>
+                        <div class="stat-info">
+                            <span class="stat-num" id="topReasonName">—</span>
+                            <span class="stat-label">En Sık Sebep</span>
+                            <small id="topReasonCount" class="stat-sub">0 kez</small>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Session Comparison -->
+                <div class="card margin-top">
+                    <div class="card-header">
+                        <h3><i class="fa-solid fa-bolt"
+                                style="margin-right: 10px; color: var(--accent-primary);"></i>Son Taramadan Beri Değişim
+                        </h3>
+                    </div>
+                    <div class="comparison-grid" id="comparisonGrid">
+                        <!-- JS Injects -->
+                    </div>
+                </div>
+
+                <!-- Main Table Section (Staff Only) -->
+                <div class="split-view margin-top">
+                    <div class="card flex-2">
+                        <div class="card-header">
+                            <h3><i class="fa-solid fa-users" style="margin-right: 10px; opacity: 0.6;"></i>Haftalık
+                                Yetkili Performansı</h3>
+                            <div class="search-bar compact">
+                                <i class="fa-solid fa-magnifying-glass"></i>
+                                <input type="text" id="tableSearch" placeholder="Ara...">
+                            </div>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="modern-table">
+                                <thead>
+                                    <tr>
+                                        <th>Sıra</th>
+                                        <th>Yetkili</th>
+                                        <th>Rütbe</th>
+                                        <th>İşlem</th>
+                                        <th>Doğruluk</th>
+                                        <th>Detay</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="modTableBody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="card flex-1">
+                        <div class="card-header">
+                            <h3><i class="fa-solid fa-list-check" style="margin-right: 10px; opacity: 0.6;"></i>Ceza
+                                Türleri</h3>
+                        </div>
+                        <div class="reason-list" id="reasonList"></div>
+                    </div>
+                </div>
+
+                <!-- Management Table Section (Admin/Senior) -->
+                <div class="card margin-top">
+                    <div class="card-header">
+                        <h3><i class="fa-solid fa-user-shield" style="margin-right: 10px; opacity: 0.6;"></i>Yönetim
+                            Kadrosu (Genel Toplam)</h3>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="modern-table">
+                            <thead>
+                                <tr>
+                                    <th>Yetkili</th>
+                                    <th>Rütbe</th>
+                                    <th>İşlem Sayısı</th>
+                                    <th>Doğruluk</th>
+                                    <th>Detay</th>
+                                </tr>
+                            </thead>
+                            <tbody id="mgmtSummaryTableBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Management View -->
+            <div id="managementView" class="tab-view hidden">
+                <div class="split-view">
+                    <!-- Left: Moderator Management -->
+                    <div class="card flex-1">
+                        <div class="card-header">
+                            <h3><i class="fa-solid fa-user-shield"></i> Yetkili Yönetimi</h3>
+                        </div>
+                        <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
+                            <table class="modern-table sticky-header">
+                                <thead>
+                                    <tr>
+                                        <th>Yetkili</th>
+                                        <th>Rütbe</th>
+                                        <th style="width: 40px;"></th>
+                                    </tr>
+                                </thead>
+                                <tbody id="mgmtModList"></tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Right: Penalty Management -->
+                    <div class="card flex-2">
+                        <div class="card-header">
+                            <h3><i class="fa-solid fa-hammer"></i> Tüm Cezalar</h3>
+                            <div class="search-bar compact">
+                                <i class="fa-solid fa-magnifying-glass"></i>
+                                <input type="text" id="caseSearch" placeholder="Case ID veya Sebep...">
+                            </div>
+                        </div>
+                        <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
+                            <table class="modern-table sticky-header">
+                                <thead>
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>Kullanıcı (ID)</th>
+                                        <th>Sebep</th>
+                                        <th style="width: 100px;">Eylem</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="mgmtCaseList"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Rules Management View (Hidden by default) -->
+            <div id="rulesView" class="tab-view hidden">
+                <div class="card">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 20px;">
+                        <div>
+                            <h2 style="font-size:18px; color:var(--accent-primary);">AI Kural Eğitimi (CUK)</h2>
+                            <p style="color:var(--text-muted); font-size:12px;">Sistemin cezaları neye göre "Hatalı"
+                                veya "Doğru" bulacağını buradan öğretebilirsiniz.</p>
+                        </div>
+                        <div style="display:flex; gap:10px;">
+                            <button class="btn secondary-btn" id="btnBackToDashboard">
+                                <i class="fa-solid fa-arrow-left"></i> Geri Dön
+                            </button>
+                            <button class="btn primary-btn" id="btnSaveRules">
+                                <i class="fa-solid fa-save"></i> Kaydet ve Uygula
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="split-view" style="gap:20px;">
+                        <!-- Categories List -->
+                        <div
+                            style="flex: 1; min-width: 250px; background: var(--bg-card-solid); border-radius: 8px; border: 1px solid var(--border-color); padding: 15px;">
+                            <div
+                                style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 15px;">
+                                <h3 style="font-size:14px;">Kategoriler</h3>
+                                <button class="btn secondary-btn compact" id="btnAddCategory" title="Kategori Ekle">
+                                    <i class="fa-solid fa-plus"></i>
+                                </button>
+                            </div>
+                            <div id="ruleCategoriesList" style="display:flex; flex-direction:column; gap:8px;">
+                                <!-- JS fills here -->
+                            </div>
+                        </div>
+
+                        <!-- Category Editor -->
+                        <div style="flex: 2; background: var(--bg-card-solid); border-radius: 8px; border: 1px solid var(--border-color); padding: 15px;"
+                            id="categoryEditor">
+                            <div id="noRuleSelected"
+                                style="height:300px; display:flex; flex-direction:column; align-items:center; justify-content:center; color:var(--text-muted); padding:40px;">
+                                <i class="fa-solid fa-hand-pointer"
+                                    style="font-size:32px; margin-bottom:15px; opacity:0.3;"></i>
+                                <p>Düzenlemek için sol taraftan bir kategori seçin.</p>
+                            </div>
+                            <div id="ruleEditorContent" class="hidden">
+                                <div class="form-group" style="margin-bottom: 15px;">
+                                    <label>Kategori İsmi</label>
+                                    <input type="text" id="editCategoryName"
+                                        style="width:100%; padding:10px; background:var(--bg-deep); border:1px solid var(--border-color); color:var(--accent-primary); border-radius:4px; font-weight:700;">
+                                </div>
+
+                                <div class="form-group" style="margin-bottom: 20px;">
+                                    <label>Tekrar Kuralları (Süre/Tür)</label>
+                                    <div id="repeatsList" style="display:flex; flex-direction:column; gap:10px;">
+                                        <!-- Repeats will be here -->
+                                    </div>
+                                    <button class="btn secondary-btn full" id="btnAddRepeat" style="margin-top:10px;">
+                                        <i class="fa-solid fa-plus"></i> Yeni Tekrar Kademesi Ekle
+                                    </button>
+                                </div>
+
+                                <div class="form-group">
+                                    <label>Kategori Anahtar Kelimeleri (Virgül ile ayırın)</label>
+                                    <input type="text" id="categoryKeywords" placeholder="örn: cinsellik, nsfw, +18"
+                                        style="width:100%; padding:10px; background:var(--bg-deep); border:1px solid var(--border-color); color:var(--text-primary); border-radius:4px;">
+                                    <small
+                                        style="color:var(--text-muted); font-size:11px; margin-top:5px; display:block;">Sistem
+                                        bu kelimeleri yakaladığında cezayı bu kategoriye sokar.</small>
+                                </div>
+
+                                <div
+                                    style="margin-top:20px; padding-top:15px; border-top:1px solid var(--border-color); display:flex; justify-content:flex-end;">
+                                    <button class="btn danger-btn" id="btnDeleteCategory">
+                                        <i class="fa-solid fa-trash"></i> Kategoriyi Sil
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="pointtrainView" class="tab-view hidden">
+                <div class="card">
+                    <div class="card-header">
+                        <h3><i class="fa-solid fa-ranking-star" style="margin-right: 10px; opacity: 0.6;"></i>Pointtrain Sıralaması</h3>
+                        <div class="header-btn-row">
+                            <button class="btn secondary-btn" id="pointtrainRefreshBtn">
+                                <i class="fa-solid fa-arrows-rotate"></i> Yenile
+                            </button>
+                            <button class="btn secondary-btn" id="pointtrainCopyBtn">
+                                <i class="fa-brands fa-discord"></i> Kopyala
+                            </button>
+                            <button class="btn primary-btn" id="pointtrainExportBtn">
+                                <i class="fa-solid fa-file-arrow-down"></i> CSV Al
+                            </button>
+                        </div>
+                    </div>
+                    <div id="pointtrainAdminSummary" class="comparison-grid"></div>
+                    <div class="table-responsive margin-top">
+                        <table class="modern-table">
+                            <thead>
+                                <tr>
+                                    <th>#</th>
+                                    <th>Yetkili</th>
+                                    <th>Rütbe</th>
+                                    <th>Ceza</th>
+                                    <th>Mesaj</th>
+                                    <th>Kanal</th>
+                                    <th>Aktif Gün</th>
+                                    <th>Puan</th>
+                                    <th>Detay</th>
+                                </tr>
+                            </thead>
+                            <tbody id="pointtrainTableBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <div id="authView" class="tab-view hidden">
+                <div class="split-view">
+                    <div class="card flex-1">
+                        <div class="card-header">
+                            <h3><i class="fa-solid fa-envelope-circle-check"></i> Google Allowlist</h3>
+                        </div>
+                        <div class="form-group margin-top">
+                            <label>Email</label>
+                            <input type="email" id="allowEmail" placeholder="name@codaioda.com">
+                        </div>
+                        <div class="form-group">
+                            <label>Rol</label>
+                            <select id="allowRole">
+                                <option value="viewer">Viewer</option>
+                                <option value="support">Support</option>
+                                <option value="moderator">Moderator</option>
+                                <option value="kidemli">Kıdemli</option>
+                                <option value="yonetici">Yönetici</option>
+                                <option value="admin">Admin</option>
+                            </select>
+                        </div>
+                        <button class="btn primary-btn full" id="saveAllowBtn">
+                            <i class="fa-solid fa-save"></i> Allowlist Kaydet
+                        </button>
+                        <div class="table-responsive margin-top">
+                            <table class="modern-table">
+                                <thead>
+                                    <tr>
+                                        <th>Email</th>
+                                        <th>Rol</th>
+                                        <th>Durum</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="allowlistTableBody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="card flex-1">
+                        <div class="card-header">
+                            <h3><i class="fa-brands fa-discord"></i> Role Cache</h3>
+                        </div>
+                        <div class="form-group margin-top">
+                            <label>Discord ID veya identity key</label>
+                            <input type="text" id="roleCacheIdentity" placeholder="123... veya discord:123...">
+                        </div>
+                        <div class="form-group">
+                            <label>Görünen İsim</label>
+                            <input type="text" id="roleCacheName" placeholder="Yetkili adı">
+                        </div>
+                        <div class="form-group">
+                            <label>Rol</label>
+                            <select id="roleCacheRole">
+                                <option value="viewer">Viewer</option>
+                                <option value="support">Support</option>
+                                <option value="moderator">Moderator</option>
+                                <option value="kidemli">Kıdemli</option>
+                                <option value="yonetici">Yönetici</option>
+                                <option value="admin">Admin</option>
+                                <option value="kurucu">Kurucu</option>
+                            </select>
+                        </div>
+                        <button class="btn primary-btn full" id="saveRoleCacheBtn">
+                            <i class="fa-solid fa-save"></i> Role Cache Kaydet
+                        </button>
+                        <div class="table-responsive margin-top">
+                            <table class="modern-table">
+                                <thead>
+                                    <tr>
+                                        <th>Kimlik</th>
+                                        <th>İsim</th>
+                                        <th>Rol</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="roleCacheTableBody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="split-view margin-top">
+                    <div class="card flex-1">
+                        <div class="card-header">
+                            <h3><i class="fa-solid fa-gauge-high"></i> Groq Limitleri</h3>
+                        </div>
+                        <div class="role-limit-grid" id="groqLimitGrid"></div>
+                        <button class="btn primary-btn full margin-top" id="saveGroqPolicyBtn">
+                            <i class="fa-solid fa-save"></i> Limitleri Kaydet
+                        </button>
+                    </div>
+                    <div class="card flex-1">
+                        <div class="card-header">
+                            <h3><i class="fa-solid fa-clock-rotate-left"></i> Audit Log</h3>
+                            <button class="btn secondary-btn" id="refreshAuditBtn">
+                                <i class="fa-solid fa-arrows-rotate"></i>
+                            </button>
+                        </div>
+                        <div class="audit-list" id="auditList"></div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Modal for Details -->
+    <div id="detailModal" class="modal-overlay hidden">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h3 id="modalTitle">Yetkili Detayı</h3>
+                <button class="close-btn" id="closeModal">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            <div class="modal-body" id="modalContent">
+                <!-- Cases List -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Role Management Modal -->
+    <div id="roleModal" class="modal-overlay hidden">
+        <div class="modal-card small-modal">
+            <div class="modal-header">
+                <h3>Yetkili Rütbe Yönetimi</h3>
+                <button class="close-btn" id="closeRoleModal">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Discord User ID</label>
+                    <div style="display:flex; gap:10px;">
+                        <input type="text" id="roleUserId" placeholder="Örn: 123456789..."
+                            style="flex:1; padding:8px; border-radius:4px; border:1px solid var(--border-color); background:var(--bg-darker); color:var(--text-primary);">
+                        <button id="lookupUserBtn" class="btn secondary-btn" title="Kullanıcı Ara"><i
+                                class="fa-solid fa-magnifying-glass"></i></button>
+                    </div>
+                    <small id="roleUserNameHint"
+                        style="color:var(--text-muted); display:block; margin-top:5px; margin-bottom:15px; min-height:16px;"></small>
+                </div>
+                <div class="form-group" style="margin-bottom: 15px;">
+                    <label>Görünür İsim (Manuel)</label>
+                    <input type="text" id="roleDisplayName" placeholder="Örn: Ahmet (Mod)..."
+                        style="width:100%; padding:8px; border-radius:4px; border:1px solid var(--border-color); background:var(--bg-card-solid); color:var(--text-primary);">
+                    <small style="color:var(--text-muted); font-size:10px;">Boş bırakılırsa sistemdeki ismi
+                        kullanılır.</small>
+                </div>
+                <div class="form-group">
+                    <label>Rütbe Seçimi</label>
+                    <select id="roleSelect"
+                        style="width:100%; padding:8px; border-radius:4px; border:1px solid var(--border-color); background:var(--bg-card-solid); color:var(--text-primary);">
+                        <option value="support">Destek Ekibi</option>
+                        <option value="moderator" selected>Moderatör Ekibi</option>
+                        <option value="senior_moderator">Kıdemli Moderatör</option>
+                        <option value="admin">Yönetici</option>
+                        <option value="kurucu">Kurucu</option>
+                    </select>
+                </div>
+                <div class="form-group" style="margin-top: 15px;">
+                    <label>Manuel Doğruluk (%)</label>
+                    <input type="number" id="manualAccuracy" placeholder="Otomatik kalsın için boş bırakın" min="0"
+                        max="100"
+                        style="width:100%; padding:8px; border-radius:4px; border:1px solid var(--border-color); background:var(--bg-card-solid); color:var(--text-primary);">
+                    <small style="color:var(--text-muted); font-size:10px;">Boş bırakılırsa sistem otomatik
+                        hesaplar.</small>
+                </div>
+                <button class="btn primary-btn" id="saveRoleBtn" style="width:100%; margin-top:15px;">Kaydet</button>
+            </div>
+        </div>
+    </div>
+    <footer class="app-footer">© 2031, GearHead</footer>
+    <script type="module" src="admin.js"></script>
+</body>
+
+</html>

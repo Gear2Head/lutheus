@@ -1,0 +1,762 @@
+// Lutheus CezaRapor - Service Worker v2.2
+// Boho integration + Discord Pointtrain orchestration
+
+const LUTHEUS_GUILD_ID = '1223431616081166336';
+const DEFAULT_POINTTRAIN_CHANNELS = [
+    { id: 'genel-sohbet', label: '💬genel-sohbet', weight: 1.0 },
+    { id: 'gorsel-video-odasi', label: '📷görsel-video-odası', weight: 0.8 },
+    { id: 'konu-disi', label: '💭konu-dışı', weight: 0.6 }
+];
+const DEFAULT_POINT_WEIGHTS = {
+    punishmentWeight: 1,
+    messageWeight: 0.15,
+    channelDiversityBonus: 3,
+    activeDayBonus: 1.5,
+    penaltyFlags: 0
+};
+
+const ACTIONS = {
+    OPEN_DASHBOARD_AND_SCAN: 'OPEN_DASHBOARD_AND_SCAN',
+    RUN_AUTONOMOUS_SCAN: 'RUN_AUTONOMOUS_SCAN',
+    INJECT_SCRIPTS: 'INJECT_SCRIPTS',
+    SEND_TO_TAB: 'SEND_TO_TAB',
+    GET_DASHBOARD_TAB: 'GET_DASHBOARD_TAB',
+    OPEN_CASE_PAGE: 'OPEN_CASE_PAGE',
+    OPEN_ADMIN: 'OPEN_ADMIN',
+    CLOSE_TAB: 'CLOSE_TAB',
+    PING: 'PING',
+    INTEGRITY_COMPROMISED: 'INTEGRITY_COMPROMISED',
+    RUN_POINTTRAIN_SCAN: 'RUN_POINTTRAIN_SCAN',
+    OPEN_DISCORD_TAB: 'OPEN_DISCORD_TAB',
+    RUN_DISCORD_QUERY: 'RUN_DISCORD_QUERY',
+    COLLECT_DISCORD_COUNTS: 'COLLECT_DISCORD_COUNTS',
+    CANCEL_POINTTRAIN_SCAN: 'CANCEL_POINTTRAIN_SCAN',
+    POINTTRAIN_PING: 'POINTTRAIN_PING',
+    RUN_POINTTRAIN_QUERY: 'RUN_POINTTRAIN_QUERY',
+    POINTTRAIN_PROGRESS_EVENT: 'POINTTRAIN_PROGRESS_EVENT',
+    POINTTRAIN_DONE_EVENT: 'POINTTRAIN_DONE_EVENT'
+};
+
+let pointtrainCancelled = false;
+
+console.log('Lutheus CezaRapor: Service Worker v2.2 starting...');
+
+chrome.sidePanel
+    .setPanelBehavior({ openPanelOnActionClick: true })
+    .catch((error) => console.error('GearTech: Side panel error:', error));
+
+chrome.runtime.onInstalled.addListener((details) => {
+    console.log('GearTech: Extension installed/updated', details.reason);
+    if (details.reason === 'install') {
+        chrome.storage.local.set({
+            settings: {
+                guildId: LUTHEUS_GUILD_ID,
+                autoSaveWeekly: true,
+                scanDelay: 2000,
+                theme: 'lutheus'
+            },
+            pointtrainSettings: {
+                guildId: LUTHEUS_GUILD_ID,
+                discordGuildId: LUTHEUS_GUILD_ID,
+                datePreset: 'last7',
+                startDate: '',
+                endDate: '',
+                channels: DEFAULT_POINTTRAIN_CHANNELS
+            },
+            pointWeights: DEFAULT_POINT_WEIGHTS,
+            cases: [],
+            weeklySnapshots: {},
+            scanLogs: [],
+            pointtrainRuns: []
+        });
+    }
+});
+
+function getLocal(key) {
+    return new Promise((resolve) => chrome.storage.local.get([key], (result) => resolve(result[key])));
+}
+
+function setLocal(key, value) {
+    return new Promise((resolve) => chrome.storage.local.set({ [key]: value }, resolve));
+}
+
+function getSync(key) {
+    return new Promise((resolve) => {
+        if (!chrome.storage.sync) return resolve(getLocal(key));
+        chrome.storage.sync.get([key], (result) => resolve(result[key]));
+    });
+}
+
+function normalizeText(value) {
+    return (value || '')
+        .toString()
+        .normalize('NFKD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^\w\s-]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .toLowerCase();
+}
+
+function formatDateForDiscord(value) {
+    if (!value) return '';
+    const date = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    return date.toISOString().slice(0, 10);
+}
+
+function emitRuntimeEvent(action, payload) {
+    chrome.runtime.sendMessage({ action, payload }).catch?.(() => undefined);
+}
+
+async function injectContentScripts(tabId) {
+    try {
+        const pingResult = await chrome.tabs.sendMessage(tabId, { action: ACTIONS.PING });
+        if (pingResult?.success) return true;
+    } catch {
+        // continue with injection
+    }
+
+    try {
+        await chrome.scripting.executeScript({ target: { tabId }, files: ['src/content/scraper.js'] });
+        await chrome.scripting.executeScript({ target: { tabId }, files: ['src/content/navigation.js'] });
+        await chrome.scripting.executeScript({ target: { tabId }, files: ['src/content/main.js'] });
+        await new Promise((resolve) => setTimeout(resolve, 800));
+        return true;
+    } catch (error) {
+        console.error('Lutheus: Failed to inject Sapphire scripts:', error);
+        return false;
+    }
+}
+
+async function injectDiscordScripts(tabId) {
+    try {
+        const pingResult = await chrome.tabs.sendMessage(tabId, { action: ACTIONS.POINTTRAIN_PING });
+        if (pingResult?.success) return true;
+    } catch {
+        // continue with injection
+    }
+
+    try {
+        await chrome.scripting.executeScript({ target: { tabId }, files: ['src/discord/selectors.js'] });
+        await chrome.scripting.executeScript({ target: { tabId }, files: ['src/discord/parser.js'] });
+        await chrome.scripting.executeScript({ target: { tabId }, files: ['src/discord/search.js'] });
+        await new Promise((resolve) => setTimeout(resolve, 800));
+        return true;
+    } catch (error) {
+        console.error('Lutheus: Failed to inject Discord scripts:', error);
+        return false;
+    }
+}
+
+function waitForTabLoad(tabId, timeout = 15000) {
+    return new Promise((resolve) => {
+        const start = Date.now();
+
+        const check = async () => {
+            try {
+                const tab = await chrome.tabs.get(tabId);
+                if (tab.status === 'complete') return resolve(true);
+            } catch {
+                return resolve(false);
+            }
+
+            if (Date.now() - start > timeout) return resolve(false);
+            setTimeout(check, 300);
+        };
+
+        check();
+    });
+}
+
+async function openDashboardTab(guildId = LUTHEUS_GUILD_ID) {
+    const url = `https://dashboard.sapph.xyz/${guildId}/moderation/cases`;
+    const tabs = await chrome.tabs.query({ url: 'https://dashboard.sapph.xyz/*' });
+
+    let tab;
+    if (tabs.length > 0) {
+        tab = tabs[0];
+        if (!tab.url?.includes('/moderation/cases')) {
+            await chrome.tabs.update(tab.id, { url, active: true });
+        } else {
+            await chrome.tabs.update(tab.id, { active: true });
+        }
+    } else {
+        tab = await chrome.tabs.create({ url, active: true });
+    }
+
+    await waitForTabLoad(tab.id, 20000);
+    await new Promise((resolve) => setTimeout(resolve, 3000));
+    await injectContentScripts(tab.id);
+    return tab;
+}
+
+async function openDiscordTab(guildId = LUTHEUS_GUILD_ID) {
+    const guildUrl = `https://discord.com/channels/${guildId}`;
+    const tabs = await chrome.tabs.query({ url: 'https://discord.com/channels/*' });
+    let tab = tabs.find((item) => item.url?.includes(`/channels/${guildId}`));
+
+    if (!tab) {
+        tab = tabs[0];
+    }
+
+    if (tab) {
+        if (!tab.url?.includes(`/channels/${guildId}`)) {
+            await chrome.tabs.update(tab.id, { url: guildUrl, active: true });
+        } else {
+            await chrome.tabs.update(tab.id, { active: true });
+        }
+    } else {
+        tab = await chrome.tabs.create({ url: guildUrl, active: true });
+    }
+
+    await waitForTabLoad(tab.id, 20000);
+    await new Promise((resolve) => setTimeout(resolve, 2500));
+    await injectDiscordScripts(tab.id);
+    return tab;
+}
+
+async function sendToContentScript(tabId, message, retries = 1) {
+    for (let attempt = 0; attempt <= retries; attempt++) {
+        try {
+            return await chrome.tabs.sendMessage(tabId, message);
+        } catch (error) {
+            if (attempt < retries) {
+                await injectContentScripts(tabId);
+                await new Promise((resolve) => setTimeout(resolve, 500));
+            } else {
+                console.error('GearTech: Send to Sapphire content failed:', error);
+                return null;
+            }
+        }
+    }
+    return null;
+}
+
+async function sendToDiscordScript(tabId, message, retries = 1) {
+    for (let attempt = 0; attempt <= retries; attempt++) {
+        try {
+            return await chrome.tabs.sendMessage(tabId, message);
+        } catch (error) {
+            if (attempt < retries) {
+                await injectDiscordScripts(tabId);
+                await new Promise((resolve) => setTimeout(resolve, 500));
+            } else {
+                console.error('GearTech: Send to Discord content failed:', error);
+                return null;
+            }
+        }
+    }
+    return null;
+}
+
+function parseDateStr(str) {
+    if (!str) return null;
+    const match = str.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
+    if (match) return new Date(`${match[3]}-${match[2]}-${match[1]}T00:00:00`);
+    const date = new Date(str);
+    return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function isInDateRange(caseData, startDate, endDate) {
+    if (!startDate && !endDate) return true;
+
+    let caseDate = parseDateStr(caseData.createdRaw);
+    if (!caseDate && caseData.scrapedAt) caseDate = new Date(caseData.scrapedAt);
+    if (!caseDate) return true;
+
+    if (startDate && caseDate < startDate) return false;
+    if (endDate) {
+        const endOfDay = new Date(endDate);
+        endOfDay.setHours(23, 59, 59, 999);
+        if (caseDate > endOfDay) return false;
+    }
+
+    return true;
+}
+
+async function storageSaveCases(newCases, append = true) {
+    const existing = append
+        ? await new Promise((resolve) => chrome.storage.local.get(['cases'], (result) => resolve(result.cases || [])))
+        : [];
+
+    const caseMap = new Map(existing.map((entry) => [entry.id, entry]));
+
+    for (const entry of newCases) {
+        const previous = caseMap.get(entry.id);
+        if (previous) {
+            entry.note = previous.note;
+            entry.reviewStatus = previous.reviewStatus;
+            entry.manualOverride = previous.manualOverride;
+            entry.assignee = previous.assignee;
+        }
+        caseMap.set(entry.id, entry);
+    }
+
+    const allCases = Array.from(caseMap.values());
+    await new Promise((resolve) => chrome.storage.local.set({ cases: allCases }, resolve));
+    return allCases.length;
+}
+
+async function runAutonomousScan(options = {}) {
+    const {
+        guildId = LUTHEUS_GUILD_ID,
+        pages = null,
+        startDate = null,
+        endDate = null,
+        scanDelay = 2000,
+        enrichDetails = true,
+        detailLimit = 0,
+        onProgress = null,
+        onComplete = null
+    } = options;
+
+    const parsedStart = startDate ? (startDate instanceof Date ? startDate : new Date(startDate)) : null;
+    const parsedEnd = endDate ? (endDate instanceof Date ? endDate : new Date(endDate)) : null;
+
+    const tab = await openDashboardTab(guildId);
+    const tabId = tab.id;
+
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+
+    let pageInfo = null;
+    for (let attempt = 0; attempt < 3 && !pageInfo?.total; attempt++) {
+        if (attempt > 0) {
+            await injectContentScripts(tabId);
+            await new Promise((resolve) => setTimeout(resolve, 1500));
+        }
+        pageInfo = await sendToContentScript(tabId, { action: 'GET_PAGE_INFO' });
+    }
+
+    if (!pageInfo?.total) {
+        return { success: false, error: 'Page info unavailable' };
+    }
+
+    const pagesToScan = pages?.length ? pages : Array.from({ length: pageInfo.total }, (_, index) => index + 1);
+    let allCases = [];
+    let scannedCount = 0;
+
+    for (const pageNum of pagesToScan) {
+        if (pageInfo.current !== pageNum) {
+            await sendToContentScript(tabId, { action: 'GO_TO_PAGE', page: pageNum });
+            await new Promise((resolve) => setTimeout(resolve, scanDelay));
+        }
+
+        const result = await sendToContentScript(tabId, { action: 'SCRAPE_PAGE' });
+        if (result?.success && Array.isArray(result.data)) {
+            let filtered = result.data.filter((entry) => isInDateRange(entry, parsedStart, parsedEnd));
+            if (enrichDetails && filtered.length) {
+                const limit = detailLimit > 0 ? detailLimit : filtered.length;
+                const enriched = await enrichCaseDetails(guildId, filtered.slice(0, limit), scanDelay, (payload) => {
+                    if (onProgress) {
+                        onProgress({
+                            currentPage: pageNum,
+                            totalPages: pagesToScan.length,
+                            scannedCount,
+                            casesFound: allCases.length,
+                            detail: payload
+                        });
+                    }
+                });
+                const enrichedMap = new Map(enriched.map((entry) => [entry.id || entry.caseId, entry]));
+                filtered = filtered.map((entry) => enrichedMap.get(entry.id || entry.caseId) || entry);
+            }
+            allCases = allCases.concat(filtered);
+        }
+
+        scannedCount++;
+        pageInfo = await sendToContentScript(tabId, { action: 'GET_PAGE_INFO' }) || pageInfo;
+
+        if (onProgress) {
+            onProgress({
+                currentPage: pageNum,
+                totalPages: pagesToScan.length,
+                scannedCount,
+                casesFound: allCases.length
+            });
+        }
+    }
+
+    if (allCases.length > 0) {
+        await storageSaveCases(allCases, true);
+    }
+
+    if (onComplete) {
+        onComplete({ success: true, tabId, totalCases: allCases.length });
+    }
+
+    return { success: true, tabId, cases: allCases };
+}
+
+async function enrichCaseDetails(guildId, cases, scanDelay = 1200, onDetailProgress = null) {
+    const enriched = [];
+    let detailTab = null;
+
+    try {
+        for (let index = 0; index < cases.length; index++) {
+            const entry = cases[index];
+            const caseId = entry.id || entry.caseId;
+            if (!caseId) {
+                enriched.push(entry);
+                continue;
+            }
+
+            const url = entry.sourceUrl || `https://dashboard.sapph.xyz/${guildId}/moderation/cases/${caseId}`;
+            if (!detailTab) {
+                detailTab = await chrome.tabs.create({ url, active: false });
+            } else {
+                await chrome.tabs.update(detailTab.id, { url, active: false });
+            }
+
+            await waitForTabLoad(detailTab.id, 15000);
+            await new Promise((resolve) => setTimeout(resolve, Math.max(600, scanDelay)));
+            await injectContentScripts(detailTab.id);
+            const result = await sendToContentScript(detailTab.id, { action: 'SCRAPE_CASE_DETAIL' }, 2);
+            enriched.push(result?.success ? { ...entry, ...(result.detail || {}) } : {
+                ...entry,
+                detailError: result?.error || 'DETAIL_SCRAPE_FAILED'
+            });
+
+            if (onDetailProgress) {
+                onDetailProgress({
+                    current: index + 1,
+                    total: cases.length,
+                    caseId
+                });
+            }
+        }
+    } finally {
+        if (detailTab?.id) {
+            await chrome.tabs.remove(detailTab.id).catch?.(() => undefined);
+        }
+    }
+
+    return enriched;
+}
+
+async function getPointtrainSettings(override = {}) {
+    const stored = (await getSync('pointtrainSettings')) || (await getLocal('pointtrainSettings')) || {};
+    return {
+        guildId: override.guildId || stored.guildId || LUTHEUS_GUILD_ID,
+        discordGuildId: override.discordGuildId || stored.discordGuildId || LUTHEUS_GUILD_ID,
+        datePreset: override.datePreset || stored.datePreset || 'last7',
+        startDate: override.startDate || stored.startDate || '',
+        endDate: override.endDate || stored.endDate || '',
+        channels: override.channels?.length ? override.channels : (stored.channels?.length ? stored.channels : DEFAULT_POINTTRAIN_CHANNELS)
+    };
+}
+
+async function getPointWeights(override = {}) {
+    const stored = (await getSync('pointWeights')) || (await getLocal('pointWeights')) || {};
+    return {
+        ...DEFAULT_POINT_WEIGHTS,
+        ...stored,
+        ...override
+    };
+}
+
+function buildStaffEntries(cases, registry, directory) {
+    const staffMap = new Map();
+
+    cases.forEach((entry) => {
+        if (!entry.authorId && !entry.authorName) return;
+
+        const key = entry.authorId || normalizeText(entry.authorName);
+        const registryEntry = registry[entry.authorId] || {};
+        const directoryEntry = directory[entry.authorId] || directory[`name:${entry.authorName}`] || {};
+        const aliases = Array.from(new Set([
+            entry.authorName,
+            registryEntry.name,
+            directoryEntry.displayName,
+            ...(directoryEntry.aliases || [])
+        ].filter(Boolean)));
+
+        if (!staffMap.has(key)) {
+            staffMap.set(key, {
+                id: entry.authorId || directoryEntry.discordUserId || key,
+                sapphireAuthorId: entry.authorId || '',
+                displayName: registryEntry.name || directoryEntry.displayName || entry.authorName || 'Bilinmiyor',
+                role: registryEntry.role || directoryEntry.role || 'moderator',
+                aliases,
+                searchTerm: directoryEntry.searchTerm || aliases[0] || entry.authorName || entry.authorId || key,
+                sapphirePunishments: 0
+            });
+        }
+
+        staffMap.get(key).sapphirePunishments += 1;
+    });
+
+    return Array.from(staffMap.values()).sort((left, right) => right.sapphirePunishments - left.sapphirePunishments);
+}
+
+function computePointtrainMetric(staff, queryResult, weights) {
+    const punishmentPoints = staff.sapphirePunishments * weights.punishmentWeight;
+    const messagePoints = queryResult.count * weights.messageWeight;
+    const channelCount = queryResult.matchedChannels?.length || 0;
+    const channelBonus = channelCount * weights.channelDiversityBonus;
+    const activeDays = queryResult.activeDays || 0;
+    const activeDayBonus = activeDays * weights.activeDayBonus;
+    const penalties = queryResult.penaltyFlags || weights.penaltyFlags || 0;
+    const weightedScore = Number((punishmentPoints + messagePoints + channelBonus + activeDayBonus - penalties).toFixed(2));
+
+    return {
+        ...staff,
+        discordMessageCount: queryResult.count,
+        channelCount,
+        activeDays,
+        matchedChannels: queryResult.matchedChannels || [],
+        weightedScore,
+        breakdown: {
+            punishmentPoints,
+            messagePoints,
+            channelBonus,
+            activeDayBonus,
+            penalties
+        },
+        selectorHealth: queryResult.selectorHealth || { hasSummary: false }
+    };
+}
+
+async function savePointtrainRun(run) {
+    const runs = (await getLocal('pointtrainRuns')) || [];
+    runs.unshift(run);
+    await setLocal('pointtrainRuns', runs.slice(0, 30));
+}
+
+async function cacheMessageCount(key, payload) {
+    const cache = (await getLocal('messageCountCache')) || {};
+    cache[key] = {
+        ...payload,
+        cachedAt: new Date().toISOString()
+    };
+    await setLocal('messageCountCache', cache);
+}
+
+async function runPointtrainScan(options = {}) {
+    pointtrainCancelled = false;
+
+    const settings = await getPointtrainSettings(options.settings || {});
+    const weights = await getPointWeights(options.weights || {});
+    const cases = (await getLocal('cases')) || [];
+    const registry = (await getSync('userRegistry')) || {};
+    const directory = (await getSync('staffDirectory')) || {};
+    const staffEntries = buildStaffEntries(cases, registry, directory);
+    const discordTab = await openDiscordTab(settings.discordGuildId);
+    const metrics = [];
+    const failures = [];
+
+    for (let index = 0; index < staffEntries.length; index++) {
+        if (pointtrainCancelled) {
+            break;
+        }
+
+        const staff = staffEntries[index];
+        const payload = {
+            staff,
+            channels: settings.channels,
+            dateRange: {
+                after: formatDateForDiscord(settings.startDate || ''),
+                before: formatDateForDiscord(settings.endDate || '')
+            },
+            guildId: settings.discordGuildId
+        };
+
+        const cacheKey = JSON.stringify({
+            staff: staff.sapphireAuthorId || staff.displayName,
+            channels: settings.channels.map((channel) => channel.id),
+            after: payload.dateRange.after,
+            before: payload.dateRange.before
+        });
+
+        const cached = ((await getLocal('messageCountCache')) || {})[cacheKey];
+        let result;
+
+        if (cached) {
+            result = cached;
+        } else {
+            result = await sendToDiscordScript(discordTab.id, {
+                action: ACTIONS.RUN_POINTTRAIN_QUERY,
+                payload
+            });
+
+            if (result?.success) {
+                await cacheMessageCount(cacheKey, result);
+            }
+        }
+
+        if (!result?.success) {
+            failures.push({
+                staffId: staff.sapphireAuthorId || staff.id,
+                displayName: staff.displayName,
+                error: result?.error || 'QUERY_FAILED'
+            });
+            metrics.push({
+                ...staff,
+                discordMessageCount: 0,
+                channelCount: settings.channels.length,
+                activeDays: 0,
+                matchedChannels: settings.channels.map((channel) => channel.id),
+                weightedScore: Number((staff.sapphirePunishments * weights.punishmentWeight).toFixed(2)),
+                breakdown: {
+                    punishmentPoints: staff.sapphirePunishments * weights.punishmentWeight,
+                    messagePoints: 0,
+                    channelBonus: 0,
+                    activeDayBonus: 0,
+                    penalties: 0
+                },
+                selectorHealth: { hasSummary: false }
+            });
+        } else {
+            metrics.push(computePointtrainMetric(staff, result, weights));
+        }
+
+        emitRuntimeEvent(ACTIONS.POINTTRAIN_PROGRESS_EVENT, {
+            current: index + 1,
+            total: staffEntries.length,
+            staff: staff.displayName,
+            failures: failures.length
+        });
+    }
+
+    metrics.sort((left, right) => right.weightedScore - left.weightedScore);
+
+    const run = {
+        id: `ptr-${Date.now()}`,
+        createdAt: new Date().toISOString(),
+        settings,
+        weights,
+        metrics,
+        partialFailures: failures.length,
+        failures
+    };
+
+    await savePointtrainRun(run);
+    await setLocal('latestPointtrainRun', run);
+    emitRuntimeEvent(ACTIONS.POINTTRAIN_DONE_EVENT, run);
+
+    return run;
+}
+
+chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
+    if (request.action === ACTIONS.POINTTRAIN_PROGRESS_EVENT || request.action === ACTIONS.POINTTRAIN_DONE_EVENT) {
+        return false;
+    }
+
+    (async () => {
+        try {
+            switch (request.action) {
+                case ACTIONS.OPEN_DASHBOARD_AND_SCAN: {
+                    const tab = await openDashboardTab(request.guildId || LUTHEUS_GUILD_ID);
+                    sendResponse({ success: true, tabId: tab.id });
+                    break;
+                }
+
+                case ACTIONS.RUN_AUTONOMOUS_SCAN: {
+                    const result = await runAutonomousScan(request.options || {});
+                    sendResponse(result);
+                    break;
+                }
+
+                case ACTIONS.INJECT_SCRIPTS: {
+                    const injected = await injectContentScripts(request.tabId);
+                    sendResponse({ success: injected });
+                    break;
+                }
+
+                case ACTIONS.SEND_TO_TAB: {
+                    const result = await sendToContentScript(request.tabId, request.message);
+                    sendResponse({ success: !!result, result });
+                    break;
+                }
+
+                case ACTIONS.GET_DASHBOARD_TAB: {
+                    const tabs = await chrome.tabs.query({ url: 'https://dashboard.sapph.xyz/*' });
+                    sendResponse(tabs.length > 0 ? { success: true, tab: tabs[0] } : { success: false });
+                    break;
+                }
+
+                case ACTIONS.OPEN_CASE_PAGE: {
+                    const url = `https://dashboard.sapph.xyz/${request.guildId || LUTHEUS_GUILD_ID}/moderation/cases/${request.caseId}`;
+                    await chrome.tabs.create({ url });
+                    sendResponse({ success: true });
+                    break;
+                }
+
+                case ACTIONS.OPEN_ADMIN: {
+                    const adminUrl = chrome.runtime.getURL('src/dashboard/admin.html');
+                    const adminTabs = await chrome.tabs.query({ url: adminUrl });
+                    if (adminTabs.length > 0) {
+                        await chrome.tabs.update(adminTabs[0].id, { active: true });
+                        await chrome.tabs.reload(adminTabs[0].id);
+                    } else {
+                        await chrome.tabs.create({ url: adminUrl });
+                    }
+                    sendResponse({ success: true });
+                    break;
+                }
+
+                case ACTIONS.CLOSE_TAB: {
+                    if (request.tabId) await chrome.tabs.remove(request.tabId);
+                    sendResponse({ success: true });
+                    break;
+                }
+
+                case ACTIONS.OPEN_DISCORD_TAB: {
+                    const tab = await openDiscordTab(request.guildId || LUTHEUS_GUILD_ID);
+                    sendResponse({ success: true, tabId: tab.id });
+                    break;
+                }
+
+                case ACTIONS.RUN_DISCORD_QUERY: {
+                    const result = await sendToDiscordScript(request.tabId, {
+                        action: ACTIONS.RUN_POINTTRAIN_QUERY,
+                        payload: request.payload
+                    });
+                    sendResponse(result || { success: false, error: 'DISCORD_QUERY_FAILED' });
+                    break;
+                }
+
+                case ACTIONS.COLLECT_DISCORD_COUNTS:
+                case ACTIONS.RUN_POINTTRAIN_SCAN: {
+                    const run = await runPointtrainScan(request.options || {});
+                    sendResponse({ success: true, run });
+                    break;
+                }
+
+                case ACTIONS.CANCEL_POINTTRAIN_SCAN: {
+                    pointtrainCancelled = true;
+                    sendResponse({ success: true });
+                    break;
+                }
+
+                case ACTIONS.INTEGRITY_COMPROMISED: {
+                    console.error('[Security] Integrity compromised signal received from extension.');
+                    sendResponse({ received: true });
+                    break;
+                }
+
+                default:
+                    sendResponse({ success: false, error: `Unknown action: ${request.action}` });
+            }
+        } catch (error) {
+            console.error('GearTech: Error handling message:', error);
+            sendResponse({ success: false, error: error.message });
+        }
+    })();
+
+    return true;
+});
+
+chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
+    if (changeInfo.status !== 'complete') return;
+
+    if (tab.url?.includes('dashboard.sapph.xyz')) {
+        await injectContentScripts(tabId);
+    }
+
+    if (tab.url?.includes('discord.com/channels')) {
+        await injectDiscordScripts(tabId);
+    }
+});
+
+console.log('Lutheus CezaRapor: Service Worker v2.2 ready');

@@ -1,0 +1,38 @@
+{
+  "name": "lutheus-cezarapor",
+  "version": "2.1.0",
+  "private": true,
+  "description": "Lutheus CezaRapor - Moderation Analysis System",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "lint": "eslint \"src/**/*.{js,ts}\" \"apps/**/*.ts\" \"packages/**/*.ts\" \"__tests__/**/*.{js,ts}\"",
+    "check": "npm run lint && npm run test",
+    "test": "node --experimental-vm-modules node_modules/.bin/jest --passWithNoTests",
+    "test:unit": "jest --testPathPattern=__tests__/unit",
+    "dev:ext": "webpack --watch --config webpack.extension.js",
+    "dev:api": "npm run dev --workspace=apps/backend",
+    "dev:bot": "npm run dev --workspace=apps/discord-bot"
+  },
+  "dependencies": {
+    "firebase": "^11.10.0",
+    "firebase-admin": "^13.0.2"
+  },
+  "devDependencies": {
+    "@babel/preset-env": "^7.26.0",
+    "@typescript-eslint/eslint-plugin": "^7.18.0",
+    "@typescript-eslint/parser": "^7.18.0",
+    "babel-jest": "^29.7.0",
+    "eslint": "^8.57.1",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.2.5",
+    "typescript": "^5.7.2"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=10.0.0"
+  }
+}

@@ -72,13 +72,18 @@ module.exports = async function handler(req, res) {
         const db = getDb();
         const role = await resolveRole(db, discordUser.id);
         const uid = `discord:${discordUser.id}`;
+        const avatarUrl = discordUser.avatar
+            ? `https://cdn.discordapp.com/avatars/${discordUser.id}/${discordUser.avatar}.png?size=128`
+            : `https://cdn.discordapp.com/embed/avatars/${Number(discordUser.id) % 5}.png`;
+
         const profile = {
             uid,
             provider: 'discord',
             discordId: discordUser.id,
             username: discordUser.username,
             globalName: discordUser.global_name || discordUser.username,
-            avatar: discordUser.avatar,
+            displayName: discordUser.global_name || discordUser.username,
+            avatar: avatarUrl,
             role,
             status: 'active'
         };

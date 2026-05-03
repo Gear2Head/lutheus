@@ -66,9 +66,9 @@ function roleIdentityKeys(profile) {
     ].filter(Boolean);
 }
 
-async function resolveRole(profile) {
+async function resolveRole(profile, token = null) {
     if (profile.provider === 'google') {
-        const allow = await FirebaseRepository.getGoogleAllowlist(profile.email);
+        const allow = await FirebaseRepository.getGoogleAllowlist(profile.email, token);
         if (!allow?.allowed) {
             throw new Error('GOOGLE_EMAIL_NOT_ALLOWLISTED');
         }
@@ -76,7 +76,7 @@ async function resolveRole(profile) {
     }
 
     for (const key of roleIdentityKeys(profile)) {
-        const cached = await FirebaseRepository.getRoleCache(key).catch(() => null);
+        const cached = await FirebaseRepository.getRoleCache(key, token).catch(() => null);
         if (cached?.role) return normalizeRole(cached.role);
     }
     return ROLES.MODERATOR;
@@ -88,6 +88,10 @@ async function signInWithCustomToken(customToken, oauthProfile = {}) {
         returnSecureToken: true
     });
 
+    const discordAvatarUrl = oauthProfile.avatar && oauthProfile.discordId
+        ? `https://cdn.discordapp.com/avatars/${oauthProfile.discordId}/${oauthProfile.avatar}.png?size=128`
+        : (oauthProfile.avatar || null);
+
     const profile = {
         uid: payload.localId,
         provider: oauthProfile.provider || 'discord',
@@ -95,10 +99,10 @@ async function signInWithCustomToken(customToken, oauthProfile = {}) {
         username: oauthProfile.username || null,
         globalName: oauthProfile.globalName || oauthProfile.global_name || null,
         displayName: oauthProfile.globalName || oauthProfile.global_name || oauthProfile.username || payload.localId,
-        avatar: oauthProfile.avatar || null,
+        avatar: discordAvatarUrl,
         email: oauthProfile.email || null
     };
-    const role = await resolveRole(profile).catch((error) => {
+    const role = await resolveRole(profile, payload.idToken).catch((error) => {
         if (error.message === 'GOOGLE_EMAIL_NOT_ALLOWLISTED') throw error;
         return ROLES.MODERATOR;
     });
@@ -132,13 +136,27 @@ async function signInWithGoogleAccessToken(accessToken) {
         displayName: payload.displayName || payload.email || 'Google User',
         avatar: payload.photoUrl || null
     };
-    const role = await resolveRole(profile);
-    const session = {
+    const provisionalSession = {
         uid: payload.localId,
         provider: 'google',
         idToken: payload.idToken,
         refreshToken: payload.refreshToken,
         expiresAt: Date.now() + (Number(payload.expiresIn || 3600) * 1000),
+        profile: { ...profile, role: ROLES.PENDING, status: 'pending' },
+        role: ROLES.PENDING
+    };
+    await setStoredSession(provisionalSession);
+
+    let role;
+    try {
+        role = await resolveRole(profile, payload.idToken);
+    } catch (error) {
+        await clearStoredSession();
+        throw error;
+    }
+
+    const session = {
+        ...provisionalSession,
         profile: { ...profile, role, status: 'active' },
         role
     };

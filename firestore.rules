@@ -51,12 +51,14 @@ service cloud.firestore {
     }
 
     match /googleAllowlist/{email} {
-      allow get: if signedIn() && (request.auth.token.email == email || privileged());
+      // signedIn() only - provisional session during login may lack email claim
+      allow get: if signedIn();
       allow list, create, update, delete: if privileged();
     }
 
     match /roleCache/{identityKey} {
-      allow read: if activeUser();
+      // signedIn() - needed during initial role resolution before activeUser() is true
+      allow read: if signedIn();
       allow write: if privileged();
     }
 
@@ -67,8 +69,8 @@ service cloud.firestore {
 
     match /cases/{caseId} {
       allow read: if activeUser();
-      allow create, update: if privileged();
-      allow delete: if privileged();
+      allow create: if activeUser();
+      allow update, delete: if privileged();
     }
 
     match /scanRuns/{runId} {

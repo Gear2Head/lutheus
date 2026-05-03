@@ -2,6 +2,7 @@ import {
     SlashCommandBuilder,
     ChatInputCommandInteraction,
     ButtonBuilder,
+    ButtonInteraction,
     ActionRowBuilder,
     ButtonStyle,
     ComponentType
@@ -103,7 +104,7 @@ export const EmergencyLockdownCommand = {
 
         try {
             const confirmation = await response.awaitMessageComponent({
-                filter: (component) => component.user.id === interaction.user.id,
+                filter: (component: ButtonInteraction) => component.user.id === interaction.user.id,
                 time: 15_000,
                 componentType: ComponentType.Button
             });

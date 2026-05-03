@@ -261,13 +261,14 @@ body {
 
 .pointtrain-row {
     display: grid;
-    grid-template-columns: 32px minmax(0, 1fr) 84px 84px 84px 84px;
+    grid-template-columns: minmax(0, 1fr) auto;
     gap: 10px;
     align-items: center;
     background: var(--bg-card-solid);
     border: 1px solid var(--border-color);
     border-radius: var(--radius-md);
     padding: 12px;
+    min-width: 0;
 }
 
 .pointtrain-rank {
@@ -300,6 +301,8 @@ body {
 .pointtrain-score {
     color: var(--accent-primary);
     font-weight: 700;
+    white-space: nowrap;
+    justify-self: end;
 }
 
 .pointtrain-progress {
@@ -311,6 +314,12 @@ body {
 .pointtrain-breakdown {
     color: var(--text-muted);
     font-size: 11px;
+    overflow-wrap: anywhere;
+}
+
+.pointtrain-row strong,
+.pointtrain-meta span {
+    overflow-wrap: anywhere;
 }
 
 @media (max-width: 920px) {
@@ -320,7 +329,7 @@ body {
     }
 
     .pointtrain-row {
-        grid-template-columns: 24px minmax(0, 1fr) 70px 70px;
+        grid-template-columns: 1fr;
     }
 }
 
@@ -794,12 +803,16 @@ small {
     background: var(--bg-card);
     padding: 12px 14px;
     border-radius: var(--radius-sm);
-    display: flex;
-    justify-content: space-between;
+    display: grid;
+    grid-template-columns: 44px minmax(0, 1fr);
+    gap: 12px;
     align-items: center;
     border: 1px solid var(--border-color);
     cursor: pointer;
     transition: background 0.15s ease;
+    width: 100%;
+    text-align: left;
+    color: var(--text-primary);
 }
 
 .mod-item:hover {
@@ -837,6 +850,71 @@ small {
 .mod-name {
     font-weight: 500;
     font-size: 13px;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.mod-avatar-wrap {
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.mod-avatar,
+.mod-avatar.avatar-fallback {
+    width: 40px;
+    height: 40px;
+    max-width: 40px;
+    max-height: 40px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 2px solid var(--border-color);
+    background: var(--bg-input);
+}
+
+.mod-main {
+    display: grid;
+    gap: 6px;
+    min-width: 0;
+}
+
+.mod-top,
+.mod-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    flex-wrap: wrap;
+}
+
+.mod-meta {
+    color: var(--text-secondary);
+    font-size: 12px;
+}
+
+.profile-summary {
+    display: grid;
+    grid-template-columns: 64px minmax(0, 1fr);
+    gap: 14px;
+    align-items: center;
+}
+
+.profile-avatar.large,
+.profile-avatar.large.avatar-fallback {
+    width: 56px;
+    height: 56px;
+    max-width: 56px;
+    max-height: 56px;
+}
+
+.profile-avatar.avatar-fallback,
+.profile-avatar {
+    background: var(--bg-input);
 }
 
 .mod-count {

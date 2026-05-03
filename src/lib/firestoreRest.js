@@ -72,7 +72,7 @@ async function getIdToken() {
 }
 
 async function request(path, options = {}) {
-    const token = options.public ? null : await getIdToken();
+    const token = options.token || (options.public ? null : await getIdToken());
     const response = await fetch(`${BASE_URL}/${encodePath(path)}${options.query || ''}`, {
         method: options.method || 'GET',
         headers: {
@@ -93,8 +93,8 @@ async function request(path, options = {}) {
 }
 
 export const FirestoreRest = {
-    async getDocument(path) {
-        const doc = await request(path);
+    async getDocument(path, token = null) {
+        const doc = await request(path, { token });
         if (!doc) return null;
         return { id: documentIdFromName(doc.name), ...fromFirestoreFields(doc.fields || {}) };
     },

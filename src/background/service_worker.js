@@ -24,6 +24,7 @@ const ACTIONS = {
     OPEN_CASE_PAGE: 'OPEN_CASE_PAGE',
     OPEN_ADMIN: 'OPEN_ADMIN',
     CLOSE_TAB: 'CLOSE_TAB',
+    CANCEL_AUTONOMOUS_SCAN: 'CANCEL_AUTONOMOUS_SCAN',
     PING: 'PING',
     INTEGRITY_COMPROMISED: 'INTEGRITY_COMPROMISED',
     RUN_POINTTRAIN_SCAN: 'RUN_POINTTRAIN_SCAN',
@@ -33,11 +34,13 @@ const ACTIONS = {
     CANCEL_POINTTRAIN_SCAN: 'CANCEL_POINTTRAIN_SCAN',
     POINTTRAIN_PING: 'POINTTRAIN_PING',
     RUN_POINTTRAIN_QUERY: 'RUN_POINTTRAIN_QUERY',
+    SCAN_PROGRESS_EVENT: 'SCAN_PROGRESS_EVENT',
     POINTTRAIN_PROGRESS_EVENT: 'POINTTRAIN_PROGRESS_EVENT',
     POINTTRAIN_DONE_EVENT: 'POINTTRAIN_DONE_EVENT'
 };
 
 let pointtrainCancelled = false;
+let autonomousScanCancelled = false;
 
 console.log('Lutheus CezaRapor: Service Worker v2.2 starting...');
 
@@ -252,8 +255,10 @@ async function sendToDiscordScript(tabId, message, retries = 1) {
 
 function parseDateStr(str) {
     if (!str) return null;
-    const match = str.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
-    if (match) return new Date(`${match[3]}-${match[2]}-${match[1]}T00:00:00`);
+    // DD.MM.YYYY
+    const dmyMatch = str.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+    if (dmyMatch) return new Date(`${dmyMatch[3]}-${dmyMatch[2].padStart(2, '0')}-${dmyMatch[1].padStart(2, '0')}T00:00:00`);
+    // YYYY-MM-DD or ISO
     const date = new Date(str);
     return Number.isNaN(date.getTime()) ? null : date;
 }
@@ -262,16 +267,20 @@ function isInDateRange(caseData, startDate, endDate) {
     if (!startDate && !endDate) return true;
 
     let caseDate = parseDateStr(caseData.createdRaw);
+    if (!caseDate && caseData.createdAt) caseDate = new Date(caseData.createdAt);
     if (!caseDate && caseData.scrapedAt) caseDate = new Date(caseData.scrapedAt);
-    if (!caseDate) return true;
+    if (!caseDate) return true; // ASSUME: unknown dates pass through
 
-    if (startDate && caseDate < startDate) return false;
-    if (endDate) {
-        const endOfDay = new Date(endDate);
-        endOfDay.setHours(23, 59, 59, 999);
-        if (caseDate > endOfDay) return false;
+    if (startDate) {
+        const start = new Date(startDate);
+        start.setHours(0, 0, 0, 0);
+        if (caseDate < start) return false;
     }
-
+    if (endDate) {
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999);
+        if (caseDate > end) return false;
+    }
     return true;
 }
 
@@ -298,18 +307,32 @@ async function storageSaveCases(newCases, append = true) {
     return allCases.length;
 }
 
+async function saveScanRun(run) {
+    const runs = (await getLocal('scanRuns')) || [];
+    runs.unshift(run);
+    await setLocal('scanRuns', runs.slice(0, 30));
+    await setLocal('latestScanRun', run);
+}
+
 async function runAutonomousScan(options = {}) {
+    autonomousScanCancelled = false;
     const {
         guildId = LUTHEUS_GUILD_ID,
         pages = null,
         startDate = null,
         endDate = null,
         scanDelay = 2000,
-        enrichDetails = true,
+        scanMode = 'fast',
+        enrichDetails = false,
         detailLimit = 0,
+        retryCount = 1,
         onProgress = null,
         onComplete = null
     } = options;
+    const startedAt = new Date().toISOString();
+    const runId = `scan-${Date.now()}`;
+    const effectiveMode = enrichDetails || scanMode === 'detail' ? 'detail' : 'fast';
+    const failures = [];
 
     const parsedStart = startDate ? (startDate instanceof Date ? startDate : new Date(startDate)) : null;
     const parsedEnd = endDate ? (endDate instanceof Date ? endDate : new Date(endDate)) : null;
@@ -329,7 +352,19 @@ async function runAutonomousScan(options = {}) {
     }
 
     if (!pageInfo?.total) {
-        return { success: false, error: 'Page info unavailable' };
+        const failedRun = {
+            id: runId,
+            mode: effectiveMode,
+            guildId,
+            pagesScanned: 0,
+            casesFound: 0,
+            failures: [{ page: null, error: 'Page info unavailable' }],
+            startedAt,
+            finishedAt: new Date().toISOString(),
+            success: false
+        };
+        await saveScanRun(failedRun);
+        return { success: false, error: 'Page info unavailable', scanRun: failedRun };
     }
 
     const pagesToScan = pages?.length ? pages : Array.from({ length: pageInfo.total }, (_, index) => index + 1);
@@ -337,15 +372,48 @@ async function runAutonomousScan(options = {}) {
     let scannedCount = 0;
 
     for (const pageNum of pagesToScan) {
+        if (autonomousScanCancelled) {
+            failures.push({ page: pageNum, error: 'SCAN_CANCELLED' });
+            break;
+        }
+
         if (pageInfo.current !== pageNum) {
             await sendToContentScript(tabId, { action: 'GO_TO_PAGE', page: pageNum });
             await new Promise((resolve) => setTimeout(resolve, scanDelay));
         }
 
-        const result = await sendToContentScript(tabId, { action: 'SCRAPE_PAGE' });
+        let result = await sendToContentScript(tabId, { action: 'SCRAPE_PAGE' });
+        if (!result?.success || !Array.isArray(result.data)) {
+            for (let attempt = 0; attempt < retryCount; attempt++) {
+                await injectContentScripts(tabId);
+                await new Promise((resolve) => setTimeout(resolve, 800));
+                const retry = await sendToContentScript(tabId, { action: 'SCRAPE_PAGE' });
+                if (retry?.success && Array.isArray(retry.data)) {
+                    result = retry;
+                    break;
+                }
+            }
+
+            if (!result?.success || !Array.isArray(result.data)) {
+                failures.push({
+                    page: pageNum,
+                    error: result?.error || 'SCRAPE_PAGE_FAILED'
+                });
+                scannedCount++;
+                emitRuntimeEvent(ACTIONS.SCAN_PROGRESS_EVENT, {
+                    runId,
+                    currentPage: pageNum,
+                    totalPages: pagesToScan.length,
+                    scannedCount,
+                    casesFound: allCases.length,
+                    failures: failures.length
+                });
+                continue;
+            }
+        }
         if (result?.success && Array.isArray(result.data)) {
             let filtered = result.data.filter((entry) => isInDateRange(entry, parsedStart, parsedEnd));
-            if (enrichDetails && filtered.length) {
+            if (effectiveMode === 'detail' && filtered.length) {
                 const limit = detailLimit > 0 ? detailLimit : filtered.length;
                 const enriched = await enrichCaseDetails(guildId, filtered.slice(0, limit), scanDelay, (payload) => {
                     if (onProgress) {
@@ -362,6 +430,9 @@ async function runAutonomousScan(options = {}) {
                 filtered = filtered.map((entry) => enrichedMap.get(entry.id || entry.caseId) || entry);
             }
             allCases = allCases.concat(filtered);
+            if (result.userInfo) {
+                await setLocal('activeUser', result.userInfo);
+            }
         }
 
         scannedCount++;
@@ -375,6 +446,14 @@ async function runAutonomousScan(options = {}) {
                 casesFound: allCases.length
             });
         }
+        emitRuntimeEvent(ACTIONS.SCAN_PROGRESS_EVENT, {
+            runId,
+            currentPage: pageNum,
+            totalPages: pagesToScan.length,
+            scannedCount,
+            casesFound: allCases.length,
+            failures: failures.length
+        });
     }
 
     if (allCases.length > 0) {
@@ -385,7 +464,21 @@ async function runAutonomousScan(options = {}) {
         onComplete({ success: true, tabId, totalCases: allCases.length });
     }
 
-    return { success: true, tabId, cases: allCases };
+    const scanRun = {
+        id: runId,
+        mode: effectiveMode,
+        guildId,
+        pagesRequested: pagesToScan.length,
+        pagesScanned: scannedCount,
+        casesFound: allCases.length,
+        failures,
+        startedAt,
+        finishedAt: new Date().toISOString(),
+        success: !autonomousScanCancelled
+    };
+    await saveScanRun(scanRun);
+
+    return { success: true, cancelled: autonomousScanCancelled, tabId, cases: allCases, scanRun };
 }
 
 async function enrichCaseDetails(guildId, cases, scanDelay = 1200, onDetailProgress = null) {
@@ -411,7 +504,7 @@ async function enrichCaseDetails(guildId, cases, scanDelay = 1200, onDetailProgr
             await waitForTabLoad(detailTab.id, 15000);
             await new Promise((resolve) => setTimeout(resolve, Math.max(600, scanDelay)));
             await injectContentScripts(detailTab.id);
-            const result = await sendToContentScript(detailTab.id, { action: 'SCRAPE_CASE_DETAIL' }, 2);
+            const result = await sendToContentScript(detailTab.id, { action: 'SCRAPE_CASE_DETAIL' }, 3);
             enriched.push(result?.success ? { ...entry, ...(result.detail || {}) } : {
                 ...entry,
                 detailError: result?.error || 'DETAIL_SCRAPE_FAILED'
@@ -654,6 +747,12 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
                 case ACTIONS.RUN_AUTONOMOUS_SCAN: {
                     const result = await runAutonomousScan(request.options || {});
                     sendResponse(result);
+                    break;
+                }
+
+                case ACTIONS.CANCEL_AUTONOMOUS_SCAN: {
+                    autonomousScanCancelled = true;
+                    sendResponse({ success: true });
                     break;
                 }
 

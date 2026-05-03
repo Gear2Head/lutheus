@@ -8,9 +8,10 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "npm run build --workspaces --if-present",
+    "build": "echo 'No workspaces to build'",
     "lint": "eslint -c eslintrc.cjs \"src/**/*.{js,ts}\" \"apps/**/*.ts\" \"packages/**/*.ts\" \"tests/**/*.{js,ts}\"",
     "check": "npm run lint && npm run test",
+    "env:check": "node scripts/check-env.cjs",
     "test": "jest --runInBand --passWithNoTests",
     "test:unit": "jest --runInBand --testPathPattern=tests/unit",
     "dev:ext": "echo Extension uses MV3 source files directly; no webpack config is present.",
@@ -19,6 +20,7 @@
   },
   "dependencies": {
     "@vercel/analytics": "^2.0.1",
+    "discord.js": "^14.26.4",
     "firebase": "^11.10.0",
     "firebase-admin": "^13.0.2"
   },

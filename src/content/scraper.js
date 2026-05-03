@@ -10,8 +10,7 @@ window.GearTech.Scraper = {
     getCaseData: function () {
         console.log('GearTech Scraper v4: Starting scan...');
 
-        // Find all data rows - skip header/dummy rows
-        const allRows = document.querySelectorAll('.row[class*="svelte-"]');
+        const allRows = this.findCaseRows();
         console.log('GearTech: Found', allRows.length, 'total row elements');
 
         const dataRows = [];
@@ -50,6 +49,28 @@ window.GearTech.Scraper = {
 
         console.log('GearTech: Extracted', cases.length, 'cases');
         return cases;
+    },
+
+    findCaseRows: function () {
+        const selectors = [
+            '.row[class*="svelte-"]',
+            '[class*="row"][class*="svelte-"]',
+            '[role="row"]',
+            'tbody tr',
+            '.table .row'
+        ];
+        const seen = new Set();
+        const rows = [];
+
+        selectors.forEach((selector) => {
+            document.querySelectorAll(selector).forEach((row) => {
+                if (seen.has(row)) return;
+                seen.add(row);
+                rows.push(row);
+            });
+        });
+
+        return rows;
     },
 
     /**
@@ -125,7 +146,7 @@ window.GearTech.Scraper = {
         // Extract User
         const userCol = columns[1 + colOffset] || columns[1];
         const userName = this.extractTextFromColumn(userCol, 'name');
-        const userId = this.extractTextFromColumn(userCol, 'id');
+        const userId = this.extractDiscordId(userCol) || this.extractTextFromColumn(userCol, 'id');
         const userAvatar = this.extractImageFromColumn(userCol);
 
         // Extract Reason
@@ -140,7 +161,7 @@ window.GearTech.Scraper = {
 
         if (authorCol) {
             authorName = this.extractTextFromColumn(authorCol, 'name') || '';
-            authorId = this.extractTextFromColumn(authorCol, 'id') || '';
+            authorId = this.extractDiscordId(authorCol) || this.extractTextFromColumn(authorCol, 'id') || '';
             authorAvatar = this.extractImageFromColumn(authorCol);
 
             if (authorName.includes('(@')) authorName = authorName.split('(@')[0].trim();
@@ -172,7 +193,7 @@ window.GearTech.Scraper = {
         let createdRaw = '';
         if (createdCol) {
             const text = createdCol.innerText.trim();
-            const dateMatch = text.match(/(\d{2}\.\d{2}\.\d{4})/);
+            const dateMatch = text.match(/(\d{1,2}\.\d{1,2}\.\d{4})/);
             createdRaw = dateMatch ? dateMatch[1] : text.split('\n')[0];
         }
 
@@ -250,7 +271,15 @@ window.GearTech.Scraper = {
     extractImageFromColumn: function (col) {
         if (!col) return null;
         const img = col.querySelector('img');
-        return img ? img.src : null;
+        if (!img) return null;
+        return img.currentSrc || img.src || img.getAttribute('src') || null;
+    },
+
+    extractDiscordId: function (col) {
+        if (!col) return '';
+        const text = col.innerText || col.textContent || '';
+        const match = text.match(/\b\d{17,20}\b/);
+        return match ? match[0] : '';
     },
 
     /**

@@ -73,6 +73,8 @@ typings/
 .env.test
 .env.production
 .env.local
+.env*.local
+.env.vercel.local
 .env.development.local
 .env.test.local
 .env.production.local
@@ -144,3 +146,5 @@ Thumbs.db
 
 # Project Specific Archives
 archive-prompts/
+
+.vercel

@@ -10,7 +10,7 @@ export const FIREBASE_CONFIG = Object.freeze({
 export const APP_CONFIG = Object.freeze({
     guildId: '1223431616081166336',
     vercelAuthBaseUrl: 'https://lutheus.vercel.app',
-    googleClientId: '715779056867-18t4d69phfvi8go55ls1cfkas2vsl4da.apps.googleusercontent.com',
+    googleClientId: '437884095032-v21402mq08vbj1nbkfj0ac2892bdn0un.apps.googleusercontent.com',
     discordOAuthScopes: ['identify'],
     defaultRole: 'moderator'
 });

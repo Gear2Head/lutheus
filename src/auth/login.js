@@ -1,4 +1,5 @@
 import { AuthService } from './authService.js';
+import { canAccessAdmin } from './rolePolicy.js';
 import { escapeHtml } from '../lib/utils.js';
 
 const DOM = {
@@ -20,7 +21,11 @@ function setBusy(busy) {
 function postLogin(session) {
     const params = new URLSearchParams(window.location.search);
     const returnTo = params.get('returnTo');
-    window.location.href = returnTo || AuthService.getPostLoginUrl(session);
+    const targetUrl = returnTo || AuthService.getPostLoginUrl(session);
+
+    // Admin dahil herkes login sonrası sidepanel'e yönlenir
+    // Admin paneli sadece sidepanel içindeki butonla veya tarama sonrası açılır
+    window.location.href = chrome.runtime.getURL('src/sidepanel/sidepanel.html');
 }
 
 async function loginWith(kind) {

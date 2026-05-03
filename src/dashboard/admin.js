@@ -11,8 +11,7 @@ import { AuthService } from '../auth/authService.js';
 import { FirebaseRepository } from '../lib/firebaseRepository.js';
 import { DEFAULT_GROQ_LIMITS, canAccessAdmin, normalizeRole } from '../auth/rolePolicy.js';
 import { analyzeCaseWithGroq } from '../lib/aiAnalysisClient.js';
-
-const FALLBACK_AVATAR = chrome.runtime.getURL('assets/icon48.png');
+import { bindAvatarFallbacks, resolveAvatar } from '../lib/avatar.js';
 
 const DOM = {
     totalCases: document.getElementById('totalCases'),
@@ -143,13 +142,6 @@ function getToastIcon(type) {
     return 'fa-info';
 }
 
-function resolveAvatar(url) {
-    if (!url || typeof url !== 'string' || /^javascript:/i.test(url)) {
-        return FALLBACK_AVATAR;
-    }
-    return url;
-}
-
 function downloadFile(filename, content, mime) {
     const blob = new Blob([content], { type: mime });
     const url = URL.createObjectURL(blob);
@@ -171,7 +163,11 @@ function getRankLevel(role) {
 }
 
 function getValidation(entry) {
-    return CUKEngine.validatePenalty(entry);
+    return CUKEngine.validate(entry);
+}
+
+function avatarImg(url, className, alt) {
+    return `<img src="${escapeHtml(resolveAvatar(url))}" class="${className}" alt="${escapeHtml(alt || 'Avatar')}" data-avatar-img>`;
 }
 
 function switchTab(tabId) {
@@ -383,7 +379,7 @@ function renderModRow(entry, index) {
             <td>${index + 1}</td>
             <td>
                 <div style="display:flex; align-items:center; gap:8px;">
-                    <img src="${escapeHtml(entry.avatar)}" class="table-avatar small" alt="${escapeHtml(entry.name)}">
+                    ${avatarImg(entry.avatar, 'table-avatar small', entry.name)}
                     <div>
                         <div>${escapeHtml(entry.name)}</div>
                         <small>${escapeHtml(entry.role)}</small>
@@ -418,6 +414,7 @@ function renderTable(search = '') {
     document.querySelectorAll('.btn-view').forEach((button) => {
         button.addEventListener('click', () => openModal({ id: button.dataset.id, name: button.dataset.name }));
     });
+    bindAvatarFallbacks();
 }
 
 function renderManagement() {
@@ -429,7 +426,7 @@ function renderManagement() {
         <tr class="data-row">
             <td>
                 <div style="display:flex; align-items:center; gap:8px;">
-                    <img src="${escapeHtml(resolveAvatar(entry.avatar))}" class="table-avatar small" alt="${escapeHtml(entry.name || 'Bilinmiyor')}">
+                    ${avatarImg(entry.avatar, 'table-avatar small', entry.name || 'Bilinmiyor')}
                     <div>
                         <div>${escapeHtml(entry.name || 'Bilinmiyor')}</div>
                         <small>${escapeHtml(entry.id || '-')}</small>
@@ -464,6 +461,7 @@ function renderManagement() {
     document.querySelectorAll('.btn-open-role').forEach((button) => {
         button.addEventListener('click', () => openRoleModal(button.dataset.id));
     });
+    bindAvatarFallbacks();
 }
 
 function bindModalSaveHandlers() {
@@ -718,6 +716,7 @@ function renderPointtrainTab() {
             <td>${metric.channelCount || 0}</td>
             <td>${metric.activeDays || 0}</td>
             <td>${Number(metric.weightedScore || 0).toFixed(2)}</td>
+            <td>${metric.failures ? escapeHtml(String(metric.failures)) : '-'}</td>
         </tr>
     `).join('');
 }
@@ -738,6 +737,7 @@ async function loadData() {
 
     const profile = state.session?.profile || {};
     DOM.adminProfileAvatar.src = resolveAvatar(profile.avatar || userInfo?.avatar);
+    DOM.adminProfileAvatar.dataset.avatarImg = '1';
     DOM.adminProfileName.textContent = profile.displayName || userInfo?.name || 'Yetkili';
     DOM.adminProfileRole.textContent = normalizeRole(state.session?.role || profile.role || userInfo?.role || 'moderator');
 
@@ -752,6 +752,7 @@ async function loadData() {
     renderRuleEditor();
     renderPointtrainTab();
     await loadAuthAdminData();
+    bindAvatarFallbacks();
 }
 
 async function exportAll() {

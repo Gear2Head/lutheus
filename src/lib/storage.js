@@ -65,6 +65,78 @@ function clonePointSettings(settings = {}) {
     };
 }
 
+function parseCaseTime(entry = {}) {
+    const candidates = [entry.createdRaw, entry.createdAt, entry.scrapedAt, entry.updatedAt, entry.lastSeen];
+    for (const value of candidates) {
+        if (!value) continue;
+        if (typeof value === 'number') return value;
+        const text = String(value);
+        const dmy = text.match(/(\d{1,2})\.(\d{1,2})\.(\d{4})/);
+        const date = dmy
+            ? new Date(`${dmy[3]}-${dmy[2].padStart(2, '0')}-${dmy[1].padStart(2, '0')}T00:00:00`)
+            : new Date(text);
+        if (!Number.isNaN(date.getTime())) return date.getTime();
+    }
+    return 0;
+}
+
+function hasBetterAvatar(nextAvatar, previousAvatar) {
+    return Boolean(nextAvatar) && (!previousAvatar || String(previousAvatar).includes('/assets/icon'));
+}
+
+function normalizeCaseEntry(entry = {}, previous = null) {
+    const id = String(entry.id || entry.caseId || '').trim();
+    const merged = {
+        ...(previous || {}),
+        ...entry,
+        id,
+        caseId: id,
+        authorId: String(entry.authorId || previous?.authorId || '').trim(),
+        userId: String(entry.userId || previous?.userId || '').trim(),
+        authorName: entry.authorName || previous?.authorName || 'Bilinmiyor',
+        user: entry.user || previous?.user || 'Unknown',
+        reason: entry.reason || previous?.reason || '',
+        duration: entry.duration || previous?.duration || '',
+        type: entry.type || previous?.type || 'unknown',
+        createdRaw: entry.createdRaw || previous?.createdRaw || '',
+        sourceUrl: entry.sourceUrl || previous?.sourceUrl || '',
+        scrapedAt: entry.scrapedAt || Date.now(),
+        lastSeen: Date.now(),
+        source: entry.source || 'sapphire-dashboard'
+    };
+
+    merged.authorAvatar = hasBetterAvatar(entry.authorAvatar, previous?.authorAvatar)
+        ? entry.authorAvatar
+        : (previous?.authorAvatar || entry.authorAvatar || null);
+    merged.userAvatar = hasBetterAvatar(entry.userAvatar, previous?.userAvatar)
+        ? entry.userAvatar
+        : (previous?.userAvatar || entry.userAvatar || null);
+
+    if (previous) {
+        merged.note = previous.note;
+        merged.reviewStatus = previous.reviewStatus;
+        merged.manualOverride = previous.manualOverride;
+        merged.assignee = previous.assignee;
+        if (!merged.validationStatus) merged.validationStatus = previous.validationStatus;
+        if (!merged.validationReason) merged.validationReason = previous.validationReason;
+    }
+
+    return merged;
+}
+
+function compareCases(left, right) {
+    const timeDiff = parseCaseTime(right) - parseCaseTime(left);
+    if (timeDiff) return timeDiff;
+
+    const leftId = Number(left.id || left.caseId);
+    const rightId = Number(right.id || right.caseId);
+    if (!Number.isNaN(leftId) && !Number.isNaN(rightId) && rightId !== leftId) {
+        return rightId - leftId;
+    }
+
+    return Number(right.lastSeen || 0) - Number(left.lastSeen || 0);
+}
+
 export { escapeHtml };
 
 export const Storage = {
@@ -74,34 +146,30 @@ export const Storage = {
     async setSync(key, value) { return syncSet(key, value); },
 
     async updateCases(newCases, append = true) {
+        if (!Array.isArray(newCases) || newCases.length === 0) return 0;
         let existing = [];
         if (append) {
-            existing = await this.get('cases') || [];
+            existing = (await this.get('cases')) || [];
         }
 
-        const caseMap = new Map(existing.map((item) => [item.id, item]));
+        const caseMap = new Map(existing.map((item) => [String(item.id || item.caseId || ''), item]));
 
         for (const entry of newCases) {
-            const previous = caseMap.get(entry.id);
-            if (previous) {
-                entry.note = previous.note;
-                entry.reviewStatus = previous.reviewStatus;
-                entry.manualOverride = previous.manualOverride;
-                entry.assignee = previous.assignee;
-                if (!entry.validationStatus) entry.validationStatus = previous.validationStatus;
-                if (!entry.validationReason) entry.validationReason = previous.validationReason;
-            }
-            caseMap.set(entry.id, entry);
+            const id = String(entry.id || entry.caseId || '');
+            if (!id) continue;
+            const previous = caseMap.get(id);
+            caseMap.set(id, normalizeCaseEntry(entry, previous));
         }
 
-        const allCases = Array.from(caseMap.values());
+        const allCases = Array.from(caseMap.values()).sort(compareCases);
         await this.set('cases', allCases);
         await this.setSyncCases(allCases);
         await this.updateUserRegistry(newCases);
         await this.upsertStaffDirectoryFromCases(newCases);
+        // Throttle: only push to Firebase if batch is >= 1 entry (fire-and-forget)
         const actor = await getActor();
-        if (actor) {
-            await FirebaseRepository.saveCases(newCases, undefined, actor).catch((error) => {
+        if (actor && newCases.length > 0) {
+            FirebaseRepository.saveCases(newCases, undefined, actor).catch((error) => {
                 console.warn('Lutheus: Firestore case sync failed:', error.message);
             });
         }
@@ -133,25 +201,40 @@ export const Storage = {
     },
 
     async getCases() {
+        // ASSUME: Local storage is source of truth; remote merges on top without clobbering local metadata
         const [localCases, syncCases] = await Promise.all([
-            this.get('cases').then((value) => value || []),
+            this.get('cases').then((value) => (Array.isArray(value) ? value : [])),
             this.getSyncCases()
         ]);
-        const remoteCases = await FirebaseRepository.listCases().catch(() => []);
 
         const caseMap = new Map();
-        for (const entry of localCases) caseMap.set(entry.id, entry);
-        for (const entry of syncCases) {
-            const existing = caseMap.get(entry.id);
-            caseMap.set(entry.id, existing ? { ...existing, ...entry } : entry);
+        // Local has priority
+        for (const entry of localCases) {
+            const id = String(entry.id || entry.caseId || '');
+            if (id) caseMap.set(id, normalizeCaseEntry(entry));
         }
+        // Sync layer: only fills missing fields
+        for (const entry of syncCases) {
+            const id = String(entry.id || entry.caseId || '');
+            if (!id) continue;
+            const existing = caseMap.get(id);
+            caseMap.set(id, existing ? normalizeCaseEntry({ ...entry, ...existing, id }, existing) : normalizeCaseEntry({ ...entry, id }));
+        }
+        // Firebase: only fill missing, never overwrite local metadata (note/reviewStatus)
+        const remoteCases = await FirebaseRepository.listCases().catch(() => []);
         for (const entry of remoteCases) {
-            const key = entry.caseId || entry.id;
-            const existing = caseMap.get(key);
-            caseMap.set(key, existing ? { ...existing, ...entry, id: key } : { ...entry, id: key });
+            const id = String(entry.caseId || entry.id || '');
+            if (!id) continue;
+            const existing = caseMap.get(id);
+            if (existing) {
+                // Preserve local-only fields
+                caseMap.set(id, normalizeCaseEntry({ ...entry, ...existing, id }, existing));
+            } else {
+                caseMap.set(id, normalizeCaseEntry({ ...entry, id }));
+            }
         }
 
-        return Array.from(caseMap.values()).sort((left, right) => (right.id || 0) - (left.id || 0));
+        return Array.from(caseMap.values()).sort(compareCases);
     },
 
     async setSyncCases(cases) {
@@ -215,29 +298,44 @@ export const Storage = {
 
         for (const entry of cases) {
             if (entry.authorId && entry.authorName) {
-                if (!registry[entry.authorId] || (entry.authorAvatar && !registry[entry.authorId].avatar)) {
-                    registry[entry.authorId] = {
-                        id: entry.authorId,
-                        name: entry.authorName,
-                        avatar: entry.authorAvatar || registry[entry.authorId]?.avatar || null,
-                        role: registry[entry.authorId]?.role || 'moderator',
-                        aliases: registry[entry.authorId]?.aliases || [],
-                        lastSeen: Date.now()
-                    };
-                    changed = true;
-                }
+                const previous = registry[entry.authorId] || {};
+                const aliases = Array.from(new Set([
+                    ...(previous.aliases || []),
+                    previous.name,
+                    entry.authorName
+                ].filter(Boolean)));
+                registry[entry.authorId] = {
+                    ...previous,
+                    id: entry.authorId,
+                    name: entry.authorName || previous.name || 'Bilinmiyor',
+                    avatar: hasBetterAvatar(entry.authorAvatar, previous.avatar)
+                        ? entry.authorAvatar
+                        : (previous.avatar || entry.authorAvatar || null),
+                    role: previous.role || 'moderator',
+                    aliases,
+                    source: previous.source || 'sapphire-admin-scan',
+                    scanCount: Number(previous.scanCount || 0) + 1,
+                    lastSeen: Date.now()
+                };
+                changed = true;
             }
 
             if (entry.userId && entry.user) {
-                if (!registry[entry.userId] || (entry.userAvatar && !registry[entry.userId].avatar)) {
-                    registry[entry.userId] = {
-                        id: entry.userId,
-                        name: entry.user,
-                        avatar: entry.userAvatar || registry[entry.userId]?.avatar || null,
-                        lastSeen: Date.now()
-                    };
-                    changed = true;
-                }
+                const previous = registry[entry.userId] || {};
+                registry[entry.userId] = {
+                    ...previous,
+                    id: entry.userId,
+                    name: entry.user || previous.name || 'Bilinmiyor',
+                    avatar: hasBetterAvatar(entry.userAvatar, previous.avatar)
+                        ? entry.userAvatar
+                        : (previous.avatar || entry.userAvatar || null),
+                    role: previous.role,
+                    aliases: Array.from(new Set([...(previous.aliases || []), previous.name, entry.user].filter(Boolean))),
+                    source: previous.source || 'sapphire-case-target',
+                    scanCount: Number(previous.scanCount || 0) + 1,
+                    lastSeen: Date.now()
+                };
+                changed = true;
             }
         }
 
@@ -489,8 +587,14 @@ export const Storage = {
                 sapphireAuthorId: entry.authorId || directory[key]?.sapphireAuthorId || '',
                 discordUserId: directory[key]?.discordUserId || entry.authorId || '',
                 displayName: entry.authorName || directory[key]?.displayName || 'Bilinmiyor',
+                avatar: hasBetterAvatar(entry.authorAvatar, directory[key]?.avatar)
+                    ? entry.authorAvatar
+                    : (directory[key]?.avatar || entry.authorAvatar || null),
                 role: directory[key]?.role || 'moderator',
                 aliases: Array.from(new Set([...(directory[key]?.aliases || []), ...aliases])),
+                source: directory[key]?.source || 'sapphire-admin-scan',
+                scanCount: Number(directory[key]?.scanCount || 0) + 1,
+                lastSeen: Date.now(),
                 updatedAt: new Date().toISOString()
             };
             changed = true;

@@ -37,9 +37,9 @@ export const FirebaseRepository = {
         });
     },
 
-    async getRoleCache(identityKey) {
+    async getRoleCache(identityKey, token = null) {
         if (!identityKey) return null;
-        return FirestoreRest.getDocument(`roleCache/${safeDocId(identityKey)}`);
+        return FirestoreRest.getDocument(`roleCache/${safeDocId(identityKey)}`, token);
     },
 
     async setRoleCache(identityKey, data, actor = null) {
@@ -55,9 +55,9 @@ export const FirebaseRepository = {
         return FirestoreRest.setDocument(`roleCache/${safeDocId(identityKey)}`, payload);
     },
 
-    async getGoogleAllowlist(email) {
+    async getGoogleAllowlist(email, token = null) {
         if (!email) return null;
-        return FirestoreRest.getDocument(`googleAllowlist/${safeDocId(email)}`);
+        return FirestoreRest.getDocument(`googleAllowlist/${safeDocId(email)}`, token);
     },
 
     async setGoogleAllowlist(email, data, actor = null) {

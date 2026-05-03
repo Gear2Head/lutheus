@@ -14,20 +14,22 @@ import { CUKEngine, PenaltyStatus } from '../lib/cukEngine.js';
 import { buildPointtrainMarkdown, buildPointtrainCsv } from '../lib/pointtrainEngine.js';
 import { AuthService } from '../auth/authService.js';
 import { getVisibleSections, isPrivilegedRole, normalizeRole } from '../auth/rolePolicy.js';
+import { bindAvatarFallbacks, resolveAvatar } from '../lib/avatar.js';
 
 const ACTIONS = {
     RUN_AUTONOMOUS_SCAN: 'RUN_AUTONOMOUS_SCAN',
     OPEN_ADMIN: 'OPEN_ADMIN',
     CLOSE_TAB: 'CLOSE_TAB',
+    CANCEL_AUTONOMOUS_SCAN: 'CANCEL_AUTONOMOUS_SCAN',
     RUN_POINTTRAIN_SCAN: 'RUN_POINTTRAIN_SCAN',
     CANCEL_POINTTRAIN_SCAN: 'CANCEL_POINTTRAIN_SCAN',
+    SCAN_PROGRESS_EVENT: 'SCAN_PROGRESS_EVENT',
     POINTTRAIN_PROGRESS_EVENT: 'POINTTRAIN_PROGRESS_EVENT',
     POINTTRAIN_DONE_EVENT: 'POINTTRAIN_DONE_EVENT',
     OPEN_CASE_PAGE: 'OPEN_CASE_PAGE'
 };
 
 const DEFAULT_GUILD_ID = '1223431616081166336';
-const FALLBACK_AVATAR = chrome.runtime.getURL('assets/icon48.png');
 
 const DOM = {
     navButtons: document.querySelectorAll('.nav-btn'),
@@ -40,6 +42,7 @@ const DOM = {
     scannedPagesVal: document.getElementById('scannedPagesVal'),
     btnQuickScan: document.getElementById('btnQuickScan'),
     pageInput: document.getElementById('pageInput'),
+    toggleAutofill: document.getElementById('toggleAutofill'),
     startDate: document.getElementById('startDate'),
     endDate: document.getElementById('endDate'),
     btnToday: document.getElementById('btnToday'),
@@ -48,6 +51,9 @@ const DOM = {
     btnAllTime: document.getElementById('btnAllTime'),
     chkOpenAdmin: document.getElementById('chkOpenAdmin'),
     chkCloseDashboard: document.getElementById('chkCloseDashboard'),
+    chkCumulativeMode: document.getElementById('chkCumulativeMode'),
+    chkDetailScan: document.getElementById('chkDetailScan'),
+    detailLimit: document.getElementById('detailLimit'),
     btnStartScan: document.getElementById('btnStartScan'),
     btnStopScan: document.getElementById('btnStopScan'),
     progressBox: document.getElementById('progressBox'),
@@ -154,13 +160,6 @@ function getToastIcon(type) {
     return 'fa-info';
 }
 
-function resolveAvatar(url) {
-    if (!url || typeof url !== 'string' || /^javascript:/i.test(url)) {
-        return FALLBACK_AVATAR;
-    }
-    return url;
-}
-
 function downloadFile(filename, content, mime) {
     const blob = new Blob([content], { type: mime });
     const url = URL.createObjectURL(blob);
@@ -232,6 +231,11 @@ function applyRoleVisibility() {
     if (!isPrivilegedRole(state.session?.role)) {
         DOM.btnOpenAdmin?.classList.add('hidden');
         DOM.chkOpenAdmin.checked = false;
+        if (DOM.chkDetailScan) {
+            DOM.chkDetailScan.checked = false;
+            DOM.chkDetailScan.disabled = true;
+        }
+        if (DOM.detailLimit) DOM.detailLimit.disabled = true;
     }
 }
 
@@ -357,7 +361,11 @@ function getPointWeightsFromDom() {
 }
 
 function getValidation(entry) {
-    return CUKEngine.validatePenalty(entry);
+    return CUKEngine.validate(entry);
+}
+
+function avatarImg(url, className, alt) {
+    return `<img src="${escapeHtml(resolveAvatar(url))}" class="${className}" alt="${escapeHtml(alt || 'Avatar')}" data-avatar-img>`;
 }
 
 function computeModeratorStats(cases, registry) {
@@ -436,12 +444,15 @@ async function updateUserProfile() {
         identity: profile.discordId ? `Discord ID: ${profile.discordId}` : (profile.email || profile.uid || '-')
     };
     DOM.profileAvatar.src = resolveAvatar(resolved.avatar);
+    DOM.profileAvatar.dataset.avatarImg = '1';
     DOM.profileName.textContent = resolved.name;
     DOM.profilePageAvatar.src = resolveAvatar(resolved.avatar);
+    DOM.profilePageAvatar.dataset.avatarImg = '1';
     DOM.profilePageName.textContent = resolved.name;
     DOM.profilePageIdentity.textContent = resolved.identity;
     DOM.profilePageRole.textContent = resolved.role;
     DOM.profilePageRole.className = `role-badge ${resolved.role}`;
+    bindAvatarFallbacks();
 }
 
 async function updateStats() {
@@ -457,11 +468,15 @@ async function updateStats() {
 }
 
 function filterCasesByRole(cases) {
-    if (isPrivilegedRole(state.session?.role)) return cases;
+    const role = normalizeRole(state.session?.role);
+    if (isPrivilegedRole(role)) return cases;
+    // Non-privileged: show only own cases
     const profile = state.session?.profile || {};
+    const myId = String(profile.discordId || profile.uid || '').toLowerCase();
+    const myName = String(profile.displayName || profile.username || '').toLowerCase();
     return cases.filter((entry) => {
-        return String(entry.authorId || '') === String(profile.discordId || profile.uid || '')
-            || String(entry.authorName || '').toLowerCase() === String(profile.displayName || profile.username || '').toLowerCase();
+        return (myId && String(entry.authorId || '').toLowerCase() === myId)
+            || (myName && String(entry.authorName || '').toLowerCase() === myName);
     });
 }
 
@@ -507,7 +522,7 @@ async function renderModList(search = '') {
     DOM.modList.innerHTML = list.map((entry, index) => `
         <button class="mod-item interactive" type="button" data-id="${escapeHtml(entry.id)}" data-name="${escapeHtml(entry.name)}">
             <div class="mod-avatar-wrap">
-                <img src="${escapeHtml(entry.avatar)}" class="mod-avatar" alt="${escapeHtml(entry.name)}">
+                ${avatarImg(entry.avatar, 'mod-avatar', entry.name)}
             </div>
             <div class="mod-main">
                 <div class="mod-top">
@@ -529,6 +544,7 @@ async function renderModList(search = '') {
             </div>
         </button>
     `).join('');
+    bindAvatarFallbacks(DOM.modList);
 
     DOM.modList.querySelectorAll('.mod-item.interactive').forEach((item) => {
         item.addEventListener('click', () => enterFocusMode(item.dataset.name, item.dataset.id));
@@ -686,8 +702,9 @@ async function runScan() {
     DOM.btnStartScan.disabled = true;
     DOM.btnStopScan.disabled = false;
     setStatus('scanning');
-    setScanProgress(0, 1, 'Sapphire taramasi baslatiliyor');
-    log('Sapphire taramasi baslatildi');
+    const useDetailScan = Boolean(DOM.chkDetailScan?.checked && isPrivilegedRole(state.session?.role));
+    setScanProgress(0, 1, useDetailScan ? 'Detayli Sapphire taramasi baslatiliyor' : 'Hizli Sapphire taramasi baslatiliyor');
+    log(useDetailScan ? 'Detayli Sapphire taramasi baslatildi' : 'Hizli Sapphire taramasi baslatildi');
 
     try {
         const response = await sendRuntimeMessage({
@@ -697,7 +714,11 @@ async function runScan() {
                 pages,
                 startDate: DOM.startDate.value || null,
                 endDate: DOM.endDate.value || null,
-                scanDelay: Number(settings.scanDelay || 2000)
+                scanDelay: Number(settings.scanDelay || 2000),
+                scanMode: useDetailScan ? 'detail' : 'fast',
+                enrichDetails: useDetailScan,
+                detailLimit: Number(DOM.detailLimit?.value || 0),
+                retryCount: 1
             }
         });
 
@@ -706,12 +727,12 @@ async function runScan() {
         }
 
         if (Array.isArray(response.cases) && response.cases.length) {
-            await Storage.updateCases(response.cases, true);
+            await Storage.updateCases(response.cases, DOM.chkCumulativeMode?.checked !== false);
         }
 
-        state.scannedPages = pages?.length || response.cases?.length || 0;
+        state.scannedPages = response.scanRun?.pagesScanned || pages?.length || response.cases?.length || 0;
         setScanProgress(1, 1, `${response.cases?.length || 0} ceza alindi`);
-        log(`Tarama tamamlandi, ${response.cases?.length || 0} ceza bulundu`, 'success');
+        log(`Tarama tamamlandi, ${response.cases?.length || 0} ceza bulundu, ${response.scanRun?.failures?.length || 0} hata`, 'success');
 
         if (settings.autoSaveWeekly) {
             await Storage.saveWeeklySnapshot();
@@ -725,7 +746,11 @@ async function runScan() {
             await sendRuntimeMessage({ action: ACTIONS.CLOSE_TAB, tabId: response.tabId });
         }
 
-        Toast.success('Tarama tamamlandi', `${response.cases?.length || 0} ceza kaydedildi`);
+        if (response.cancelled) {
+            Toast.warning('Tarama durduruldu', `${response.cases?.length || 0} ceza kaydedildi`);
+        } else {
+            Toast.success('Tarama tamamlandi', `${response.cases?.length || 0} ceza kaydedildi`);
+        }
         await updateStats();
     } catch (error) {
         console.error(error);
@@ -742,11 +767,12 @@ async function runScan() {
 }
 
 function stopScan() {
+    sendRuntimeMessage({ action: ACTIONS.CANCEL_AUTONOMOUS_SCAN }).catch(() => undefined);
     state.isScanning = false;
     DOM.btnStartScan.disabled = false;
     DOM.btnStopScan.disabled = true;
     resetScanProgress();
-    Toast.warning('Yerel durdurma', 'Arka plan taramasi devam ediyor olabilir');
+    Toast.warning('Tarama', 'Durdurma istegi gonderildi');
 }
 
 async function persistPointtrainInputs() {
@@ -881,7 +907,37 @@ function bindEvents() {
         Toast.success('Pointtrain', 'Preset kanallar yuklendi');
     });
 
+    // Auto-fill page input toggle
+    let autofillActive = false;
+    DOM.toggleAutofill?.addEventListener('click', () => {
+        autofillActive = !autofillActive;
+        if (autofillActive) {
+            DOM.toggleAutofill.classList.add('active');
+            DOM.toggleAutofill.style.background = 'var(--accent)';
+            DOM.toggleAutofill.style.color = '#fff';
+            DOM.pageInput.value = '';
+            DOM.pageInput.placeholder = 'Otomatik (tüm sayfalar)';
+            DOM.pageInput.disabled = true;
+            Toast.info('Auto Mod', 'Tüm sayfalar otomatik taranacak');
+        } else {
+            DOM.toggleAutofill.classList.remove('active');
+            DOM.toggleAutofill.style.background = '';
+            DOM.toggleAutofill.style.color = '';
+            DOM.pageInput.placeholder = 'Örn: 5 veya 1-10';
+            DOM.pageInput.disabled = false;
+            Toast.info('Auto Mod', 'Manuel sayfa girişi aktif');
+        }
+    });
+
     chrome.runtime.onMessage.addListener((message) => {
+        if (message.action === ACTIONS.SCAN_PROGRESS_EVENT) {
+            const payload = message.payload || {};
+            setScanProgress(
+                payload.scannedCount || 0,
+                payload.totalPages || 1,
+                `Sayfa ${payload.currentPage || '-'} / ${payload.totalPages || '-'} - ${payload.casesFound || 0} ceza`
+            );
+        }
         if (message.action === ACTIONS.POINTTRAIN_PROGRESS_EVENT) {
             setPointtrainProgress(message.payload || {});
         }

@@ -1,49 +1,95 @@
 # Lutheus CezaRapor - User TODO
 
+## Durum
+
+- Proje koku: `C:\Projects\lutheus`
+- Vercel proje sayfasi: `https://vercel.com/gearheads-projects-cd620944/lutheus`
+- Canli domain: `https://lutheus.vercel.app/`
+- API health endpoint: `https://lutheus.vercel.app/api/health`
+- `src/config/appConfig.js` icindeki `vercelAuthBaseUrl` canli domaine ayarli.
+- Google OAuth client ID uygulama config dosyasina islendi.
+- `.env.example` eklendi; gercek `.env` git disinda kaliyor.
+- `npm.cmd run env:check`, `npm.cmd run lint`, `npm.cmd run test` kontrol komutlari hazir.
+
+## Benim Tamamladigim Teknik Isler
+
+- Extension giris kapisi login ekranina baglandi.
+- Discord OAuth akisi Vercel broker + Firebase custom token mantigina gore hazirlandi.
+- Google login akisi allowlist kontroluyle baglandi.
+- Google allowlist okumasi Firebase ID token ile yapilacak sekilde duzeltildi.
+- Firestore role cache, allowlist, user upsert ve role policy katmani eklendi.
+- Admin/moderator erisim ayrimi UI guard seviyesinde baglandi.
+- Groq cagrisi client secret gommeden Vercel proxy uzerinden calisacak sekilde tasarlandi.
+- `api/health.js` eklendi.
+- `scripts/check-env.cjs` eklendi; secret degerlerini yazdirmadan env sekli kontrol ediliyor.
+- `package.json` Windows uyumlu lint/test scriptlerine cekildi.
+
 ## Senin Yapman Gerekenler
 
-1. Vercel projesi oluştur ve deploy et. `[YAPILDI]`
-   - Root dizin: `C:\Projects\lutheus`
-   - Proje: `https://vercel.com/gearheads-projects-cd620944/lutheus`
-   - Production domain: `https://lutheus.vercel.app/`
-   - `src/config/appConfig.js` içindeki `vercelAuthBaseUrl` değeri `https://lutheus.vercel.app` olarak güncellendi.
+1. Vercel env degiskenlerini canli projeye gir.
+   - Local `.env` hazir olsa bile Vercel dashboard icinde ayrica tanimlanmali.
+   - Production, Preview ve Development ortamlarini ihtiyaca gore esitle.
 
-2. Discord Developer Portal ayarlarını yap.
+2. ~~Discord Developer Portal ayarlarini tamamla.~~ (Tamamlandı)
    - OAuth2 redirect URL:
-     `https://<vercel-domain>/api/auth/discord/callback`
+     `https://lutheus.vercel.app/api/auth/discord/callback`
    - Scope: `identify`
-   - İlk admin Discord ID'lerini `BOOTSTRAP_DISCORD_IDS` env değişkenine virgülle ekle.
+   - Ilk admin Discord ID'lerini `BOOTSTRAP_DISCORD_IDS` icine virgulle ekle. (758769576778661989 olarak eklendi)
 
-3. Firebase Console ayarlarını yap. [done]
- 
-4. Google OAuth ayarını yap. [Firebase auto yapmıyacak mı zaten?]
-   - Chrome extension ID belli olduktan sonra Google OAuth client oluştur.
-   - Redirect URI:
+3. Firebase Console ayarlarini dogrula.
+   - Authentication acik olmali.
+   - Google provider acik olmali.
+   - Firestore database acik olmali.
+   - **ÖNEMLİ:** `npx firebase-tools@latest login` komutunu terminalde çalıştırıp Google hesabınla giriş yapmalı ve ardından `npx firebase-tools@latest deploy --only firestore:rules --project lutheus-project` komutuyla rules'ları deploy etmelisin. Veya Firebase Console'dan `firestore.rules` içeriğini kopyalayıp Rules sekmesine yapıştırabilirsin.
+
+4. Chrome extension ID ciktiktan sonra Google OAuth redirect URI ekle.
+   - Redirect URI formati:
      `https://<extension-id>.chromiumapp.org/google`
-   - Client ID'yi `src/config/appConfig.js` içindeki `googleClientId` alanına eklet.
+   - Extension ID degisirse Google OAuth ayari da degisir.
 
-5. Secret güvenliği. [Done]
+5. Ilk admin erisimini dogrula.
+   - Discord ile giris yap.
+   - `BOOTSTRAP_DISCORD_IDS` icindeki hesap admin yetkisi almali.
+   - Admin panelden Google allowlist kaydi ekle.
+
+6. Google allowlist kaydi ekle.
+   - Firestore koleksiyon:
+     `googleAllowlist/{email}`
+   - Ornek alanlar:
+     `allowed: true`
+     `role: "admin"` veya `"moderator"`
+     `addedBy: "<admin uid>"`
+
+7. Canli testleri sirayla yap.
+   - `https://lutheus.vercel.app/api/health`
+   - Discord login
+   - Google login allowlist yokken red
+   - Google login allowlist varken giris
+   - Moderator rolunde DB/CUK edit kapali mi
+   - Admin rolunde allowlist, role cache, scan ve Groq yonetimi acik mi
 
 ## Vercel Env Listesi
 
-### Discord Auth
+### Zorunlu
 
 ```env
 DISCORD_CLIENT_ID=
 DISCORD_CLIENT_SECRET=
 OAUTH_STATE_SECRET=
 BOOTSTRAP_DISCORD_IDS=
+FIREBASE_SERVICE_ACCOUNT_JSON=
+GROQ_API_KEY=
 ```
 
-### Firebase Admin
-
-Tek parça önerilen kullanım:
+### Onerilen
 
 ```env
-FIREBASE_SERVICE_ACCOUNT_JSON=
+GROQ_MODEL=llama-3.1-8b-instant
 ```
 
-Alternatif parçalı kullanım:
+### Firebase Admin Alternatif Kullanim
+
+`FIREBASE_SERVICE_ACCOUNT_JSON` kullanmiyorsan bu uclu kullanilabilir:
 
 ```env
 FIREBASE_PROJECT_ID=lutheus-project
@@ -51,16 +97,9 @@ FIREBASE_CLIENT_EMAIL=
 FIREBASE_PRIVATE_KEY=
 ```
 
-### Groq AI
+### Eski Backend/Bot Opsiyonelleri
 
-```env
-GROQ_API_KEY=
-GROQ_MODEL=llama-3.1-8b-instant
-```
-
-### Eski Backend/Bot Opsiyonel Envler
-
-Bu değişkenler eski backend/bot dosyalarında geçiyor. Yeni Vercel auth akışı için şart değil.
+Yeni Vercel auth akisi icin zorunlu degiller; eski backend veya Discord bot akislarinda gerekebilir.
 
 ```env
 NODE_ENV=
@@ -73,27 +112,21 @@ REDIS_HOST=
 ALLOWED_ORIGINS=
 ```
 
-## Canlı Test Sırası
+## Lokal Kontrol Komutlari
 
-1. `npm.cmd run lint`
-2. `npm.cmd run test`
-3. `.env` dosyasındaki zorunlu anahtarları kontrol et. `[YAPILDI]`
-4. Chrome'da extension'ı unpacked olarak `C:\Projects\lutheus` dizininden yükle.
-5. Login olmadan sidepanel/admin açılmadığını kontrol et.
-6. Discord bootstrap admin ile giriş yap.
-7. Admin panelden Google allowlist kaydı ekle.
-8. Allowlist Google hesabıyla giriş yap.
-9. Moderator rolünde CUK/DB yönetimi kapalı mı kontrol et.
-10. Admin rolünde Sapphire scan başlat.
-11. Firestore'da `users`, `roleCache`, `googleAllowlist`, `cases`, `scanRuns`, `analysis`, `auditLogs` koleksiyonlarını kontrol et.
-12. Groq AI yorumunu çalıştır; role-based limit aşımında CUK analizinin devam ettiğini doğrula.
+```powershell
+npm.cmd run env:check
+npm.cmd run lint
+npm.cmd run test
+```
 
-## Beklenen Son Durum
+## Kabul Kriterleri
 
-- `npm.cmd run lint` başarılı.
-- `npm.cmd run test` başarılı.
-- Extension root dizinden yükleniyor.
-- Discord login Firebase custom token ile çalışıyor.
-- Google login allowlist ile çalışıyor.
-- Admin/yönetici/kıdemli tüm yönetim yüzeylerine erişiyor.
-- Moderator sadece kendi profil ve istatistik detayını görüyor.
+- `npm.cmd run env:check` secret degerlerini yazdirmadan basarili.
+- `npm.cmd run lint` uyarisiz basarili.
+- `npm.cmd run test` basarili.
+- Extension login olmadan sidepanel/admin acmiyor.
+- Discord login Firebase custom token ile oturum aciyor.
+- Google login sadece allowlist e-postalarinda calisiyor.
+- Admin/yonetici/kidemli yonetim yuzeylerine erisiyor.
+- Moderator sadece kendi profil ve sinirli istatistik alanlarini goruyor.

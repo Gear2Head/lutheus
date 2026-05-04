@@ -52,3 +52,9 @@ Space açıldıktan sonra:
 3. REST de timeout veriyorsa HF Space outbound Discord erişimi problemli olabilir.
 4. REST valid ama gateway timeout ise Space restart yap, sonra loglarda `BOT_READY` bekle.
 5. `TokenInvalid` görülürse token rotate et.
+
+## HF Sync
+
+GitHub `main` otomatik olarak Hugging Face Space'e gitmez. `.github/workflows/sync-hf-space.yml`
+workflow'u bunun icin eklendi. GitHub repo secrets icine `HF_TOKEN` adinda Hugging Face write token
+eklenmeli, sonra workflow manuel calistirilabilir veya `main` push'u ile otomatik calisir.

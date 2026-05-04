@@ -14,11 +14,14 @@ function encodeProfile(profile) {
 }
 
 async function exchangeCode(code, redirectUri, host) {
+    if (!process.env.DISCORD_CLIENT_SECRET) {
+        throw new Error('DISCORD_CLIENT_SECRET_MISSING');
+    }
     const response = await fetch('https://discord.com/api/oauth2/token', {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: new URLSearchParams({
-            client_id: process.env.DISCORD_CLIENT_ID,
+            client_id: process.env.DISCORD_CLIENT_ID || '1500551629768888542',
             client_secret: process.env.DISCORD_CLIENT_SECRET,
             grant_type: 'authorization_code',
             code,

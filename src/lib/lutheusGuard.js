@@ -3,7 +3,7 @@
 
 const LutheusGuard = {
     // Lutheus Discord Server Guild ID - LOCKED
-    LUTHEUS_GUILD_ID: '1223431616081166336',
+    LUTHEUS_GUILD_ID: '1354854696874938590',
     LUTHEUS_NAME: 'Lutheus',
 
     /**
@@ -157,7 +157,7 @@ const LutheusGuard = {
                 <div class="lutheus-guard-icon">🛡️</div>
                 <div class="lutheus-guard-title">Lutheus Guard</div>
                 <div class="lutheus-guard-message">${message}</div>
-                <button class="lutheus-guard-btn" onclick="window.location.href='https://dashboard.sapph.xyz/1223431616081166336/moderation/cases'">
+                <button class="lutheus-guard-btn" onclick="window.location.href='https://dashboard.sapph.xyz/1354854696874938590/moderation/cases'">
                     Lutheus'a Git
                 </button>
             </div>

@@ -11,7 +11,7 @@ function loadNavigationWithDocument(document) {
                 Scraper: {
                     findCaseRows: () => document.rows || []
                 },
-                location: { href: 'https://dashboard.sapph.xyz/1223431616081166336/moderation/cases' }
+                location: { href: 'https://dashboard.sapph.xyz/1354854696874938590/moderation/cases' }
             }
         },
         document

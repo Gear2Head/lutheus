@@ -77,7 +77,7 @@ function applySettings(next = {}) {
     DOM.maxPrune.value = settings.maxPrune || 100;
     DOM.lockdownEndpoint.value = settings.lockdownEndpoint || '/v1/ops/lockdown';
     DOM.commandScope.value = settings.commandScope || 'global';
-    DOM.guildId.value = settings.guildId || '1223431616081166336';
+    DOM.guildId.value = settings.guildId || '1354854696874938590';
     renderCommandGrid(settings.commands || {});
     DOM.btnInvite.href = inviteUrl();
 }

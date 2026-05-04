@@ -29,7 +29,7 @@ const ACTIONS = {
     OPEN_CASE_PAGE: 'OPEN_CASE_PAGE'
 };
 
-const DEFAULT_GUILD_ID = '1223431616081166336';
+const DEFAULT_GUILD_ID = '1354854696874938590';
 
 const DOM = {
     navButtons: document.querySelectorAll('.nav-btn'),

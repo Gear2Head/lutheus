@@ -1,4 +1,4 @@
-import { FIREBASE_CONFIG, FIRESTORE_DATABASE } from '../config/appConfig.js';
+import { APP_CONFIG, FIREBASE_CONFIG, FIRESTORE_DATABASE } from '../config/appConfig.js';
 import { getStoredSession, isSessionExpired } from '../auth/sessionStore.js';
 
 const BASE_URL = `https://firestore.googleapis.com/v1/projects/${FIREBASE_CONFIG.projectId}/databases/${encodeURIComponent(FIRESTORE_DATABASE)}/documents`;
@@ -71,9 +71,16 @@ async function getIdToken() {
     return session.idToken;
 }
 
+function getProxyUrl() {
+    const currentOrigin = globalThis.location?.origin || '';
+    const isHttpOrigin = currentOrigin.startsWith('http://') || currentOrigin.startsWith('https://');
+    const baseUrl = isHttpOrigin ? currentOrigin : APP_CONFIG.vercelAuthBaseUrl;
+    return new URL('/api/firestore', baseUrl).toString();
+}
+
 async function proxyRequest(op, path, options = {}) {
     const token = options.token || await getIdToken();
-    const response = await fetch('/api/firestore', {
+    const response = await fetch(getProxyUrl(), {
         method: 'POST',
         headers: {
             Authorization: `Bearer ${token}`,

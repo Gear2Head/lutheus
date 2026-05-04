@@ -357,7 +357,7 @@ function roleBadge(role) {
 }
 
 function sapphireCaseUrl(entry) {
-    return entry.sourceUrl || `https://dashboard.sapph.xyz/${entry.guildId || '1223431616081166336'}/moderation/cases/${entry.id || entry.caseId}`;
+    return entry.sourceUrl || `https://dashboard.sapph.xyz/${entry.guildId || '1354854696874938590'}/moderation/cases/${entry.id || entry.caseId}`;
 }
 
 function openCaseUrl(entry) {

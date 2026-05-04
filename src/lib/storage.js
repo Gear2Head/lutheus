@@ -7,7 +7,7 @@ import { getStoredSession } from '../auth/sessionStore.js';
 import { CUK_RULES } from './cukEngine.js';
 import { SEEDED_ROLE_MEMBERS, normalizeRole } from '../auth/rolePolicy.js';
 
-const LUTHEUS_GUILD_ID = '1223431616081166336';
+const LUTHEUS_GUILD_ID = '1354854696874938590';
 
 function cloneDefaultRules() {
     return JSON.parse(JSON.stringify(CUK_RULES));

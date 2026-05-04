@@ -1,7 +1,7 @@
 // Lutheus CezaRapor - Service Worker v2.2
 // Boho integration + Discord Pointtrain orchestration
 
-const LUTHEUS_GUILD_ID = '1223431616081166336';
+const LUTHEUS_GUILD_ID = '1354854696874938590';
 const DEFAULT_POINTTRAIN_CHANNELS = [
     { id: 'genel-sohbet', label: '💬genel-sohbet', weight: 1.0 },
     { id: 'gorsel-video-odasi', label: '📷görsel-video-odası', weight: 0.8 },

@@ -17,7 +17,7 @@ https://discord.com/oauth2/authorize?client_id=1500551629768888542&scope=bot+app
 Lutheus sunucusuna kilitli link:
 
 ```text
-https://discord.com/oauth2/authorize?client_id=1500551629768888542&scope=bot+applications.commands&permissions=8&integration_type=0&guild_id=1223431616081166336&disable_guild_select=true
+https://discord.com/oauth2/authorize?client_id=1500551629768888542&scope=bot+applications.commands&permissions=8&integration_type=0&guild_id=1354854696874938590&disable_guild_select=true
 ```
 
 ## Discord Developer Portal Kontrolü
@@ -52,4 +52,3 @@ Space açıldıktan sonra:
 3. REST de timeout veriyorsa HF Space outbound Discord erişimi problemli olabilir.
 4. REST valid ama gateway timeout ise Space restart yap, sonra loglarda `BOT_READY` bekle.
 5. `TokenInvalid` görülürse token rotate et.
-

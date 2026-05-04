@@ -670,14 +670,18 @@ async function main() {
   startHealthServer();
 
   const client = new Client({
-    rest: {
-      timeout: Number(process.env.DISCORD_REST_TIMEOUT_MS || 30000),
-      retries: Number(process.env.DISCORD_REST_RETRIES || 5)
-    },
     intents: [
       GatewayIntentBits.Guilds,
-      GatewayIntentBits.GuildMembers
-    ]
+      GatewayIntentBits.GuildMessages,
+      GatewayIntentBits.MessageContent,
+      GatewayIntentBits.GuildMembers,
+    ],
+    // Hugging Face ag yapisi icin optimize edilmis rest ayarlari
+    rest: {
+      timeout: 30000, // 30 saniye
+      retries: 5,
+      rejectOnRateLimit: (data) => data.timeout > 10000,
+    }
   });
 
   client.once('ready', async () => {

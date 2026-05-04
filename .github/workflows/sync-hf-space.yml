@@ -17,7 +17,7 @@ jobs:
 
       - name: Push to Hugging Face Space
         env:
-          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_TOKEN: ${{ secrets.LUTHEUS_SYNC }}
         run: |
           if [ -z "$HF_TOKEN" ]; then
             echo "HF_TOKEN secret is missing. Add a Hugging Face write token as GitHub Actions secret HF_TOKEN."

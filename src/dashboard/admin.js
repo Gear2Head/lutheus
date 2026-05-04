@@ -30,9 +30,13 @@ const DOM_RAW = {
     topModCount: document.getElementById('topModCount'),
     topReasonName: document.getElementById('topReasonName'),
     topReasonCount: document.getElementById('topReasonCount'),
-    comparisonGrid: document.getElementById('comparisonGrid'),
+    comparisonGrid: document.getElementById('deltaGrid'),
+    deltaNew: document.getElementById('d-new'),
+    deltaInv: document.getElementById('d-inv'),
+    deltaAcc: document.getElementById('d-acc'),
+    deltaMods: document.getElementById('d-mods'),
     navBtns: document.querySelectorAll('.nav-item'),
-    pages: document.querySelectorAll('.page'),
+    pages: document.querySelectorAll('.page-section'),
     pageSubtitle: document.getElementById('pageSubtitle'),
     dashboardView: document.getElementById('page-dashboard'),
     managementView: document.getElementById('page-management'),
@@ -42,17 +46,20 @@ const DOM_RAW = {
     adminProfileAvatar: document.getElementById('userAvatar'),
     adminProfileName: document.getElementById('userName'),
     adminProfileRole: document.getElementById('userRole'),
-    tableBody: document.getElementById('tableBody'),
+    tableBody: document.getElementById('modTableBody'),
     tableSearch: document.getElementById('tableSearch'),
     dateFilter: document.getElementById('dateFilter'),
-    staffTableBody: document.getElementById('staffTableBody'),
-    reasonTableBody: document.getElementById('reasonTableBody'),
+    staffTableBody: document.getElementById('modTableBody'),
+    reasonTableBody: document.getElementById('reasonList'),
+    reasonList: document.getElementById('reasonList'),
+    mgmtModList: document.getElementById('mgmtModList'),
+    mgmtCaseList: document.getElementById('mgmtCaseList'),
     cukSearch: document.getElementById('cukSearch'),
     caseSearch: document.getElementById('caseSearch'),
-    refreshBtn: document.getElementById('refreshBtn'),
-    exportBtn: document.getElementById('exportBtn'),
-    copyDiscordBtn: document.getElementById('copyDiscordBtn'),
-    revalidateBtn: document.getElementById('revalidateBtn'),
+    refreshBtn: document.getElementById('btnRefresh'),
+    exportBtn: document.getElementById('btnExport'),
+    copyDiscordBtn: document.getElementById('btnCopyDiscord'),
+    revalidateBtn: document.getElementById('btnRevalidate'),
     lastScanTime: document.getElementById('lastScanTime'),
     detailModal: document.getElementById('detailModal'),
     modalContent: document.getElementById('modalContent'),
@@ -61,9 +68,9 @@ const DOM_RAW = {
     closeRoleModal: document.getElementById('closeRoleModal'),
     saveRoleBtn: document.getElementById('saveRoleBtn'),
     roleUserId: document.getElementById('roleUserId'),
-    roleUserDisplayName: document.getElementById('roleUserDisplayName'),
-    roleSelector: document.getElementById('roleSelector'),
-    roleManualAccuracy: document.getElementById('roleManualAccuracy'),
+    roleUserDisplayName: document.getElementById('roleDisplayName'),
+    roleSelector: document.getElementById('roleSelect'),
+    roleManualAccuracy: document.getElementById('manualAccuracy'),
     roleBtn: document.getElementById('roleBtn'),
     lookupUserBtn: document.getElementById('lookupUserBtn'),
     noRuleSelected: document.getElementById('cukEmptyState'),
@@ -595,22 +602,11 @@ function renderStats() {
         `).join('');
     }
 
-    if (DOM.comparisonGrid) {
-        DOM.comparisonGrid.innerHTML = `
-            <div class="comp-card">
-                <div class="comp-label">Staff</div>
-                <div class="comp-value">${staff.length}</div>
-            </div>
-            <div class="comp-card">
-                <div class="comp-label">Yonetim</div>
-                <div class="comp-value">${management.length}</div>
-            </div>
-            <div class="comp-card">
-                <div class="comp-label">Son tarama</div>
-                <div class="comp-value">${formatTurkishDate(new Date())}</div>
-            </div>
-        `;
-    }
+    if (DOM.deltaNew) DOM.deltaNew.textContent = `+${filteredCases.length}`;
+    if (DOM.deltaMods) DOM.deltaMods.textContent = String(staff.length + management.length);
+    const efficiency = filteredCases.length ? Math.round((validCount / filteredCases.length) * 100) : 0;
+    if (DOM.deltaAcc) DOM.deltaAcc.textContent = `${efficiency}%`;
+    if (DOM.deltaInv) DOM.deltaInv.textContent = String(invalidCount);
 }
 
 function renderModRow(entry, index) {
@@ -641,9 +637,10 @@ function renderModRow(entry, index) {
 
 function renderTable(search = '') {
     const query = (search || '').trim().toLowerCase();
-    const { staff } = calculateStats();
+    const { staff, management } = calculateStats();
+    const everyone = [...management, ...staff];
     const filter = (entry) => !query || entry.name.toLowerCase().includes(query) || entry.role.toLowerCase().includes(query);
-    const filteredStaff = staff.filter(filter);
+    const filteredStaff = everyone.filter(filter);
 
     if (DOM.modTableBody) {
         DOM.modTableBody.innerHTML = filteredStaff.length

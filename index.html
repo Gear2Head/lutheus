@@ -95,7 +95,7 @@
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-    import { getFirestore, collection, getDocs, query, orderBy, limit, where, doc, deleteDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+    import { getFirestore, collection, getDocs, query, orderBy, limit, where, doc, deleteDoc, getDoc, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
     import { getAuth, signInWithPopup, GoogleAuthProvider, OAuthProvider, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
     const firebaseConfig = {
@@ -117,17 +117,22 @@
       const oneWeekAgo = new Date();
       oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
 
-      const q = query(collection(db, "cases"), orderBy("scrapedAt", "desc"), limit(200));
+      const q = query(collection(db, "cases"), orderBy("updatedAt", "desc"), limit(300));
       const snap = await getDocs(q);
       const allCases = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      const cases = allCases.filter(c => (c.scrapedAt || 0) >= oneWeekAgo.getTime());
+      
+      const cases = allCases.filter(c => {
+        const ts = c.scrapedAt || (c.updatedAt ? new Date(c.updatedAt).getTime() : 0);
+        return ts >= oneWeekAgo.getTime();
+      });
       
       const modMap = {};
       cases.forEach(c => {
         const name = c.authorName || 'Bilinmiyor';
         if (!modMap[name]) modMap[name] = { name, count: 0, valid: 0 };
         modMap[name].count++;
-        if (c.validationStatus === 'valid') modMap[name].valid++;
+        const isValid = c.validationStatus === 'valid' || c.validation?.status === 'valid';
+        if (isValid) modMap[name].valid++;
       });
 
       const mods = Object.values(modMap).sort((a,b) => b.count - a.count);
@@ -135,7 +140,7 @@
       document.getElementById('global-total').textContent = cases.length;
       document.getElementById('global-mods').textContent = mods.length;
       
-      const totalValid = cases.filter(c => c.validationStatus === 'valid').length;
+      const totalValid = cases.filter(c => c.validationStatus === 'valid' || c.validation?.status === 'valid').length;
       document.getElementById('global-efficiency').textContent = cases.length ? Math.round((totalValid/cases.length)*100) + '%' : '0%';
 
       document.getElementById('leaderboard').innerHTML = mods.map(m => `
@@ -152,13 +157,13 @@
         </tr>
       `).join('');
 
-      document.getElementById('recentCases').innerHTML = allCases.slice(0, 20).map(c => `
+      document.getElementById('recentCases').innerHTML = allCases.slice(0, 30).map(c => `
         <tr class="data-row">
           <td style="font-family:var(--font-mono); font-size:12px; color:var(--accent);">#${c.caseId || c.id.slice(-8)}</td>
           <td>${c.authorName || 'Bilinmiyor'}</td>
           <td>${c.user || 'Bilinmiyor'}</td>
           <td style="font-size:13px; color:var(--text-dim); max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${c.reason || '-'}</td>
-          <td style="font-size:12px;">${new Date(c.scrapedAt || 0).toLocaleDateString('tr-TR')}</td>
+          <td style="font-size:12px;">${new Date(c.scrapedAt || c.updatedAt || 0).toLocaleDateString('tr-TR')}</td>
         </tr>
       `).join('');
     }
@@ -217,10 +222,30 @@
         document.getElementById('loginState').classList.add('hidden');
         document.getElementById('dashboardContent').classList.remove('hidden');
         
-        // Rol Kontrolü
-        const userDoc = await getDoc(doc(db, "users", user.uid));
-        const role = userDoc.exists() ? userDoc.data().role : 'viewer';
-        if(['kurucu', 'admin', 'yonetici'].includes(role)) {
+        let userRole = 'viewer';
+        const userDocRef = doc(db, "users", user.uid);
+        const existing = await getDoc(userDocRef);
+        
+        if (existing.exists()) {
+          userRole = existing.data().role;
+        } else if (user.email) {
+          const allowDoc = await getDoc(doc(db, "googleAllowlist", user.email.toLowerCase()));
+          if (allowDoc.exists() && allowDoc.data().allowed) {
+             userRole = allowDoc.data().role;
+          }
+        }
+
+        await setDoc(userDocRef, {
+           uid: user.uid,
+           displayName: user.displayName,
+           email: user.email,
+           photoURL: user.photoURL,
+           role: userRole,
+           lastLogin: serverTimestamp(),
+           updatedAt: serverTimestamp()
+        }, { merge: true });
+
+        if(['kurucu', 'admin', 'yonetici'].includes(userRole)) {
           document.getElementById('adminTab').classList.remove('hidden');
         }
 

@@ -219,6 +219,11 @@ async function openDiscordTab(guildId = LUTHEUS_GUILD_ID) {
     return tab;
 }
 
+async function findDiscordTab(guildId) {
+    const tabs = await chrome.tabs.query({ url: '*://discord.com/*' });
+    return tabs.find(t => t.url?.includes(guildId)) || tabs[0];
+}
+
 async function sendToContentScript(tabId, message, retries = 1) {
     for (let attempt = 0; attempt <= retries; attempt++) {
         try {
@@ -751,7 +756,10 @@ async function runPointtrainScan(options = {}) {
     const registry = (await getSync('userRegistry')) || {};
     const directory = (await getSync('staffDirectory')) || {};
     const staffEntries = buildStaffEntries(cases, registry, directory);
-    const discordTab = await openDiscordTab(settings.discordGuildId);
+    let discordTab = await findDiscordTab(settings.discordGuildId);
+    if (!discordTab) {
+        discordTab = await openDiscordTab(settings.discordGuildId);
+    }
     const metrics = [];
     const failures = [];
 

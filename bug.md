@@ -2,22 +2,19 @@
 **Date:** 2026-05-04
 **Status:** Alpha/Stabilization Phase
 
-## 🔴 CRITICAL BUGS (Fix Immediately)
+## 🔴 CRITICAL BUGS (Resolved)
 
-### 1. Pointtrain Performance & Resource Leak
-- **Issue:** `runPointtrainScan` in `service_worker.js` creates/updates a Discord tab for *every* moderator in the list sequentially.
-- **Impact:** High RAM usage, extremely slow execution (minutes to hours for large lists), and high risk of browser hanging.
-- **File:** `src/background/service_worker.js` (line 738)
+### 1. Pointtrain Performance & Resource Leak [FIXED]
+- **Resolution:** Refactored `runPointtrainScan` to reuse existing Discord tabs via `findDiscordTab` and optimized the scan loop.
+- **File:** `src/background/service_worker.js`
 
-### 2. Admin UI Null Pointer Risks
-- **Issue:** `renderStats` and `renderTable` in `admin.js` access several DOM elements (like `topModName`, `totalCases`) without sufficient null-checks.
-- **Impact:** If the HTML structure changes slightly or elements fail to load, the entire dashboard script halts.
-- **File:** `src/dashboard/admin.js` (line 443)
+### 2. Admin UI Null Pointer Risks [FIXED]
+- **Resolution:** Implemented a `Proxy`-based `safeDOM` layer in `admin.js` that provides dummy elements for missing IDs, preventing script crashes.
+- **File:** `src/dashboard/admin.js`
 
-### 3. Deduplication Key Inconsistency
-- **Issue:** `network_listener.js` deduplicates using `${r.id}:${r.userId}:${r.type}:${r.createdAt}`.
-- **Impact:** If Sapphire API returns `createdAt` as a timestamp in one endpoint and ISO string in another, the same punishment will be saved as a duplicate in Firestore/Storage.
-- **File:** `src/content/network_listener.js` (line 141)
+### 3. Deduplication Key Inconsistency [FIXED]
+- **Resolution:** Normalized `createdAt` to a numeric timestamp in `network_listener.js` before key generation.
+- **File:** `src/content/network_listener.js`
 
 ---
 

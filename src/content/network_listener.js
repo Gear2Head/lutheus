@@ -138,7 +138,8 @@
     function deduplicate(records) {
         const fresh = [];
         for (const r of records) {
-            const key = `${r.id}:${r.userId}:${r.type}:${r.createdAt}`;
+            const normalizedDate = new Date(r.createdAt).getTime();
+            const key = `${r.id}:${r.userId}:${r.type}:${normalizedDate}`;
             if (seenIds.has(key)) continue;
             if (seenIds.size >= MAX_SEEN) {
                 const first = seenIds.values().next().value;

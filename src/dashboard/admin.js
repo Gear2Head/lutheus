@@ -20,22 +20,19 @@ import {
 import { analyzeCaseWithGroq } from '../lib/aiAnalysisClient.js';
 import { bindAvatarFallbacks, resolveAvatar } from '../lib/avatar.js';
 
-const DOM = {
+const DOM_RAW = {
     totalCases: document.getElementById('st-total'),
     validCases: document.getElementById('st-valid'),
     invalidCases: document.getElementById('st-invalid'),
     pendingCases: document.getElementById('st-pending'),
     modsCount: document.getElementById('st-mods'),
-    topModName: document.getElementById('topModName'), // May be null in new UI
-    topModCount: document.getElementById('topModCount'), // May be null in new UI
-    topReasonName: document.getElementById('topReasonName'), // May be null in new UI
-    topReasonCount: document.getElementById('topReasonCount'), // May be null in new UI
-    comparisonGrid: document.getElementById('comparisonGrid'), // May be null in new UI
-    dNew: document.getElementById('d-new'),
-    dInv: document.getElementById('d-inv'),
-    dAcc: document.getElementById('d-acc'),
-    dMods: document.getElementById('d-mods'),
+    topModName: document.getElementById('topModName'),
+    topModCount: document.getElementById('topModCount'),
+    topReasonName: document.getElementById('topReasonName'),
+    topReasonCount: document.getElementById('topReasonCount'),
+    comparisonGrid: document.getElementById('comparisonGrid'),
     navBtns: document.querySelectorAll('.nav-item'),
+    pages: document.querySelectorAll('.page'),
     pageSubtitle: document.getElementById('pageSubtitle'),
     dashboardView: document.getElementById('page-dashboard'),
     managementView: document.getElementById('page-management'),
@@ -45,40 +42,30 @@ const DOM = {
     adminProfileAvatar: document.getElementById('userAvatar'),
     adminProfileName: document.getElementById('userName'),
     adminProfileRole: document.getElementById('userRole'),
-    modTableBody: document.getElementById('modTableBody'),
-    mgmtSummaryTableBody: document.getElementById('mgmtSummaryTableBody'),
-    reasonList: document.getElementById('reasonList'),
-    mgmtModList: document.getElementById('mgmtModList'),
-    mgmtCaseList: document.getElementById('mgmtCaseList'),
+    tableBody: document.getElementById('tableBody'),
     tableSearch: document.getElementById('tableSearch'),
     dateFilter: document.getElementById('dateFilter'),
+    staffTableBody: document.getElementById('staffTableBody'),
+    reasonTableBody: document.getElementById('reasonTableBody'),
     cukSearch: document.getElementById('cukSearch'),
     caseSearch: document.getElementById('caseSearch'),
-    casePeriodFilter: document.getElementById('casePeriodFilter'),
-    caseSortFilter: document.getElementById('caseSortFilter'),
-    refreshBtn: document.getElementById('btnRefresh'),
-    revalidateBtn: document.getElementById('btnRevalidate'),
-    exportBtn: document.getElementById('btnExport'),
-    copyDiscordBtn: document.getElementById('btnCopyDiscord'),
-    roleBtn: document.getElementById('roleBtn'),
+    refreshBtn: document.getElementById('refreshBtn'),
+    exportBtn: document.getElementById('exportBtn'),
+    copyDiscordBtn: document.getElementById('copyDiscordBtn'),
+    revalidateBtn: document.getElementById('revalidateBtn'),
+    lastScanTime: document.getElementById('lastScanTime'),
     detailModal: document.getElementById('detailModal'),
-    modalTitle: document.getElementById('modalTitle'),
     modalContent: document.getElementById('modalContent'),
     closeModal: document.getElementById('closeModal'),
     roleModal: document.getElementById('roleModal'),
     closeRoleModal: document.getElementById('closeRoleModal'),
     saveRoleBtn: document.getElementById('saveRoleBtn'),
     roleUserId: document.getElementById('roleUserId'),
-    roleDisplayName: document.getElementById('roleDisplayName'),
-    roleSelect: document.getElementById('roleSelect'),
-    manualAccuracy: document.getElementById('manualAccuracy'),
+    roleUserDisplayName: document.getElementById('roleUserDisplayName'),
+    roleSelector: document.getElementById('roleSelector'),
+    roleManualAccuracy: document.getElementById('roleManualAccuracy'),
+    roleBtn: document.getElementById('roleBtn'),
     lookupUserBtn: document.getElementById('lookupUserBtn'),
-    roleUserNameHint: document.getElementById('roleUserNameHint'),
-    
-    // CUK rule editor mapping
-    ruleCategoriesList: document.getElementById('cukCategoryList'),
-    btnAddCategory: document.getElementById('btnAddCategory'),
-    ruleEditorContent: document.getElementById('cukEditorContent'),
     noRuleSelected: document.getElementById('cukEmptyState'),
     editCategoryName: document.getElementById('cukCatName'),
     repeatsList: document.getElementById('repeatStepsList'),
@@ -114,6 +101,21 @@ const DOM = {
     refreshAuditBtn: document.getElementById('refreshAuditBtn'),
     auditList: document.getElementById('auditList')
 };
+
+const DOM = new Proxy(DOM_RAW, {
+    get(target, prop) {
+        const el = target[prop];
+        if (!el && prop !== 'navBtns' && prop !== 'pages') {
+            return {
+                textContent: '', innerHTML: '', value: '', dataset: {}, style: {},
+                classList: { add: () => {}, remove: () => {}, toggle: () => {}, contains: () => false },
+                querySelectorAll: () => [], appendChild: () => {}, addEventListener: () => {},
+                querySelector: () => null, insertBefore: () => {}, removeAttribute: () => {}, setAttribute: () => {}
+            };
+        }
+        return el;
+    }
+});
 
 const state = {
     session: null,

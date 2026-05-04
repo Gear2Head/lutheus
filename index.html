@@ -16,73 +16,87 @@
     <header>
       <div class="logo"><i class="fa-solid fa-shield-halved"></i> Lutheus <span>CezaRapor</span></div>
       <div class="user-zone">
-        <button class="btn-primary" id="loginDiscordBtn" style="background:#5865F2;"><i class="fa-brands fa-discord"></i> Discord ile Giriş</button>
+        <button class="btn-primary" id="loginDiscordBtn" style="background:#5865F2;"><i class="fa-brands fa-discord"></i> Discord</button>
         <button class="btn-primary" id="loginBtn"><i class="fa-brands fa-google"></i> Google</button>
+        <div id="userProfile" class="hidden" style="display:flex; align-items:center; gap:12px;">
+           <span id="userName" style="font-weight:600;"></span>
+           <button class="btn-ghost" id="logoutBtn" style="padding:6px 10px;"><i class="fa-solid fa-right-from-bracket"></i></button>
+        </div>
       </div>
     </header>
 
     <div id="dashboardContent" class="hidden">
-      <div class="stats-grid">
-        <div class="stat-card">
-          <div class="stat-label">Toplam Ceza</div>
-          <div class="stat-value" id="global-total">0</div>
+      <div class="tabs">
+        <button class="tab-btn active" data-tab="overview"><i class="fa-solid fa-chart-line"></i> Genel Bakış</button>
+        <button class="tab-btn hidden" id="adminTab" data-tab="management"><i class="fa-solid fa-gears"></i> Yönetim</button>
+      </div>
+
+      <div id="overview-section">
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-label">Toplam Ceza</div>
+            <div class="stat-value" id="global-total">0</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Aktif Yetkili</div>
+            <div class="stat-value" id="global-mods">0</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Haftalık Verim</div>
+            <div class="stat-value" id="global-efficiency">0%</div>
+          </div>
         </div>
-        <div class="stat-card">
-          <div class="stat-label">Aktif Yetkili</div>
-          <div class="stat-value" id="global-mods">0</div>
+
+        <div class="panel" style="margin-bottom:24px;">
+          <div class="panel-header">
+            <div class="panel-title"><i class="fa-solid fa-ranking-star"></i> Haftalık Liderlik Tablosu</div>
+          </div>
+          <table class="data-table">
+            <thead><tr><th>Yetkili</th><th>İşlem</th><th>Doğruluk</th><th>Skor</th></tr></thead>
+            <tbody id="leaderboard"></tbody>
+          </table>
         </div>
-        <div class="stat-card">
-          <div class="stat-label">Haftalık Verim</div>
-          <div class="stat-value" id="global-efficiency">0%</div>
+
+        <div class="panel">
+          <div class="panel-header">
+            <div class="panel-title"><i class="fa-solid fa-list-ul"></i> Son İşlemler</div>
+          </div>
+          <table class="data-table">
+            <thead><tr><th>ID</th><th>Yetkili</th><th>Kullanıcı</th><th>Sebep</th><th>Tarih</th></tr></thead>
+            <tbody id="recentCases"></tbody>
+          </table>
         </div>
       </div>
 
-      <div class="panel" style="margin-bottom:24px;">
-        <div class="panel-header">
-          <div class="panel-title"><i class="fa-solid fa-ranking-star"></i> Haftalık Liderlik Tablosu</div>
+      <div id="management-section" class="hidden">
+        <div class="panel" style="margin-bottom:24px;">
+          <div class="panel-header"><div class="panel-title"><i class="fa-solid fa-user-shield"></i> Google Allowlist</div></div>
+          <table class="data-table">
+            <thead><tr><th>Email</th><th>Rol</th><th>Durum</th><th>İşlem</th></tr></thead>
+            <tbody id="admin-allowlist"></tbody>
+          </table>
         </div>
-        <table class="data-table">
-          <thead>
-            <tr>
-              <th>Yetkili</th>
-              <th>İşlem</th>
-              <th>Doğruluk</th>
-              <th>Skor</th>
-            </tr>
-          </thead>
-          <tbody id="leaderboard"></tbody>
-        </table>
-      </div>
-
-      <div class="panel">
-        <div class="panel-header">
-          <div class="panel-title"><i class="fa-solid fa-list-ul"></i> Son İşlemler</div>
+        
+        <div class="panel">
+          <div class="panel-header"><div class="panel-title"><i class="fa-solid fa-id-card"></i> Yetkili Rol Cache</div></div>
+          <table class="data-table">
+            <thead><tr><th>Kimlik</th><th>İsim</th><th>Rol</th><th>İşlem</th></tr></thead>
+            <tbody id="admin-rolecache"></tbody>
+          </table>
         </div>
-        <table class="data-table">
-          <thead>
-            <tr>
-              <th>ID</th>
-              <th>Yetkili</th>
-              <th>Kullanıcı</th>
-              <th>Sebep</th>
-              <th>Tarih</th>
-            </tr>
-          </thead>
-          <tbody id="recentCases"></tbody>
-        </table>
       </div>
     </div>
 
     <div id="loginState" style="text-align:center; padding:100px 0;">
       <h2 style="font-size:32px; margin-bottom:16px;">Veri Odaklı Moderasyon</h2>
-      <p style="color:var(--text-dim); max-width:500px; margin:0 auto 32px;">Lutheus CezaRapor global dashboard'una erişmek için Google yetkilendirmesi gereklidir.</p>
+      <p style="color:var(--text-dim); max-width:500px; margin:0 auto 32px;">Global dashboard'a erişmek için giriş yapın.</p>
     </div>
   </div>
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-    import { getFirestore, collection, getDocs, query, orderBy, limit, where } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-    import { getAuth, signInWithPopup, GoogleAuthProvider, OAuthProvider, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+    import { getFirestore, collection, getDocs, query, orderBy, limit, where, doc, deleteDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+    import { getAuth, signInWithPopup, GoogleAuthProvider, OAuthProvider, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyDWM0Jl3Fyyok9BIvLCQ1PjKzdl9074ZSs",
@@ -103,9 +117,9 @@
       const oneWeekAgo = new Date();
       oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
 
-      const q = query(collection(db, "punishments"), orderBy("scrapedAt", "desc"), limit(200));
+      const q = query(collection(db, "cases"), orderBy("scrapedAt", "desc"), limit(200));
       const snap = await getDocs(q);
-      const allCases = snap.docs.map(doc => doc.data());
+      const allCases = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       const cases = allCases.filter(c => (c.scrapedAt || 0) >= oneWeekAgo.getTime());
       
       const modMap = {};
@@ -140,7 +154,7 @@
 
       document.getElementById('recentCases').innerHTML = allCases.slice(0, 20).map(c => `
         <tr class="data-row">
-          <td style="font-family:var(--font-mono); font-size:12px; color:var(--accent);">#${c.id || '-'}</td>
+          <td style="font-family:var(--font-mono); font-size:12px; color:var(--accent);">#${c.caseId || c.id.slice(-8)}</td>
           <td>${c.authorName || 'Bilinmiyor'}</td>
           <td>${c.user || 'Bilinmiyor'}</td>
           <td style="font-size:13px; color:var(--text-dim); max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${c.reason || '-'}</td>
@@ -149,16 +163,85 @@
       `).join('');
     }
 
-    document.getElementById('loginBtn').onclick = () => signInWithPopup(auth, googleProvider);
-    document.getElementById('loginDiscordBtn').onclick = () => signInWithPopup(auth, discordProvider);
+    async function loadAdminData() {
+      try {
+        const allowSnap = await getDocs(collection(db, "googleAllowlist"));
+        document.getElementById('admin-allowlist').innerHTML = allowSnap.docs.map(d => `
+          <tr class="data-row">
+            <td>${d.id}</td>
+            <td><span class="role-badge">${d.data().role}</span></td>
+            <td>${d.data().allowed ? '✅ Aktif' : '❌ Pasif'}</td>
+            <td><button class="btn-danger" onclick="deleteEntry('googleAllowlist', '${d.id}')">Kaldır</button></td>
+          </tr>
+        `).join('');
 
-    onAuthStateChanged(auth, (user) => {
+        const cacheSnap = await getDocs(collection(db, "roleCache"));
+        document.getElementById('admin-rolecache').innerHTML = cacheSnap.docs.map(d => `
+          <tr class="data-row">
+            <td>${d.id}</td>
+            <td>${d.data().displayName || '-'}</td>
+            <td><span class="role-badge">${d.data().role}</span></td>
+            <td><button class="btn-danger" onclick="deleteEntry('roleCache', '${d.id}')">Kaldır</button></td>
+          </tr>
+        `).join('');
+      } catch(e) {
+        console.warn("Admin verisi yuklenemedi (Yetki yetersiz olabilir)");
+      }
+    }
+
+    window.deleteEntry = async (col, id) => {
+      if(confirm(id + ' silinsin mi?')) {
+        await deleteDoc(doc(db, col, id));
+        loadAdminData();
+      }
+    };
+
+    document.getElementById('loginBtn').onclick = () => signInWithPopup(auth, googleProvider);
+    document.getElementById('loginDiscordBtn').onclick = () => {
+      signInWithPopup(auth, discordProvider).catch(err => {
+        if(err.code === 'auth/operation-not-allowed') {
+          alert("Discord girişi için Firebase Identity Platform'a yükseltme yapmanız gerekiyor. Lütfen Google ile giriş yapın.");
+        } else {
+          alert("Hata: " + err.message);
+        }
+      });
+    };
+    document.getElementById('logoutBtn').onclick = () => signOut(auth);
+
+    onAuthStateChanged(auth, async (user) => {
       if (user) {
         document.getElementById('loginBtn').classList.add('hidden');
-        document.getElementById('loginDiscordBtn').innerHTML = `<i class="fa-solid fa-user-check"></i> ${user.displayName.split(' ')[0]}`;
+        document.getElementById('loginDiscordBtn').classList.add('hidden');
+        document.getElementById('userProfile').classList.remove('hidden');
+        document.getElementById('userName').textContent = user.displayName;
         document.getElementById('loginState').classList.add('hidden');
         document.getElementById('dashboardContent').classList.remove('hidden');
+        
+        // Rol Kontrolü
+        const userDoc = await getDoc(doc(db, "users", user.uid));
+        const role = userDoc.exists() ? userDoc.data().role : 'viewer';
+        if(['kurucu', 'admin', 'yonetici'].includes(role)) {
+          document.getElementById('adminTab').classList.remove('hidden');
+        }
+
         loadStats();
+        loadAdminData();
+      } else {
+        document.getElementById('loginBtn').classList.remove('hidden');
+        document.getElementById('loginDiscordBtn').classList.remove('hidden');
+        document.getElementById('userProfile').classList.add('hidden');
+        document.getElementById('loginState').classList.remove('hidden');
+        document.getElementById('dashboardContent').classList.add('hidden');
+      }
+    });
+
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.onclick = () => {
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        const target = btn.dataset.tab;
+        document.getElementById('overview-section').classList.toggle('hidden', target !== 'overview');
+        document.getElementById('management-section').classList.toggle('hidden', target !== 'management');
       }
     });
   </script>

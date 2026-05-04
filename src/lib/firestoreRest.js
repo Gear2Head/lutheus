@@ -71,6 +71,30 @@ async function getIdToken() {
     return session.idToken;
 }
 
+async function proxyRequest(op, path, options = {}) {
+    const token = options.token || await getIdToken();
+    const response = await fetch('/api/firestore', {
+        method: 'POST',
+        headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            op,
+            path,
+            data: options.data || null,
+            documentId: options.documentId || null,
+            pageSize: options.pageSize || null,
+            orderBy: options.orderBy || null
+        })
+    });
+    const payload = await response.json().catch(() => null);
+    if (!response.ok || payload?.ok === false) {
+        throw new Error(payload?.error || `Firestore proxy failed: ${response.status}`);
+    }
+    return payload;
+}
+
 async function request(path, options = {}) {
     const token = options.token || (options.public ? null : await getIdToken());
     const response = await fetch(`${BASE_URL}/${encodePath(path)}${options.query || ''}`, {
@@ -86,6 +110,15 @@ async function request(path, options = {}) {
 
     const payload = await response.json().catch(() => null);
     if (!response.ok) {
+        if ((response.status === 401 || response.status === 403) && !options.public && options.proxy !== false) {
+            return proxyRequest(options.proxyOp || 'get', path, {
+                token,
+                data: options.proxyData,
+                documentId: options.proxyDocumentId,
+                pageSize: options.proxyPageSize,
+                orderBy: options.proxyOrderBy
+            });
+        }
         const message = payload?.error?.message || `Firestore request failed: ${response.status}`;
         throw new Error(message);
     }
@@ -94,7 +127,8 @@ async function request(path, options = {}) {
 
 export const FirestoreRest = {
     async getDocument(path, token = null) {
-        const doc = await request(path, { token });
+        const doc = await request(path, { token, proxyOp: 'get' });
+        if (doc?.document !== undefined) return doc.document;
         if (!doc) return null;
         return { id: documentIdFromName(doc.name), ...fromFirestoreFields(doc.fields || {}) };
     },
@@ -102,8 +136,11 @@ export const FirestoreRest = {
     async setDocument(path, data) {
         const doc = await request(path, {
             method: 'PATCH',
-            body: { fields: toFirestoreFields(data) }
+            body: { fields: toFirestoreFields(data) },
+            proxyOp: 'set',
+            proxyData: data
         });
+        if (doc?.document !== undefined) return doc.document;
         return { id: documentIdFromName(doc.name), ...fromFirestoreFields(doc.fields || {}) };
     },
 
@@ -112,8 +149,12 @@ export const FirestoreRest = {
         if (options.pageSize) query.set('pageSize', String(options.pageSize));
         if (options.orderBy) query.set('orderBy', options.orderBy);
         const payload = await request(collectionPath, {
-            query: query.toString() ? `?${query}` : ''
+            query: query.toString() ? `?${query}` : '',
+            proxyOp: 'list',
+            proxyPageSize: options.pageSize,
+            proxyOrderBy: options.orderBy
         });
+        if (payload?.documents && !payload.documents[0]?.name) return payload.documents;
         return (payload?.documents || []).map((doc) => ({
             id: documentIdFromName(doc.name),
             ...fromFirestoreFields(doc.fields || {})
@@ -125,12 +166,16 @@ export const FirestoreRest = {
         const doc = await request(collectionPath, {
             method: 'POST',
             query,
-            body: { fields: toFirestoreFields(data) }
+            body: { fields: toFirestoreFields(data) },
+            proxyOp: 'create',
+            proxyData: data,
+            proxyDocumentId: documentId
         });
+        if (doc?.document !== undefined) return doc.document;
         return { id: documentIdFromName(doc.name), ...fromFirestoreFields(doc.fields || {}) };
     },
     async deleteDocument(path) {
-        return request(path, { method: 'DELETE' });
+        return request(path, { method: 'DELETE', proxyOp: 'delete' });
     }
 };
 

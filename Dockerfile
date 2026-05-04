@@ -6,4 +6,4 @@ RUN npm install
 COPY --chown=node:node . .
 ENV PORT=7860
 EXPOSE 7860
-CMD ["node", "src/index.js"]
+CMD ["node", "bot-entry.js"]

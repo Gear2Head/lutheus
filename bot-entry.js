@@ -5,7 +5,9 @@ try {
 }
 
 const http = require('http');
+const dns = require('dns');
 const { createHmac, randomUUID } = require('crypto');
+dns.setDefaultResultOrder?.('ipv4first');
 try {
   const { Agent, setGlobalDispatcher } = require('undici');
   setGlobalDispatcher(new Agent({
@@ -34,7 +36,7 @@ const OK_COLOR = 0x22c55e;
 const BRAND = process.env.BOT_BRAND || 'Lutheus Guard';
 const INVITE_PERMISSIONS = process.env.DISCORD_INVITE_PERMISSIONS || '8';
 const DEFAULT_DISCORD_CLIENT_ID = '1500551629768888542';
-const DEFAULT_GUILD_ID = process.env.DISCORD_TARGET_GUILD_ID || process.env.DISCORD_GUILD_ID || '1223431616081166336';
+const DEFAULT_GUILD_ID = process.env.DISCORD_TARGET_GUILD_ID || process.env.DISCORD_GUILD_ID || '1354854696874938590';
 const DISCORD_API_BASE = process.env.DISCORD_API_BASE || 'https://discord.com/api/v10';
 
 const startedAt = Date.now();

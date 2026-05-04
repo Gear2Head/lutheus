@@ -19,8 +19,8 @@ interface ModerationCase {
 PT, yetkililerin haftalık veya aylık performansını ölçmek için her ceza işlemine ağırlık veren bir sistemdir.
 Örnek Puanlama (Konfigüre edilebilir):
 - MUTE (A, B, C Kategorisi): 1 Puan
-- KISITLAMA (DIRECT_RESTRICTION): 3 Puan
-- BAN (DIRECT_BAN): 5 Puan
+- KISITLAMA (DIRECT_RESTRICTION): 1 Puan
+- BAN (DIRECT_BAN): 1 Puan
 
 Bu hesaplama `calculatePT(cases)` adında bir utils fonksiyonunda veya Cloud Functions üzerinde periyodik (cron job) olarak hesaplanabilir.
 

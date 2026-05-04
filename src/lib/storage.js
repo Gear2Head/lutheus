@@ -108,15 +108,18 @@ function hasBetterAvatar(nextAvatar, previousAvatar) {
 
 function normalizeCaseEntry(entry = {}, previous = null) {
     const id = String(entry.id || entry.caseId || '').trim();
+    const embeddedAuthorId = String(entry.authorId || entry.moderatorId || entry.authorName || '').match(/\d{17,20}/)?.[0] || '';
+    const authorId = String(entry.authorId || entry.moderatorId || previous?.authorId || embeddedAuthorId || '').trim();
+    const cleanedAuthorName = String(entry.authorName || entry.moderator || '').replace(authorId, '').trim();
     const merged = {
         ...(previous || {}),
         ...entry,
         id,
         caseId: id,
-        authorId: String(entry.authorId || previous?.authorId || '').trim(),
+        authorId,
         userId: String(entry.userId || previous?.userId || '').trim(),
-        authorName: entry.authorName || previous?.authorName || (entry.authorMissing ? 'Bilinmeyen Yetkili' : 'Bilinmiyor'),
-        authorMissing: Boolean(entry.authorMissing || (!entry.authorId && (!entry.authorName || entry.authorName === 'Bilinmeyen Yetkili'))),
+        authorName: cleanedAuthorName || previous?.authorName || (entry.authorMissing ? 'Bilinmeyen Yetkili' : 'Bilinmiyor'),
+        authorMissing: Boolean(entry.authorMissing || (!authorId && (!cleanedAuthorName || cleanedAuthorName === 'Bilinmeyen Yetkili'))),
         user: entry.user || previous?.user || 'Unknown',
         reason: entry.reason || previous?.reason || '',
         duration: entry.duration || previous?.duration || '',
@@ -177,22 +180,25 @@ export const Storage = {
 
         const caseMap = new Map(existing.map((item) => [String(item.id || item.caseId || ''), item]));
 
+        const normalizedEntries = [];
         for (const entry of newCases) {
             const id = String(entry.id || entry.caseId || '');
             if (!id) continue;
             const previous = caseMap.get(id);
-            caseMap.set(id, normalizeCaseEntry(entry, previous));
+            const normalized = normalizeCaseEntry(entry, previous);
+            normalizedEntries.push(normalized);
+            caseMap.set(id, normalized);
         }
 
         const allCases = Array.from(caseMap.values()).sort(compareCases);
         await this.set('cases', allCases);
         await this.setSyncCases(allCases);
-        await this.updateUserRegistry(newCases);
-        await this.upsertStaffDirectoryFromCases(newCases);
+        await this.updateUserRegistry(normalizedEntries);
+        await this.upsertStaffDirectoryFromCases(normalizedEntries);
         // Throttle: only push to Firebase if batch is >= 1 entry (fire-and-forget)
         const actor = await getActor();
         if (actor && newCases.length > 0) {
-            FirebaseRepository.saveCases(newCases, undefined, actor).catch((error) => {
+            FirebaseRepository.saveCases(normalizedEntries, undefined, actor).catch((error) => {
                 console.warn('Lutheus: Firestore case sync failed:', error.message);
             });
         }
@@ -203,12 +209,13 @@ export const Storage = {
         if (!Array.isArray(cases)) {
             throw new TypeError('saveCases: cases must be an array');
         }
-        await this.set('cases', cases);
-        await this.setSyncCases(cases);
-        await this.upsertStaffDirectoryFromCases(cases);
+        const normalized = cases.map((entry) => normalizeCaseEntry(entry)).sort(compareCases);
+        await this.set('cases', normalized);
+        await this.setSyncCases(normalized);
+        await this.upsertStaffDirectoryFromCases(normalized);
         const actor = await getActor();
         if (actor) {
-            await FirebaseRepository.saveCases(cases, undefined, actor).catch((error) => {
+            await FirebaseRepository.saveCases(normalized, undefined, actor).catch((error) => {
                 console.warn('Lutheus: Firestore case save failed:', error.message);
             });
         }
@@ -305,6 +312,7 @@ export const Storage = {
     async clearCases() {
         await this.set('cases', []);
         await this.set('scanLogs', []);
+        await this.set('sessionSnapshot', { timestamp: Date.now(), caseCount: 0 });
         if (!chrome.storage.sync) return;
 
         return new Promise((resolve) => {
@@ -487,6 +495,10 @@ export const Storage = {
         return (await this.get('scanLogs')) || [];
     },
 
+    async getWeeklySnapshots() {
+        return (await this.get('weeklySnapshots')) || {};
+    },
+
     getWeekKey(date = new Date()) {
         const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
         const dayNum = d.getUTCDay() || 7;
@@ -499,17 +511,12 @@ export const Storage = {
     async saveWeeklySnapshot(weekKey = null, data = null) {
         const key = weekKey || this.getWeekKey();
         const snapshots = await this.get('weeklySnapshots') || {};
-
         if (!data) {
             const cases = await this.getCases();
             data = this.calculateWeeklyStats(cases);
         }
-
-        snapshots[key] = {
-            ...data,
-            savedAt: new Date().toISOString()
-        };
-
+        snapshots[key] = { ...data, savedAt: new Date().toISOString() };
+        
         const sortedKeys = Object.keys(snapshots).sort().reverse();
         const trimmed = {};
         sortedKeys.slice(0, 12).forEach((snapshotKey) => {
@@ -517,7 +524,7 @@ export const Storage = {
         });
 
         await this.set('weeklySnapshots', trimmed);
-        return key;
+        return trimmed[key];
     },
 
     async getWeeklySnapshot(weekKey) {

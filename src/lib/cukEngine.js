@@ -42,24 +42,21 @@ export function parseDuration(durationStr) {
 
     // Pattern: "20s", "1h", "2d", "1w", etc.
     const patterns = [
-        { regex: /(\d+)\s*(sn|saniye|sec|seconds?|s)/i, multiplier: 1 / 60 }, // seconds (TR/EN)
-        { regex: /(\d+)\s*(dk|dakika|min|minutes?|m)(?![a-zA-Z])/i, multiplier: 1 },      // minutes (TR/EN)
-        { regex: /(\d+)\s*(saat|sa|hours?|hour|h)/i, multiplier: 60 },       // hours (TR/EN)
-        { regex: /(\d+)\s*(g|gün|gun|day|days?|d)/i, multiplier: 60 * 24 },   // days (TR/EN)
-        { regex: /(\d+)\s*(hf|hafta|week|weeks?|w)/i, multiplier: 60 * 24 * 7 }, // weeks (TR/EN)
-        { regex: /(\d+)\s*(ay|month|months?)/i, multiplier: 60 * 24 * 30 },   // months (TR/EN)
-        { regex: /(\d+)\s*(y|yıl|yil|sene|year|years?)/i, multiplier: 60 * 24 * 365 } // years (TR/EN)
+        { regex: /(\d+)\s*(saniye|sec|seconds?|sn|s)(?![a-zA-ZçğıöşüÇĞIÖŞÜ])/i, multiplier: 1 / 60 },
+        { regex: /(\d+)\s*(dakika|min|minutes?|dk|m)(?![a-zA-ZçğıöşüÇĞIÖŞÜ])/i, multiplier: 1 },
+        { regex: /(\d+)\s*(saat|hours?|hour|sa|h)(?![a-zA-ZçğıöşüÇĞIÖŞÜ])/i, multiplier: 60 },
+        { regex: /(\d+)\s*(gün|gun|days?|day|g|d)(?![a-zA-ZçğıöşüÇĞIÖŞÜ])/i, multiplier: 60 * 24 },
+        { regex: /(\d+)\s*(hafta|weeks?|week|hf|w)(?![a-zA-ZçğıöşüÇĞIÖŞÜ])/i, multiplier: 60 * 24 * 7 },
+        { regex: /(\d+)\s*(ay|months?|month)(?![a-zA-ZçğıöşüÇĞIÖŞÜ])/i, multiplier: 60 * 24 * 30 },
+        { regex: /(\d+)\s*(yıl|yil|sene|years?|year|y)(?![a-zA-ZçğıöşüÇĞIÖŞÜ])/i, multiplier: 60 * 24 * 365 }
     ];
 
     let totalMinutes = 0;
     let found = false;
 
     for (const { regex, multiplier } of patterns) {
-        // Use global match to find all occurrences (e.g., "1 week and 3 days")
         const matches = str.matchAll(new RegExp(regex.source, 'gi'));
         for (const match of matches) {
-            const nextChar = str[match.index + match[0].length];
-            if (nextChar && /[a-zA-Z]/.test(nextChar)) continue;
             totalMinutes += parseInt(match[1]) * multiplier;
             found = true;
         }

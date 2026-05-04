@@ -289,22 +289,92 @@ async function storageSaveCases(newCases, append = true) {
         ? await new Promise((resolve) => chrome.storage.local.get(['cases'], (result) => resolve(result.cases || [])))
         : [];
 
-    const caseMap = new Map(existing.map((entry) => [entry.id, entry]));
+    const caseMap = new Map(existing.map((entry) => [String(entry.id || entry.caseId || ''), entry]));
 
     for (const entry of newCases) {
-        const previous = caseMap.get(entry.id);
-        if (previous) {
-            entry.note = previous.note;
-            entry.reviewStatus = previous.reviewStatus;
-            entry.manualOverride = previous.manualOverride;
-            entry.assignee = previous.assignee;
-        }
-        caseMap.set(entry.id, entry);
+        const normalized = normalizeCaseForStorage(entry);
+        if (!normalized.id) continue;
+        const previous = caseMap.get(normalized.id);
+        caseMap.set(normalized.id, mergeCaseForStorage(previous, normalized));
     }
 
-    const allCases = Array.from(caseMap.values());
+    const allCases = Array.from(caseMap.values()).sort(compareStoredCases);
     await new Promise((resolve) => chrome.storage.local.set({ cases: allCases }, resolve));
     return allCases.length;
+}
+
+function normalizeCaseForStorage(entry = {}) {
+    const sourceUrl = entry.sourceUrl || '';
+    const urlCaseId = String(sourceUrl.match(/\/cases\/([^/?#]+)/)?.[1] || '');
+    const id = String(entry.id || entry.caseId || urlCaseId || '').trim();
+    const embeddedAuthorId = String(entry.authorId || entry.moderatorId || entry.authorName || entry.moderator || '').match(/\d{17,20}/)?.[0] || '';
+    const authorId = String(entry.authorId || entry.moderatorId || embeddedAuthorId || '');
+    const authorName = String(entry.authorName || entry.moderator || '').replace(authorId, '').trim();
+
+    return {
+        ...entry,
+        id,
+        caseId: id,
+        guildId: String(entry.guildId || entry.rawData?.guildId || entry.rawData?.guild_id || LUTHEUS_GUILD_ID),
+        user: entry.user || entry.username || 'Bilinmiyor',
+        userId: String(entry.userId || ''),
+        authorId,
+        authorName: authorName || (entry.authorMissing ? 'Bilinmeyen Yetkili' : 'Bilinmiyor'),
+        authorMissing: Boolean(entry.authorMissing || (!authorId && !authorName)),
+        reason: entry.reason || '',
+        duration: entry.duration || '',
+        type: entry.type || 'unknown',
+        createdRaw: entry.createdRaw || entry.createdAt || '',
+        sourceUrl,
+        scrapedAt: Number(entry.scrapedAt || Date.now()),
+        lastSeen: Date.now(),
+        source: entry.source || (entry.capturedVia === 'network_interceptor' ? 'sapphire-network' : 'sapphire-dashboard'),
+        capturedVia: entry.capturedVia || 'dom_scraper',
+        rawData: entry.rawData || null
+    };
+}
+
+function mergeCaseForStorage(previous, next) {
+    if (!previous) return next;
+
+    return {
+        ...previous,
+        ...next,
+        user: next.user && next.user !== 'Bilinmiyor' ? next.user : previous.user,
+        authorName: next.authorName && next.authorName !== 'Bilinmiyor' ? next.authorName : previous.authorName,
+        authorId: next.authorId || previous.authorId || '',
+        userId: next.userId || previous.userId || '',
+        reason: next.reason || previous.reason || '',
+        duration: next.duration || previous.duration || '',
+        type: next.type && next.type !== 'unknown' ? next.type : previous.type,
+        createdRaw: next.createdRaw || previous.createdRaw || '',
+        authorAvatar: next.authorAvatar || previous.authorAvatar || null,
+        userAvatar: next.userAvatar || previous.userAvatar || null,
+        note: previous.note,
+        reviewStatus: previous.reviewStatus,
+        manualOverride: previous.manualOverride,
+        assignee: previous.assignee,
+        validationStatus: previous.validationStatus || next.validationStatus,
+        validationReason: previous.validationReason || next.validationReason,
+        lastSeen: Date.now()
+    };
+}
+
+function parseStoredCaseTime(entry = {}) {
+    const candidates = [entry.createdRaw, entry.createdAt, entry.scrapedAt, entry.lastSeen];
+    for (const value of candidates) {
+        if (!value) continue;
+        if (typeof value === 'number') return value;
+        const date = new Date(value);
+        if (!Number.isNaN(date.getTime())) return date.getTime();
+    }
+    return 0;
+}
+
+function compareStoredCases(left, right) {
+    const diff = parseStoredCaseTime(right) - parseStoredCaseTime(left);
+    if (diff) return diff;
+    return String(right.id || '').localeCompare(String(left.id || ''));
 }
 
 async function saveScanRun(run) {
@@ -595,13 +665,16 @@ function buildStaffEntries(cases, registry, directory) {
     const staffMap = new Map();
 
     cases.forEach((entry) => {
-        if (!entry.authorId && !entry.authorName) return;
+        const embeddedId = String(entry.authorId || entry.authorName || '').match(/\d{17,20}/)?.[0] || '';
+        const authorId = entry.authorId || embeddedId;
+        if (!authorId && !entry.authorName) return;
 
-        const key = entry.authorId || normalizeText(entry.authorName);
-        const registryEntry = registry[entry.authorId] || {};
-        const directoryEntry = directory[entry.authorId] || directory[`name:${entry.authorName}`] || {};
+        const key = authorId || normalizeText(entry.authorName);
+        const registryEntry = registry[authorId] || {};
+        const directoryEntry = directory[authorId] || directory[`name:${entry.authorName}`] || {};
+        const cleanName = String(entry.authorName || '').replace(authorId, '').trim();
         const aliases = Array.from(new Set([
-            entry.authorName,
+            cleanName,
             registryEntry.name,
             directoryEntry.displayName,
             ...(directoryEntry.aliases || [])
@@ -609,12 +682,13 @@ function buildStaffEntries(cases, registry, directory) {
 
         if (!staffMap.has(key)) {
             staffMap.set(key, {
-                id: entry.authorId || directoryEntry.discordUserId || key,
-                sapphireAuthorId: entry.authorId || '',
-                displayName: registryEntry.name || directoryEntry.displayName || entry.authorName || 'Bilinmiyor',
+                id: authorId || directoryEntry.discordUserId || key,
+                sapphireAuthorId: authorId || '',
+                displayName: registryEntry.name || directoryEntry.displayName || cleanName || entry.authorName || 'Bilinmiyor',
+                avatar: registryEntry.avatar || directoryEntry.avatar || entry.authorAvatar || null,
                 role: registryEntry.role || directoryEntry.role || 'moderator',
                 aliases,
-                searchTerm: directoryEntry.searchTerm || aliases[0] || entry.authorName || entry.authorId || key,
+                searchTerm: directoryEntry.searchTerm || aliases[0] || cleanName || authorId || key,
                 sapphirePunishments: 0
             });
         }
@@ -796,6 +870,33 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
                 case ACTIONS.CANCEL_AUTONOMOUS_SCAN: {
                     autonomousScanCancelled = true;
                     sendResponse({ success: true });
+                    break;
+                }
+
+                case 'INTERCEPTED_PUNISHMENTS': {
+                    const records = request.records || [];
+                    if (records.length) {
+                        const normalized = records.map((r) => ({
+                            id: r.id || `network-${r.guildId || LUTHEUS_GUILD_ID}-${r.userId || 'unknown'}-${r.type || 'unknown'}-${r.createdAt || request.capturedAt || Date.now()}`,
+                            caseId: r.caseId || r.id,
+                            guildId: r.guildId || LUTHEUS_GUILD_ID,
+                            user: r.username || 'Bilinmiyor',
+                            userId: r.userId || '',
+                            authorId: r.moderatorId || '',
+                            authorName: r.moderator || 'Bilinmiyor',
+                            reason: r.reason || '',
+                            duration: r.duration || '',
+                            type: r.type || 'unknown',
+                            createdRaw: r.createdAt || '',
+                            scrapedAt: Date.now(),
+                            sourceUrl: r.sourceUrl || '',
+                            capturedVia: 'network_interceptor',
+                            rawData: r.rawData || null
+                        }));
+                        await storageSaveCases(normalized, true);
+                        console.log(`[Lutheus SW] Intercepted ${normalized.length} punishments saved`);
+                    }
+                    sendResponse({ status: 'received', count: records.length });
                     break;
                 }
 

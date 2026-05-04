@@ -79,25 +79,44 @@ window.GearTech.Navigation = {
         const initialFirstCase = previousFirstCase || this.getFirstCaseId();
 
         return new Promise((resolve, reject) => {
-            const check = () => {
+            let observer;
+            
+            const evaluate = () => {
                 const current = this.getCurrentPage();
                 const firstCase = this.getFirstCaseId();
                 const pageMatched = current === target;
                 const rowChanged = !initialFirstCase || !firstCase || firstCase !== initialFirstCase;
 
                 if (pageMatched && rowChanged) {
+                    if (observer) observer.disconnect();
                     resolve({ current, firstCase });
-                    return;
+                    return true;
                 }
-
-                if (Date.now() - start > timeout) {
-                    reject(new Error(`PAGE_NAV_TIMEOUT_${target}_CURRENT_${current}`));
-                    return;
-                }
-
-                setTimeout(check, 250);
+                return false;
             };
-            check();
+
+            // Initial check
+            if (evaluate()) return;
+
+            // Start MutationObserver for robust detection of DOM changes
+            observer = new MutationObserver((mutations) => {
+                if (evaluate()) return;
+            });
+
+            // Observe table container, tbody, or body for added rows
+            const container = document.querySelector('table, tbody, [role="table"]') || document.body;
+            observer.observe(container, { childList: true, subtree: true, characterData: true });
+
+            // Fallback interval just in case mutations don't fire
+            const fallbackInterval = setInterval(() => {
+                if (evaluate()) {
+                    clearInterval(fallbackInterval);
+                } else if (Date.now() - start > timeout) {
+                    if (observer) observer.disconnect();
+                    clearInterval(fallbackInterval);
+                    reject(new Error(`PAGE_NAV_TIMEOUT_${target}_CURRENT_${this.getCurrentPage()}`));
+                }
+            }, 300);
         });
     },
 

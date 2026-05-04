@@ -52,8 +52,12 @@
 
     function parseResultsSummary() {
         const text = getResultsContainer()?.textContent || '';
-        const summaryMatch = text.match(/(\d+)\s+(?:sonuc|result)/i);
-        return summaryMatch ? parseInt(summaryMatch[1], 10) : null;
+        const summaryMatch = text.match(/([\d.,]+)\s+(?:sonu?|sonuc|results?|mesaj|message)/i)
+            || text.match(/of\s+([\d.,]+)/i);
+        if (!summaryMatch) return null;
+        
+        const cleanNumber = summaryMatch[1].replace(/[.,]/g, '');
+        return parseInt(cleanNumber, 10);
     }
 
     window.LutheusDiscordParser = {

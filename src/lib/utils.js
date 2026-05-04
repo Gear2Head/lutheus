@@ -65,14 +65,39 @@ export function generateAsciiTable(headers, rows) {
 
 export function parseDate(dateStr) {
     if (!dateStr) return null;
+    const lower = dateStr.toLowerCase().trim();
 
-    const ddmmyyyy = dateStr.match(/(\d{2})\.(\d{2})\.(\d{4})/);
+    // DD.MM.YYYY
+    const ddmmyyyy = lower.match(/(\d{1,2})\.(\d{1,2})\.(\d{4})/);
     if (ddmmyyyy) {
         const [, day, month, year] = ddmmyyyy;
-        return new Date(`${year}-${month}-${day}T00:00:00`);
+        return new Date(`${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}T00:00:00`);
     }
 
-    const relativeMatch = dateStr.match(/(\d+)\s*(day|hour|minute|week|month)s?\s*ago/i);
+    // Relative Turkish: "X gün önce", "X saat önce", etc.
+    const trRelative = lower.match(/(\d+)\s*(gün|saat|dakika|hafta|ay)\s*önce/i);
+    if (trRelative) {
+        const [, amount, unit] = trRelative;
+        const now = new Date();
+        const multipliers = {
+            dakika: 60 * 1000,
+            saat: 60 * 60 * 1000,
+            gün: 24 * 60 * 60 * 1000,
+            hafta: 7 * 24 * 60 * 60 * 1000,
+            ay: 30 * 24 * 60 * 60 * 1000
+        };
+        return new Date(now.getTime() - (parseInt(amount, 10) * multipliers[unit.toLowerCase()]));
+    }
+
+    if (lower === 'bugün') return new Date();
+    if (lower === 'dün') {
+        const d = new Date();
+        d.setDate(d.getDate() - 1);
+        return d;
+    }
+
+    // Relative English
+    const relativeMatch = lower.match(/(\d+)\s*(day|hour|minute|week|month)s?\s*ago/i);
     if (relativeMatch) {
         const [, amount, unit] = relativeMatch;
         const now = new Date();

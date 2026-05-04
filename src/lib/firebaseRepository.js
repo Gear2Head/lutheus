@@ -1,6 +1,6 @@
 import { FirestoreRest } from './firestoreRest.js';
 import { APP_CONFIG } from '../config/appConfig.js';
-import { normalizeRole, ROLES, getDefaultGroqLimit, getDefaultRolePolicy, SEEDED_ROLE_MEMBERS } from '../auth/rolePolicy.js';
+import { normalizeRole, ROLES, getDefaultGroqLimit, getDefaultRolePolicy, SEEDED_ROLE_MEMBERS, SEEDED_GOOGLE_ALLOWLIST } from '../auth/rolePolicy.js';
 
 function safeDocId(value) {
     return String(value || 'unknown').trim().toLowerCase().replace(/\//g, '_');
@@ -200,6 +200,33 @@ export const FirebaseRepository = {
 
     async listAuditLogs() {
         return FirestoreRest.listDocuments('auditLogs', { pageSize: 100, orderBy: 'createdAt desc' });
+    },
+
+    async deleteGoogleAllowlist(email, actor = null) {
+        await this.addAuditLog('google_allowlist_deleted', { email }, actor);
+        return FirestoreRest.deleteDocument(`googleAllowlist/${safeDocId(email)}`);
+    },
+
+    async deleteRoleCache(identityKey, actor = null) {
+        await this.addAuditLog('role_cache_deleted', { identityKey }, actor);
+        return FirestoreRest.deleteDocument(`roleCache/${safeDocId(identityKey)}`);
+    },
+
+    async seedGoogleAllowlist(actor = null) {
+        const existing = await this.listGoogleAllowlist().catch(() => []);
+        const existingEmails = new Set(existing.map((entry) => String(entry.email || entry.id || '').toLowerCase()));
+        const writes = [];
+        for (const member of SEEDED_GOOGLE_ALLOWLIST) {
+            if (existingEmails.has(member.email.toLowerCase())) continue;
+            writes.push(this.setGoogleAllowlist(member.email, {
+                role: member.role,
+                allowed: true,
+                note: member.note
+            }, actor));
+        }
+        const result = await Promise.all(writes);
+        if (result.length) await this.addAuditLog('google_allowlist_seeded', { count: result.length }, actor);
+        return result;
     },
 
     dailyQuotaDocId(uid, dateKey = todayKey()) {

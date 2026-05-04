@@ -1,5 +1,5 @@
 import { collection, query, where, getDocs, Timestamp } from 'firebase/firestore';
-// @ts-ignore - Assuming firebase config is initialized elsewhere, e.g., src/config/firebase.js
+// @ts-expect-error - Firebase config is provided by the extension runtime build.
 import { db } from '../config/firebase'; // Adjust this import based on the actual firebase setup
 import { RULES, RuleCategory } from '../config/punishments';
 

@@ -128,5 +128,10 @@ export const FirestoreRest = {
             body: { fields: toFirestoreFields(data) }
         });
         return { id: documentIdFromName(doc.name), ...fromFirestoreFields(doc.fields || {}) };
+    },
+    async deleteDocument(path) {
+        return request(path, { method: 'DELETE' });
     }
 };
+
+// ... existing code below if any, but this is the end of FirestoreRest ...

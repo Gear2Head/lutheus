@@ -21,33 +21,45 @@ import { analyzeCaseWithGroq } from '../lib/aiAnalysisClient.js';
 import { bindAvatarFallbacks, resolveAvatar } from '../lib/avatar.js';
 
 const DOM = {
-    totalCases: document.getElementById('totalCases'),
-    topModName: document.getElementById('topModName'),
-    topModCount: document.getElementById('topModCount'),
-    topReasonName: document.getElementById('topReasonName'),
-    topReasonCount: document.getElementById('topReasonCount'),
-    comparisonGrid: document.getElementById('comparisonGrid'),
-    navBtns: document.querySelectorAll('.nav-btn'),
+    totalCases: document.getElementById('st-total'),
+    validCases: document.getElementById('st-valid'),
+    invalidCases: document.getElementById('st-invalid'),
+    pendingCases: document.getElementById('st-pending'),
+    modsCount: document.getElementById('st-mods'),
+    topModName: document.getElementById('topModName'), // May be null in new UI
+    topModCount: document.getElementById('topModCount'), // May be null in new UI
+    topReasonName: document.getElementById('topReasonName'), // May be null in new UI
+    topReasonCount: document.getElementById('topReasonCount'), // May be null in new UI
+    comparisonGrid: document.getElementById('comparisonGrid'), // May be null in new UI
+    dNew: document.getElementById('d-new'),
+    dInv: document.getElementById('d-inv'),
+    dAcc: document.getElementById('d-acc'),
+    dMods: document.getElementById('d-mods'),
+    navBtns: document.querySelectorAll('.nav-item'),
     pageSubtitle: document.getElementById('pageSubtitle'),
-    dashboardView: document.getElementById('dashboardView'),
-    managementView: document.getElementById('managementView'),
-    rulesView: document.getElementById('rulesView'),
-    pointtrainView: document.getElementById('pointtrainView'),
-    authView: document.getElementById('authView'),
-    adminProfileAvatar: document.getElementById('adminProfileAvatar'),
-    adminProfileName: document.getElementById('adminProfileName'),
-    adminProfileRole: document.getElementById('adminProfileRole'),
+    dashboardView: document.getElementById('page-dashboard'),
+    managementView: document.getElementById('page-management'),
+    rulesView: document.getElementById('page-cuk'),
+    pointtrainView: document.getElementById('page-pointtrain'),
+    authView: document.getElementById('page-auth'),
+    adminProfileAvatar: document.getElementById('userAvatar'),
+    adminProfileName: document.getElementById('userName'),
+    adminProfileRole: document.getElementById('userRole'),
     modTableBody: document.getElementById('modTableBody'),
     mgmtSummaryTableBody: document.getElementById('mgmtSummaryTableBody'),
     reasonList: document.getElementById('reasonList'),
     mgmtModList: document.getElementById('mgmtModList'),
     mgmtCaseList: document.getElementById('mgmtCaseList'),
     tableSearch: document.getElementById('tableSearch'),
+    dateFilter: document.getElementById('dateFilter'),
+    cukSearch: document.getElementById('cukSearch'),
     caseSearch: document.getElementById('caseSearch'),
-    refreshBtn: document.getElementById('refreshBtn'),
-    revalidateBtn: document.getElementById('revalidateBtn'),
-    exportBtn: document.getElementById('exportBtn'),
-    copyDiscordBtn: document.getElementById('copyDiscordBtn'),
+    casePeriodFilter: document.getElementById('casePeriodFilter'),
+    caseSortFilter: document.getElementById('caseSortFilter'),
+    refreshBtn: document.getElementById('btnRefresh'),
+    revalidateBtn: document.getElementById('btnRevalidate'),
+    exportBtn: document.getElementById('btnExport'),
+    copyDiscordBtn: document.getElementById('btnCopyDiscord'),
     roleBtn: document.getElementById('roleBtn'),
     detailModal: document.getElementById('detailModal'),
     modalTitle: document.getElementById('modalTitle'),
@@ -62,18 +74,27 @@ const DOM = {
     manualAccuracy: document.getElementById('manualAccuracy'),
     lookupUserBtn: document.getElementById('lookupUserBtn'),
     roleUserNameHint: document.getElementById('roleUserNameHint'),
-    aiRulesBtn: document.getElementById('aiRulesBtn'),
-    btnBackToDashboard: document.getElementById('btnBackToDashboard'),
-    btnSaveRules: document.getElementById('btnSaveRules'),
-    ruleCategoriesList: document.getElementById('ruleCategoriesList'),
+    
+    // CUK rule editor mapping
+    ruleCategoriesList: document.getElementById('cukCategoryList'),
     btnAddCategory: document.getElementById('btnAddCategory'),
-    ruleEditorContent: document.getElementById('ruleEditorContent'),
-    noRuleSelected: document.getElementById('noRuleSelected'),
-    editCategoryName: document.getElementById('editCategoryName'),
-    repeatsList: document.getElementById('repeatsList'),
-    btnAddRepeat: document.getElementById('btnAddRepeat'),
-    categoryKeywords: document.getElementById('categoryKeywords'),
+    ruleEditorContent: document.getElementById('cukEditorContent'),
+    noRuleSelected: document.getElementById('cukEmptyState'),
+    editCategoryName: document.getElementById('cukCatName'),
+    repeatsList: document.getElementById('repeatStepsList'),
+    btnAddRepeat: document.getElementById('btnAddStep'),
+    categoryKeywords: document.getElementById('keywordInput'),
     btnDeleteCategory: document.getElementById('btnDeleteCategory'),
+    btnSaveRules: document.getElementById('btnCukSave'),
+    btnDuplicateCategory: document.getElementById('btnDuplicateCategory'),
+    btnSaveCategoryInline: document.getElementById('btnSaveCategoryInline'),
+    btnBackToDashboard: document.getElementById('btnBackToDashboard'),
+    stepsTimeline: document.getElementById('stepsTimeline'),
+    keywordTagsArea: document.getElementById('keywordTagsArea'),
+    autoInvalidTagsArea: document.getElementById('autoInvalidTagsArea'),
+    autoInvalidInput: document.getElementById('autoInvalidInput'),
+    globalInvalidArea: document.getElementById('globalInvalidArea'),
+    globalInvalidInput: document.getElementById('globalInvalidInput'),
     pointtrainRefreshBtn: document.getElementById('pointtrainRefreshBtn'),
     pointtrainCopyBtn: document.getElementById('pointtrainCopyBtn'),
     pointtrainExportBtn: document.getElementById('pointtrainExportBtn'),
@@ -110,7 +131,7 @@ const Toast = {
     container: null,
 
     init() {
-        this.container = document.getElementById('toastContainer');
+        this.container = document.getElementById('toastStack');
     },
 
     show(title, message, type = 'info', duration = 4000) {
@@ -179,6 +200,96 @@ function avatarImg(url, className, alt) {
     return `<img src="${escapeHtml(resolveAvatar(url))}" class="${className}" alt="${escapeHtml(alt || 'Avatar')}" data-avatar-img>`;
 }
 
+function extractSnowflake(value) {
+    return String(value || '').match(/\d{17,20}/)?.[0] || '';
+}
+
+function cleanStaffName(value, id = '') {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    let text = raw.replace(/\s+/g, ' ');
+    if (id) text = text.replaceAll(id, '').trim();
+    text = text.replace(/\d{17,20}/g, '').replace(/[-_]{2,}/g, '-').trim();
+    return text || raw;
+}
+
+function findProfileByName(name) {
+    const normalized = String(name || '').trim().toLowerCase();
+    if (!normalized) return null;
+    const pools = [
+        ...Object.values(state.userRegistry || {}),
+        ...Object.values(state.staffDirectory || {}),
+        ...(state.roleCache || [])
+    ];
+    return pools.find((entry) => {
+        const names = [
+            entry.name,
+            entry.displayName,
+            entry.username,
+            ...(entry.aliases || [])
+        ].filter(Boolean).map((item) => String(item).trim().toLowerCase());
+        return names.includes(normalized);
+    }) || null;
+}
+
+function resolveStaffProfile(source = {}) {
+    const rawId = source.authorId || source.id || source.discordUserId || source.sapphireAuthorId || source.discordId || '';
+    const rawName = source.authorName || source.name || source.displayName || source.username || '';
+    const embeddedId = extractSnowflake(rawId) || extractSnowflake(rawName);
+    const id = embeddedId || String(rawId || '').trim();
+    const directoryEntry = state.staffDirectory[id] || state.staffDirectory[`name:${rawName}`] || {};
+    const registryEntry = state.userRegistry[id] || {};
+    const roleEntry = (state.roleCache || []).find((entry) => {
+        const cacheId = entry.discordId || String(entry.identityKey || entry.id || '').replace(/^discord:/, '');
+        return cacheId === id;
+    }) || {};
+    const nameEntry = findProfileByName(cleanStaffName(rawName, id)) || {};
+    const profile = {
+        ...nameEntry,
+        ...directoryEntry,
+        ...registryEntry,
+        ...roleEntry
+    };
+    const displayName = profile.displayName || profile.name || cleanStaffName(rawName, id) || (id ? `Yetkili ${id.slice(-4)}` : 'Bilinmeyen Yetkili');
+
+    return {
+        id: id || profile.discordId || profile.discordUserId || profile.sapphireAuthorId || '',
+        name: displayName,
+        avatar: resolveAvatar(profile.avatar || source.authorAvatar || source.avatar),
+        role: normalizeRole(profile.role || source.role || 'moderator'),
+        missing: !id && !displayName
+    };
+}
+
+function staffIdentityHtml(profile, { compact = false } = {}) {
+    const id = profile.id || '';
+    return `
+        <button class="staff-identity ${compact ? 'compact' : ''}" type="button" data-copy-id="${escapeHtml(id)}" title="${id ? 'Yetkili ID kopyala' : 'Yetkili ID yok'}">
+            ${avatarImg(profile.avatar, 'staff-avatar', profile.name)}
+            <span class="staff-copy">
+                <strong>${escapeHtml(profile.name || 'Bilinmeyen Yetkili')}</strong>
+                <small>${escapeHtml(id || 'ID yok')}</small>
+            </span>
+        </button>
+    `;
+}
+
+function bindStaffCopyHandlers(root = document) {
+    root.querySelectorAll('.staff-identity[data-copy-id]').forEach((button) => {
+        if (button.dataset.bound === '1') return;
+        button.dataset.bound = '1';
+        button.addEventListener('click', async () => {
+            const id = button.dataset.copyId;
+            if (!id) {
+                Toast.warning('Yetkili', 'Kopyalanacak ID yok');
+                return;
+            }
+            await copyText(id);
+            Toast.success('Yetkili ID kopyalandı', id);
+        });
+    });
+}
+
 function roleBadge(role) {
     const normalized = normalizeRole(role);
     return `<span class="role-chip" style="--role-color:${escapeHtml(getRoleColor(normalized))}">${escapeHtml(getRoleLabel(normalized))}</span>`;
@@ -193,31 +304,58 @@ function openCaseUrl(entry) {
     if (url) window.open(url, '_blank', 'noopener');
 }
 
+function caseTimestamp(entry = {}) {
+    return parseDate(entry.createdRaw)?.getTime()
+        || parseDate(entry.createdAt)?.getTime()
+        || Number(entry.scrapedAt || entry.lastSeen || 0);
+}
+
+function isCaseInPeriod(entry, period) {
+    if (period === 'all') return true;
+    const ts = caseTimestamp(entry);
+    if (!ts) return true;
+    const now = new Date();
+    const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    if (period === 'today') return ts >= startToday;
+    if (period === 'week') return ts >= Date.now() - (7 * 24 * 60 * 60 * 1000);
+    if (period === 'month') return ts >= Date.now() - (30 * 24 * 60 * 60 * 1000);
+    return true;
+}
+
+function compareCasesForAdmin(left, right, sort) {
+    if (sort === 'oldest') return caseTimestamp(left) - caseTimestamp(right);
+    if (sort === 'status') return String(getValidation(left).status).localeCompare(String(getValidation(right).status), 'tr');
+    if (sort === 'staff') return resolveStaffProfile(left).name.localeCompare(resolveStaffProfile(right).name, 'tr');
+    return caseTimestamp(right) - caseTimestamp(left);
+}
+
 function switchTab(tabId) {
     state.activeTab = tabId;
-    DOM.navBtns.forEach((button) => {
-        button.classList.toggle('active', button.dataset.tab === tabId);
+    DOM.navBtns?.forEach((button) => {
+        button.classList.toggle('active', button.dataset.page === tabId);
     });
 
     [
         ['dashboard', DOM.dashboardView],
         ['management', DOM.managementView],
-        ['rules', DOM.rulesView],
+        ['cuk', DOM.rulesView],
         ['pointtrain', DOM.pointtrainView],
         ['auth', DOM.authView]
     ].forEach(([id, view]) => {
-        view?.classList.toggle('hidden', tabId !== id);
-        view?.classList.toggle('active', tabId === id);
+        if (!view) return;
+        view.classList.toggle('hidden', tabId !== id);
+        view.classList.toggle('active', tabId === id);
     });
 
     const subtitles = {
-        dashboard: 'Moderasyon Analiz Sistemi v2.0',
-        management: 'Yetkili ve case yonetimi',
-        rules: 'CUK rule editor',
-        pointtrain: 'Sapphire + Discord pointtrain raporu',
-        auth: 'Kullanici, rol ve API limit yonetimi'
+        dashboard: 'admin :: dashboard',
+        management: 'admin :: yönetim',
+        cuk: 'admin :: cuk rule editor',
+        pointtrain: 'admin :: pointtrain',
+        auth: 'admin :: erişim yönetimi'
     };
-    DOM.pageSubtitle.textContent = subtitles[tabId] || subtitles.dashboard;
+    if (DOM.pageSubtitle) DOM.pageSubtitle.textContent = subtitles[tabId] || subtitles.dashboard;
+    if (tabId === 'auth') loadAuthAdminData();
 }
 
 function renderAuthTables({ allowlist = [], roleCache = [], policy = {}, audit = [] } = {}) {
@@ -227,9 +365,14 @@ function renderAuthTables({ allowlist = [], roleCache = [], policy = {}, audit =
                 <td>${escapeHtml(entry.email || entry.id || '-')}</td>
                 <td>${roleBadge(entry.role || '-')}</td>
                 <td>${entry.allowed === false ? 'Kapali' : 'Aktif'}</td>
+                <td>
+                    <button class="btn btn-ghost btn-icon btn-del-allow" data-email="${escapeHtml(entry.email || entry.id)}">
+                        <i class="fa-solid fa-trash-can"></i>
+                    </button>
+                </td>
             </tr>
         `).join('')
-        : '<tr><td colspan="3" style="text-align:center; padding:16px;">Allowlist kaydi yok</td></tr>';
+        : '<tr><td colspan="4" style="text-align:center; padding:16px;">Allowlist kaydi yok</td></tr>';
 
     DOM.roleCacheTableBody.innerHTML = roleCache.length
         ? roleCache.map((entry) => `
@@ -237,9 +380,21 @@ function renderAuthTables({ allowlist = [], roleCache = [], policy = {}, audit =
                 <td>${escapeHtml(entry.identityKey || entry.id || '-')}</td>
                 <td>${escapeHtml(entry.displayName || '-')}</td>
                 <td>${roleBadge(entry.role || '-')}</td>
+                <td>
+                    <button class="btn btn-ghost btn-icon btn-del-cache" data-key="${escapeHtml(entry.identityKey || entry.id)}">
+                        <i class="fa-solid fa-trash-can"></i>
+                    </button>
+                </td>
             </tr>
         `).join('')
-        : '<tr><td colspan="3" style="text-align:center; padding:16px;">Role cache kaydi yok</td></tr>';
+        : '<tr><td colspan="4" style="text-align:center; padding:16px;">Role cache kaydi yok</td></tr>';
+
+    DOM.allowlistTableBody.querySelectorAll('.btn-del-allow').forEach(btn => {
+        btn.addEventListener('click', () => deleteAllowlist(btn.dataset.email));
+    });
+    DOM.roleCacheTableBody.querySelectorAll('.btn-del-cache').forEach(btn => {
+        btn.addEventListener('click', () => deleteRoleCache(btn.dataset.key));
+    });
 
     const limits = { ...DEFAULT_GROQ_LIMITS, ...(policy.groqLimits || {}) };
     DOM.groqLimitGrid.innerHTML = Object.keys(DEFAULT_GROQ_LIMITS).map((role) => `
@@ -317,21 +472,50 @@ async function saveGroqPolicy() {
     Toast.success('Groq', 'Rol bazli limitler kaydedildi');
 }
 
+async function deleteAllowlist(email) {
+    if (!confirm(`${email} allowlist'ten silinecek. Emin misiniz?`)) return;
+    await FirebaseRepository.deleteGoogleAllowlist(email, state.session?.profile);
+    await loadAuthAdminData();
+    Toast.success('Allowlist', 'Erisim silindi');
+}
+
+async function deleteRoleCache(identityKey) {
+    if (!confirm(`${identityKey} cache'den silinecek. Emin misiniz?`)) return;
+    await FirebaseRepository.deleteRoleCache(identityKey, state.session?.profile);
+    await loadAuthAdminData();
+    Toast.success('Role cache', 'Rol kaydi silindi');
+}
+
 function calculateStats() {
+    const filterType = DOM.dateFilter?.value || 'week';
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const startOfWeek = now.getTime() - (7 * 24 * 60 * 60 * 1000);
+    const startOfMonth = now.getTime() - (30 * 24 * 60 * 60 * 1000);
+
+    const filteredCases = state.allCases.filter(c => {
+        if (filterType === 'all') return true;
+        const ts = parseDate(c.createdRaw)?.getTime() || c.scrapedAt || 0;
+        if (filterType === 'today') return ts >= startOfToday;
+        if (filterType === 'week') return ts >= startOfWeek;
+        if (filterType === 'month') return ts >= startOfMonth;
+        return true;
+    });
+
     const moderatorMap = new Map();
     const reasonMap = new Map();
 
-    state.allCases.forEach((entry) => {
-        const key = entry.authorId || (entry.authorMissing ? 'unknown-author' : entry.authorName) || 'unknown-author';
-        const registryEntry = state.userRegistry[entry.authorId] || state.staffDirectory[entry.authorId] || {};
+    filteredCases.forEach((entry) => {
+        const profile = resolveStaffProfile(entry);
+        const key = profile.id || (profile.name && !entry.authorMissing ? `name:${profile.name}` : `unknown-author:${entry.id || entry.caseId || entry.userId || 'record'}`);
         const validation = getValidation(entry);
 
         if (!moderatorMap.has(key)) {
             moderatorMap.set(key, {
-                id: entry.authorId || '',
-                name: registryEntry.name || registryEntry.displayName || entry.authorName || 'Bilinmeyen Yetkili',
-                role: normalizeRole(registryEntry.role || 'moderator'),
-                avatar: resolveAvatar(registryEntry.avatar || entry.authorAvatar),
+                id: profile.id || key,
+                name: profile.name,
+                role: profile.role,
+                avatar: profile.avatar,
                 count: 0,
                 valid: 0,
                 invalid: 0,
@@ -367,82 +551,108 @@ function calculateStats() {
         management,
         reasons,
         topMod: ranked[0] || null,
-        topReason: reasons[0] || null
+        topReason: reasons[0] || null,
+        filteredCases
     };
 }
 
 function renderStats() {
-    const { staff, management, topMod, topReason, reasons } = calculateStats();
-    DOM.totalCases.textContent = String(state.allCases.length);
-    DOM.topModName.textContent = topMod?.name || '—';
-    DOM.topModCount.textContent = `${topMod?.count || 0} islem`;
-    DOM.topReasonName.textContent = topReason?.[0] || '—';
-    DOM.topReasonCount.textContent = `${topReason?.[1] || 0} kez`;
+    const { staff, management, topMod, topReason, reasons, filteredCases } = calculateStats();
+    
+    // Core numbers
+    if (DOM.totalCases) DOM.totalCases.textContent = String(filteredCases.length);
+    
+    const validCount = filteredCases.filter(c => getValidation(c).status === PenaltyStatus.VALID).length;
+    const invalidCount = filteredCases.filter(c => getValidation(c).status === PenaltyStatus.INVALID).length;
+    const pendingCount = filteredCases.filter(c => getValidation(c).status === PenaltyStatus.PENDING).length;
+    
+    if (DOM.validCases) DOM.validCases.textContent = String(validCount);
+    if (DOM.invalidCases) DOM.invalidCases.textContent = String(invalidCount);
+    if (DOM.pendingCases) DOM.pendingCases.textContent = String(pendingCount);
+    if (DOM.modsCount) DOM.modsCount.textContent = String(staff.length + management.length);
 
-    DOM.reasonList.innerHTML = reasons.slice(0, 12).map(([name, count]) => `
-        <div class="reason-item">
-            <span class="reason-name" title="${escapeHtml(name)}">${escapeHtml(name)}</span>
-            <span class="reason-count">${count}</span>
-        </div>
-    `).join('');
+    if (DOM.topModName) DOM.topModName.textContent = topMod?.name || '-';
+    if (DOM.topModCount) DOM.topModCount.textContent = `${topMod?.count || 0} islem`;
+    if (DOM.topReasonName) DOM.topReasonName.textContent = topReason?.[0] || '-';
+    if (DOM.topReasonCount) DOM.topReasonCount.textContent = `${topReason?.[1] || 0} kez`;
 
-    DOM.comparisonGrid.innerHTML = `
-        <div class="comp-card">
-            <div class="comp-label">Staff</div>
-            <div class="comp-value">${staff.length}</div>
-        </div>
-        <div class="comp-card">
-            <div class="comp-label">Yonetim</div>
-            <div class="comp-value">${management.length}</div>
-        </div>
-        <div class="comp-card">
-            <div class="comp-label">Son tarama</div>
-            <div class="comp-value">${formatTurkishDate(new Date())}</div>
-        </div>
-    `;
+    if (DOM.reasonList) {
+        const maxC = reasons[0]?.[1] || 1;
+        DOM.reasonList.innerHTML = reasons.slice(0, 12).map(([name, count]) => `
+            <div style="display:flex;align-items:center;gap:10px;">
+              <div style="flex:1;">
+                <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px;">
+                  <span style="color:var(--text-2);">${escapeHtml(name)}</span>
+                  <span style="color:var(--text-3);font-family:var(--font-mono);">${count}</span>
+                </div>
+                <div style="height:4px;background:var(--border);border-radius:2px;overflow:hidden;">
+                  <div style="width:${Math.round(count/maxC*100)}%;height:100%;background:var(--purple-hi);border-radius:2px;"></div>
+                </div>
+              </div>
+            </div>
+        `).join('');
+    }
+
+    if (DOM.comparisonGrid) {
+        DOM.comparisonGrid.innerHTML = `
+            <div class="comp-card">
+                <div class="comp-label">Staff</div>
+                <div class="comp-value">${staff.length}</div>
+            </div>
+            <div class="comp-card">
+                <div class="comp-label">Yonetim</div>
+                <div class="comp-value">${management.length}</div>
+            </div>
+            <div class="comp-card">
+                <div class="comp-label">Son tarama</div>
+                <div class="comp-value">${formatTurkishDate(new Date())}</div>
+            </div>
+        `;
+    }
 }
 
 function renderModRow(entry, index) {
+    const acc = entry.performance?.validPercent || 0;
+    const color = acc >= 90 ? 'var(--emerald)' : acc >= 80 ? 'var(--amber)' : 'var(--red)';
     return `
         <tr class="data-row">
-            <td>${index + 1}</td>
+            <td style="color:var(--text-3);font-family:var(--font-mono);font-size:12px;">${index + 1}</td>
+            <td>${staffIdentityHtml(entry)}</td>
+            <td><span class="role-chip ${escapeHtml(entry.role)}">${escapeHtml(getRoleLabel(entry.role))}</span></td>
+            <td style="font-family:var(--font-mono);">${entry.count}</td>
             <td>
-                <div style="display:flex; align-items:center; gap:8px;">
-                    ${avatarImg(entry.avatar, 'table-avatar small', entry.name)}
-                    <div>
-                        <div>${escapeHtml(entry.name)}</div>
-                        <small>${escapeHtml(getRoleLabel(entry.role))}</small>
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <div style="flex:1;height:4px;background:var(--border);border-radius:2px;overflow:hidden;">
+                        <div style="width:${acc}%;height:100%;background:${color};border-radius:2px;"></div>
                     </div>
+                    <span style="font-size:12px;color:var(--text-2);font-family:var(--font-mono);width:36px;">${acc}%</span>
                 </div>
             </td>
-            <td>${entry.count}</td>
-            <td>${entry.valid}</td>
-            <td>${entry.invalid}</td>
             <td>
-                <button class="btn-view" type="button" data-id="${escapeHtml(entry.id)}" data-name="${escapeHtml(entry.name)}">Detay</button>
+                <button class="btn btn-ghost btn-icon btn-view" type="button" data-id="${escapeHtml(entry.id)}" data-name="${escapeHtml(entry.name)}" style="width:28px;height:28px;font-size:11px;">
+                    <i class="fa-solid fa-arrow-right"></i>
+                </button>
             </td>
         </tr>
     `;
 }
 
 function renderTable(search = '') {
-    const query = search.trim().toLowerCase();
-    const { staff, management } = calculateStats();
+    const query = (search || '').trim().toLowerCase();
+    const { staff } = calculateStats();
     const filter = (entry) => !query || entry.name.toLowerCase().includes(query) || entry.role.toLowerCase().includes(query);
     const filteredStaff = staff.filter(filter);
-    const filteredManagement = management.filter(filter);
 
-    DOM.modTableBody.innerHTML = filteredStaff.length
-        ? filteredStaff.map((entry, index) => renderModRow(entry, index)).join('')
-        : '<tr><td colspan="6" style="text-align:center; padding:20px;">Kayit bulunamadi</td></tr>';
-
-    DOM.mgmtSummaryTableBody.innerHTML = filteredManagement.length
-        ? filteredManagement.map((entry, index) => renderModRow(entry, index)).join('')
-        : '<tr><td colspan="6" style="text-align:center; padding:20px;">Kayit bulunamadi</td></tr>';
+    if (DOM.modTableBody) {
+        DOM.modTableBody.innerHTML = filteredStaff.length
+            ? filteredStaff.map((entry, index) => renderModRow(entry, index)).join('')
+            : '<tr><td colspan="6" style="text-align:center; padding:20px;">Kayıt bulunamadı</td></tr>';
+    }
 
     document.querySelectorAll('.btn-view').forEach((button) => {
         button.addEventListener('click', () => openModal({ id: button.dataset.id, name: button.dataset.name }));
     });
+    bindStaffCopyHandlers();
     bindAvatarFallbacks();
 }
 
@@ -455,7 +665,7 @@ function renderManagement() {
             id,
             name: entry.displayName || entry.name || 'Bilinmiyor',
             avatar: entry.avatar || null,
-            role: normalizeRole(entry.role || 'moderator'),
+            role: entry.role ? normalizeRole(entry.role) : null,
             aliases: entry.aliases || [],
             source: entry.source || 'staffDirectory'
         });
@@ -466,7 +676,7 @@ function renderManagement() {
             ...(merged.get(entry.id) || {}),
             ...entry,
             name: entry.name || merged.get(entry.id)?.name || 'Bilinmiyor',
-            role: normalizeRole(entry.role || merged.get(entry.id)?.role || 'moderator')
+            role: entry.role ? normalizeRole(entry.role) : (merged.get(entry.id)?.role || null)
         });
     });
     (state.roleCache || []).forEach((entry) => {
@@ -476,47 +686,52 @@ function renderManagement() {
             ...(merged.get(id) || {}),
             id,
             name: entry.displayName || merged.get(id)?.name || id,
-            role: normalizeRole(entry.role || merged.get(id)?.role || 'moderator')
+            role: entry.role ? normalizeRole(entry.role) : (merged.get(id)?.role || null)
         });
     });
 
     const moderators = Array.from(merged.values())
-        .filter((entry) => entry.role)
+        .filter((entry) => entry.role && entry.role !== 'viewer' && entry.role !== 'pending' && entry.role !== 'blocked')
         .sort((left, right) => getRankLevel(right.role) - getRankLevel(left.role) || String(left.name).localeCompare(String(right.name), 'tr'));
 
-    DOM.mgmtModList.innerHTML = moderators.length ? moderators.map((entry) => `
+    DOM.mgmtModList.innerHTML = moderators.length ? moderators.map((entry) => {
+        const profile = resolveStaffProfile(entry);
+        return `
         <tr class="data-row">
             <td>
-                <div style="display:flex; align-items:center; gap:8px;">
-                    ${avatarImg(entry.avatar, 'table-avatar small', entry.name || 'Bilinmiyor')}
-                    <div>
-                        <div>${escapeHtml(entry.name || 'Bilinmiyor')}</div>
-                        <small>${escapeHtml(entry.id || '-')}</small>
-                    </div>
-                </div>
+                ${staffIdentityHtml(profile)}
             </td>
-            <td>${roleBadge(entry.role || 'moderator')}</td>
-            <td><button class="btn-open-role" type="button" data-id="${escapeHtml(entry.id || '')}">Duzenle</button></td>
+            <td>${roleBadge(profile.role || entry.role || 'moderator')}</td>
+            <td><button class="btn btn-ghost btn-open-role" type="button" data-id="${escapeHtml(profile.id || entry.id || '')}">Düzenle</button></td>
         </tr>
-    `).join('') : '<tr><td colspan="3" class="empty-cell">Yetkili kaydi yok</td></tr>';
+    `;
+    }).join('') : '<tr><td colspan="3" class="empty-cell">Yetkili kaydı yok</td></tr>';
 
-    const search = DOM.caseSearch.value.trim().toLowerCase();
+    const search = (DOM.caseSearch?.value || '').trim().toLowerCase();
+    const period = DOM.casePeriodFilter?.value || 'week';
+    const sort = DOM.caseSortFilter?.value || 'newest';
     const filteredCases = state.allCases.filter((entry) => {
         if (!search) return true;
-        return String(entry.id || '').includes(search) || (entry.reason || '').toLowerCase().includes(search);
-    });
+        const profile = resolveStaffProfile(entry);
+        return String(entry.id || '').includes(search)
+            || String(entry.caseId || '').includes(search)
+            || (entry.reason || '').toLowerCase().includes(search)
+            || profile.name.toLowerCase().includes(search)
+            || profile.id.includes(search);
+    }).filter((entry) => isCaseInPeriod(entry, period)).sort((left, right) => compareCasesForAdmin(left, right, sort));
 
     DOM.mgmtCaseList.innerHTML = filteredCases.length ? filteredCases.map((entry) => {
         const validation = getValidation(entry);
+        const profile = resolveStaffProfile(entry);
         return `
             <tr class="data-row">
                 <td><button class="case-link" type="button" data-case-id="${escapeHtml(String(entry.id || entry.caseId || ''))}">#${escapeHtml(String(entry.id || entry.caseId || '-'))}</button></td>
-                <td>${escapeHtml(entry.authorMissing ? 'Bilinmeyen Yetkili' : (entry.authorName || 'Bilinmiyor'))}<small>${escapeHtml(entry.authorId || '-')}</small></td>
+                <td>${staffIdentityHtml(profile, { compact: true })}</td>
                 <td>${escapeHtml(entry.reason || '-')}</td>
                 <td><span class="status-badge ${escapeHtml(validation.status || 'unknown')}">${escapeHtml(validation.status || 'unknown')}</span></td>
             </tr>
         `;
-    }).join('') : '<tr><td colspan="4" class="empty-cell">Ceza kaydi yok</td></tr>';
+    }).join('') : '<tr><td colspan="4" class="empty-cell">Ceza kaydı yok</td></tr>';
 
     document.querySelectorAll('.btn-open-role').forEach((button) => {
         button.addEventListener('click', () => openRoleModal(button.dataset.id));
@@ -527,10 +742,13 @@ function renderManagement() {
             if (entry) openCaseUrl(entry);
         });
     });
+    bindStaffCopyHandlers(DOM.mgmtModList);
+    bindStaffCopyHandlers(DOM.mgmtCaseList);
     bindAvatarFallbacks();
 }
 
 function bindModalSaveHandlers() {
+    if (!DOM.modalContent) return;
     DOM.modalContent.querySelectorAll('.case-review-save').forEach((button) => {
         button.addEventListener('click', async () => {
             const caseId = button.dataset.caseId;
@@ -567,13 +785,18 @@ function bindModalSaveHandlers() {
 }
 
 function openModal(moderator) {
+    const modalProfile = resolveStaffProfile(moderator);
     const list = state.allCases
-        .filter((entry) => String(entry.authorId || '') === String(moderator.id || '') || entry.authorName === moderator.name)
-        .sort((left, right) => (parseDate(right.createdRaw)?.getTime() || 0) - (parseDate(left.createdRaw)?.getTime() || 0));
+        .filter((entry) => {
+            const profile = resolveStaffProfile(entry);
+            return String(profile.id || '') === String(modalProfile.id || '') || profile.name === modalProfile.name;
+        })
+        .sort((left, right) => (caseTimestamp(right) || 0) - (caseTimestamp(left) || 0));
 
-    DOM.modalTitle.textContent = `${moderator.name} - Ceza geçmişi`;
+    DOM.modalTitle.textContent = `${modalProfile.name} - Ceza geçmişi`;
     DOM.modalContent.innerHTML = list.length ? list.map((entry) => {
         const validation = getValidation(entry);
+        const profile = resolveStaffProfile(entry);
         return `
             <article class="case-history-card ${escapeHtml(validation.status || 'unknown')}">
                 <div class="case-history-head">
@@ -593,8 +816,7 @@ function openModal(moderator) {
                     </div>
                     <div>
                         <span class="field-label">Yetkili</span>
-                        <strong>${escapeHtml(entry.authorMissing ? 'Bilinmeyen Yetkili' : (entry.authorName || 'Bilinmiyor'))}</strong>
-                        <small>${escapeHtml(entry.authorId || '-')}</small>
+                        ${staffIdentityHtml(profile, { compact: true })}
                     </div>
                     <div>
                         <span class="field-label">Süre</span>
@@ -621,21 +843,23 @@ function openModal(moderator) {
             </article>
         `;
     }).join('') : '<div class="empty-state">Bu yetkili için ceza kaydı yok.</div>';
-    DOM.detailModal.classList.remove('hidden');
-    bindModalSaveHandlers();
+    DOM.detailModal?.classList.remove('hidden');
+    bindStaffCopyHandlers(DOM.modalContent);
+    bindAvatarFallbacks(DOM.modalContent);
+    if (DOM.modalContent) bindModalSaveHandlers();
 }
-
 function closeModal() {
-    DOM.detailModal.classList.add('hidden');
+    DOM.detailModal?.classList.add('hidden');
 }
 
 function openRoleModal(userId = '') {
+    if (!DOM.roleModal) return;
     const entry = state.userRegistry[userId] || {};
-    DOM.roleUserId.value = userId || '';
-    DOM.roleDisplayName.value = entry.name || '';
-    DOM.roleSelect.value = normalizeRole(entry.role || 'discord_moderatoru');
-    DOM.manualAccuracy.value = entry.manualAccuracy ?? '';
-    DOM.roleUserNameHint.textContent = entry.name ? `${entry.name} bulundu` : 'Kullanici secin';
+    if (DOM.roleUserId) DOM.roleUserId.value = userId || '';
+    if (DOM.roleDisplayName) DOM.roleDisplayName.value = entry.name || '';
+    if (DOM.roleSelect) DOM.roleSelect.value = normalizeRole(entry.role || 'discord_moderatoru');
+    if (DOM.manualAccuracy) DOM.manualAccuracy.value = entry.manualAccuracy ?? '';
+    if (DOM.roleUserNameHint) DOM.roleUserNameHint.textContent = entry.name ? `${entry.name} bulundu` : 'Kullanici secin';
     DOM.roleModal.classList.remove('hidden');
 }
 
@@ -670,16 +894,24 @@ function ensureRulesShape() {
 function renderRuleCategories() {
     ensureRulesShape();
     const categories = Object.keys(state.dynamicRules.categories).sort((left, right) => left.localeCompare(right, 'tr'));
-    DOM.ruleCategoriesList.innerHTML = categories.map((category) => `
-        <button type="button" class="rule-cat-item ${state.selectedRuleCategory === category ? 'active' : ''}" data-category="${escapeHtml(category)}">
-            ${escapeHtml(category)}
-        </button>
-    `).join('');
+    DOM.ruleCategoriesList.innerHTML = categories.map((category, i) => {
+        const catData = state.dynamicRules.categories[category];
+        const stepCount = Object.keys(catData.repeats || {}).length;
+        const colors = ['c-purple','c-blue','c-emerald','c-amber','c-red','c-cyan','c-pink','c-orange'];
+        const colorClass = colors[i % colors.length];
+        return `
+            <div class="cuk-cat-item ${state.selectedRuleCategory === category ? 'active' : ''}" data-category="${escapeHtml(category)}" style="animation-delay: ${i * 40}ms">
+                <div class="cuk-cat-color ${colorClass}"></div>
+                <span class="cuk-cat-name">${escapeHtml(category)}</span>
+                <span class="cuk-cat-badge">${stepCount}</span>
+            </div>
+        `;
+    }).join('');
 
-    DOM.ruleCategoriesList.querySelectorAll('.rule-cat-item').forEach((button) => {
-        button.addEventListener('click', () => {
+    DOM.ruleCategoriesList.querySelectorAll('.cuk-cat-item').forEach((item) => {
+        item.addEventListener('click', () => {
             commitRuleEditor();
-            state.selectedRuleCategory = button.dataset.category;
+            state.selectedRuleCategory = item.dataset.category;
             renderRuleCategories();
             renderRuleEditor();
         });
@@ -698,25 +930,80 @@ function renderRuleEditor() {
     DOM.noRuleSelected.classList.add('hidden');
     DOM.ruleEditorContent.classList.remove('hidden');
     DOM.editCategoryName.value = category;
-    DOM.categoryKeywords.value = (rule.keywords || []).join(', ');
+
+    renderTags(DOM.keywordTagsArea, DOM.categoryKeywords, rule.keywords || [], 'keywords');
+    renderTags(DOM.autoInvalidTagsArea, DOM.autoInvalidInput, rule.autoInvalid || [], 'autoInvalid');
+    renderTags(DOM.globalInvalidArea, DOM.globalInvalidInput, state.dynamicRules.autoInvalid?.keywords || [], 'global');
 
     const repeats = rule.repeats || {};
-    DOM.repeatsList.innerHTML = Object.keys(repeats).sort((left, right) => Number(left) - Number(right)).map((key) => `
-        <div class="repeat-row" data-repeat="${key}" style="display:flex; gap:10px; align-items:center;">
-            <span style="min-width:70px;">${key}. tekrar</span>
-            <input type="text" data-field="type" value="${escapeHtml(repeats[key].type || '')}" placeholder="type">
-            <input type="number" data-field="duration" value="${escapeHtml(String(repeats[key].duration || ''))}" placeholder="dakika">
+    DOM.repeatsList.innerHTML = Object.keys(repeats).sort((left, right) => Number(left) - Number(right)).map((key, i) => `
+        <div class="repeat-step-card" data-repeat="${key}" style="animation-delay: ${i * 30}ms">
+            <div class="step-index">${key}</div>
+            <input type="number" class="step-number" data-field="duration" value="${repeats[key].duration || ''}" placeholder="Dakika">
+            <select class="step-select" data-field="unit">
+                <option value="dakika" selected>Dakika</option>
+            </select>
+            <select class="step-select" data-field="type">
+                <option value="mute" ${repeats[key].type === 'mute' ? 'selected' : ''}>Mute</option>
+                <option value="ban" ${repeats[key].type === 'ban' ? 'selected' : ''}>Ban</option>
+                <option value="warn" ${repeats[key].type === 'warn' ? 'selected' : ''}>Warn</option>
+                <option value="kick" ${repeats[key].type === 'kick' ? 'selected' : ''}>Kick</option>
+            </select>
+            <button class="step-del-btn" data-idx="${key}"><i class="fa-solid fa-trash-can"></i></button>
         </div>
     `).join('');
+
+    renderTimeline(rule.repeats || {});
+}
+
+function renderTags(area, input, keywords, type) {
+    if (!area || !input) return;
+    area.querySelectorAll('.keyword-tag').forEach(t => t.remove());
+    keywords.forEach(kw => {
+        const tag = document.createElement('div');
+        tag.className = 'keyword-tag';
+        tag.innerHTML = `<span>${escapeHtml(kw)}</span><button class="keyword-tag-del"><i class="fa-solid fa-xmark"></i></button>`;
+        tag.querySelector('.keyword-tag-del').addEventListener('click', () => {
+            if (type === 'global') {
+                state.dynamicRules.autoInvalid.keywords = state.dynamicRules.autoInvalid.keywords.filter(k => k !== kw);
+            } else {
+                const cat = state.dynamicRules.categories[state.selectedRuleCategory];
+                cat[type] = cat[type].filter(k => k !== kw);
+            }
+            renderRuleEditor();
+        });
+        area.insertBefore(tag, input);
+    });
+}
+
+function renderTimeline(repeats) {
+    const tl = DOM.stepsTimeline;
+    if (!tl) return;
+    tl.innerHTML = '';
+    const keys = Object.keys(repeats).sort((a, b) => Number(a) - Number(b));
+    keys.forEach((key, i) => {
+        const r = repeats[key];
+        const stepEl = document.createElement('div');
+        stepEl.className = 'timeline-step';
+        stepEl.innerHTML = `
+            <div class="timeline-node">
+                <div class="timeline-dot ${r.type === 'ban' ? 'ban-dot' : r.type === 'warn' ? 'warn-dot' : ''}">${key}</div>
+                <div class="timeline-label">${r.duration} dk</div>
+            </div>
+            ${i < keys.length - 1 ? '<div class="timeline-line"></div>' : ''}
+        `;
+        tl.appendChild(stepEl);
+    });
 }
 
 function commitRuleEditor() {
     const category = state.selectedRuleCategory;
     if (!category || !state.dynamicRules.categories[category]) return;
 
-    const nextName = DOM.editCategoryName.value.trim() || category;
+    const nextName = DOM.editCategoryName?.value.trim() || category;
     const repeats = {};
-    DOM.repeatsList.querySelectorAll('.repeat-row').forEach((row) => {
+    // Use .repeat-step-card (rendered by renderRuleEditor)
+    DOM.repeatsList?.querySelectorAll('.repeat-step-card').forEach((row) => {
         const repeat = row.dataset.repeat;
         const type = row.querySelector('[data-field="type"]')?.value.trim() || '';
         const duration = row.querySelector('[data-field="duration"]')?.value;
@@ -728,7 +1015,6 @@ function commitRuleEditor() {
 
     const nextRule = {
         ...state.dynamicRules.categories[category],
-        keywords: DOM.categoryKeywords.value.split(',').map((value) => value.trim()).filter(Boolean),
         repeats
     };
 
@@ -756,12 +1042,20 @@ function addRuleCategory() {
 }
 
 function addRepeatRow() {
-    const count = DOM.repeatsList.querySelectorAll('.repeat-row').length + 1;
+    if (!DOM.repeatsList) return;
+    const count = DOM.repeatsList.querySelectorAll('.repeat-step-card').length + 1;
     DOM.repeatsList.insertAdjacentHTML('beforeend', `
-        <div class="repeat-row" data-repeat="${count}" style="display:flex; gap:10px; align-items:center;">
-            <span style="min-width:70px;">${count}. tekrar</span>
-            <input type="text" data-field="type" placeholder="type">
-            <input type="number" data-field="duration" placeholder="dakika">
+        <div class="repeat-step-card" data-repeat="${count}">
+            <div class="step-index">${count}</div>
+            <input type="number" class="step-number" data-field="duration" placeholder="Dakika">
+            <select class="step-select" data-field="unit"><option value="dakika">Dakika</option></select>
+            <select class="step-select" data-field="type">
+                <option value="mute">Mute</option>
+                <option value="ban">Ban</option>
+                <option value="warn">Warn</option>
+                <option value="kick">Kick</option>
+            </select>
+            <button class="step-del-btn" data-idx="${count}"><i class="fa-solid fa-trash-can"></i></button>
         </div>
     `);
 }
@@ -802,7 +1096,9 @@ function renderPointtrainTab() {
         </div>
     `;
 
-    DOM.pointtrainTableBody.innerHTML = (run.metrics || []).map((metric, index) => `
+    const metrics = [...(run.metrics || [])].sort((a, b) => (b.weightedScore || 0) - (a.weightedScore || 0));
+
+    DOM.pointtrainTableBody.innerHTML = metrics.map((metric, index) => `
         <tr class="data-row">
             <td>${index + 1}</td>
             <td>${escapeHtml(metric.displayName || 'Bilinmiyor')}</td>
@@ -820,6 +1116,7 @@ function renderPointtrainTab() {
 async function loadData() {
     await FirebaseRepository.ensureRolePolicy(state.session?.profile).catch(() => null);
     await FirebaseRepository.seedRoleCacheMembers(state.session?.profile).catch(() => null);
+    await FirebaseRepository.seedGoogleAllowlist(state.session?.profile).catch(() => null);
 
     const [cases, registry, staffDirectory, rules, pointtrainRun, userInfo] = await Promise.all([
         Storage.getCases(),
@@ -848,7 +1145,7 @@ async function loadData() {
     }
 
     renderStats();
-    renderTable(DOM.tableSearch.value);
+    renderTable(DOM.tableSearch?.value || '');
     renderManagement();
     renderRuleCategories();
     renderRuleEditor();
@@ -881,9 +1178,16 @@ async function copyDiscordReport() {
 }
 
 function bindEvents() {
-    DOM.navBtns.forEach((button) => button.addEventListener('click', () => switchTab(button.dataset.tab)));
+    DOM.navBtns.forEach((button) => button.addEventListener('click', () => switchTab(button.dataset.page)));
     DOM.tableSearch?.addEventListener('input', (event) => renderTable(event.target.value));
+    DOM.dateFilter?.addEventListener('change', () => {
+        renderStats();
+        renderTable(DOM.tableSearch.value);
+    });
+    DOM.cukSearch?.addEventListener('input', () => renderRuleCategories());
     DOM.caseSearch?.addEventListener('input', renderManagement);
+    DOM.casePeriodFilter?.addEventListener('change', renderManagement);
+    DOM.caseSortFilter?.addEventListener('change', renderManagement);
     DOM.refreshBtn?.addEventListener('click', loadData);
     DOM.exportBtn?.addEventListener('click', exportAll);
     DOM.copyDiscordBtn?.addEventListener('click', copyDiscordReport);
@@ -905,9 +1209,31 @@ function bindEvents() {
         if (event.target === DOM.roleModal) closeRoleModal();
     });
     DOM.btnAddCategory?.addEventListener('click', addRuleCategory);
-    DOM.btnAddRepeat?.addEventListener('click', addRepeatRow);
     DOM.btnDeleteCategory?.addEventListener('click', deleteRuleCategory);
-    DOM.btnSaveRules?.addEventListener('click', saveRules);
+    DOM.btnDuplicateCategory?.addEventListener('click', () => {
+        const cat = state.dynamicRules.categories[state.selectedRuleCategory];
+        if (!cat) return;
+        const dupName = `${state.selectedRuleCategory} (Kopya)`;
+        state.dynamicRules.categories[dupName] = JSON.parse(JSON.stringify(cat));
+        state.selectedRuleCategory = dupName;
+        renderRuleCategories();
+        renderRuleEditor();
+        Toast.info('Kategori kopyalandı');
+    });
+    DOM.btnSaveCategoryInline?.addEventListener('click', () => {
+        const cat = state.dynamicRules.categories[state.selectedRuleCategory];
+        if (!cat) return;
+        const nextName = DOM.editCategoryName.value.trim();
+        if (nextName && nextName !== state.selectedRuleCategory) {
+            state.dynamicRules.categories[nextName] = cat;
+            delete state.dynamicRules.categories[state.selectedRuleCategory];
+            state.selectedRuleCategory = nextName;
+        }
+        renderRuleCategories();
+        Toast.success('Kategori güncellendi');
+    });
+    DOM.btnCukSave?.addEventListener('click', saveRules);
+    DOM.btnAddStep?.addEventListener('click', addRepeatRow);
     DOM.btnBackToDashboard?.addEventListener('click', () => switchTab('dashboard'));
     DOM.pointtrainRefreshBtn?.addEventListener('click', loadData);
     DOM.pointtrainCopyBtn?.addEventListener('click', async () => {
@@ -923,6 +1249,36 @@ function bindEvents() {
     DOM.saveRoleCacheBtn?.addEventListener('click', saveRoleCache);
     DOM.saveGroqPolicyBtn?.addEventListener('click', saveGroqPolicy);
     DOM.refreshAuditBtn?.addEventListener('click', loadAuthAdminData);
+    document.getElementById('closeRoleModalFooter')?.addEventListener('click', closeRoleModal);
+
+    const setupTagInput = (input, area, type) => {
+        input?.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                const val = input.value.trim();
+                if (!val) return;
+                if (type === 'global') {
+                    if (!state.dynamicRules.autoInvalid.keywords.includes(val)) {
+                        state.dynamicRules.autoInvalid.keywords.push(val);
+                    }
+                } else {
+                    const cat = state.dynamicRules.categories[state.selectedRuleCategory];
+                    if (!cat) return;
+                    if (type === 'keywords' && !cat.keywords.includes(val)) cat.keywords.push(val);
+                    if (type === 'autoInvalid' && !cat.autoInvalid?.includes(val)) {
+                        if (!cat.autoInvalid) cat.autoInvalid = [];
+                        cat.autoInvalid.push(val);
+                    }
+                }
+                input.value = '';
+                renderRuleEditor();
+            }
+        });
+    };
+
+    setupTagInput(DOM.categoryKeywords, DOM.keywordTagsArea, 'keywords');
+    setupTagInput(DOM.autoInvalidInput, DOM.autoInvalidTagsArea, 'autoInvalid');
+    setupTagInput(DOM.globalInvalidInput, DOM.globalInvalidArea, 'global');
 }
 
 async function init() {

@@ -27,7 +27,8 @@ async function exchangeCode(code, redirectUri, host) {
     });
     const payload = await response.json();
     if (!response.ok) {
-        throw new Error(payload.error_description || payload.error || 'DISCORD_CODE_EXCHANGE_FAILED');
+        console.error('Discord Code Exchange Error:', payload);
+        throw new Error('DISCORD_CODE_EXCHANGE_FAILED');
     }
     return payload.access_token;
 }
@@ -38,7 +39,8 @@ async function fetchDiscordUser(accessToken) {
     });
     const payload = await response.json();
     if (!response.ok) {
-        throw new Error(payload.message || 'DISCORD_USER_FETCH_FAILED');
+        console.error('Discord User Fetch Error:', payload);
+        throw new Error('DISCORD_USER_FETCH_FAILED');
     }
     return payload;
 }
@@ -106,10 +108,11 @@ module.exports = async function handler(req, res) {
         res.writeHead(302, { Location: url.toString() });
         res.end();
     } catch (error) {
+        console.error('Discord Callback Handler Error:', error);
         if (redirectUri) {
-            redirectWithError(res, redirectUri, error.message || 'DISCORD_AUTH_FAILED');
+            redirectWithError(res, redirectUri, 'DISCORD_AUTH_FAILED');
             return;
         }
-        res.status(400).json({ error: error.message || 'DISCORD_AUTH_FAILED' });
+        res.status(400).json({ error: 'DISCORD_AUTH_FAILED' });
     }
 };

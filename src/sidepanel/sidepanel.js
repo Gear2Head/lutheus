@@ -273,9 +273,14 @@ function resetPointtrainProgress() {
     DOM.pointtrainProgressFill.style.width = '0%';
 }
 
+function toLocalDateString(date) {
+    const d = date || new Date();
+    return new Date(d.getTime() - (d.getTimezoneOffset() * 60000)).toISOString().slice(0, 10);
+}
+
 function getDatePresetRange(preset) {
     const today = new Date();
-    const endDate = today.toISOString().slice(0, 10);
+    const endDate = toLocalDateString(today);
 
     if (preset === 'today') {
         return { startDate: endDate, endDate };
@@ -283,14 +288,14 @@ function getDatePresetRange(preset) {
 
     const start = new Date(today);
     start.setDate(start.getDate() - (preset === 'last30' ? 30 : 7));
-    return { startDate: start.toISOString().slice(0, 10), endDate };
+    return { startDate: toLocalDateString(start), endDate };
 }
 
 function applyScanPreset(preset) {
     if (preset === 'week') {
         const range = getLastWeekRange();
-        DOM.startDate.value = range.startDate.toISOString().slice(0, 10);
-        DOM.endDate.value = range.endDate.toISOString().slice(0, 10);
+        DOM.startDate.value = toLocalDateString(range.startDate);
+        DOM.endDate.value = toLocalDateString(range.endDate);
         return;
     }
 
@@ -482,15 +487,25 @@ function filterCasesByRole(cases) {
 }
 
 function renderProfileStats(cases) {
-    const validCounts = cases.reduce((acc, entry) => {
+    const profile = state.session?.profile || {};
+    const myId = String(profile.discordId || profile.uid || '').toLowerCase();
+    const myName = String(profile.displayName || profile.username || '').toLowerCase();
+    
+    const myCases = cases.filter((entry) => {
+        return (myId && String(entry.authorId || '').toLowerCase() === myId)
+            || (myName && String(entry.authorName || '').toLowerCase() === myName);
+    });
+
+    const validCounts = myCases.reduce((acc, entry) => {
         const status = getValidation(entry).status || 'pending';
         acc[status] = (acc[status] || 0) + 1;
         return acc;
     }, {});
+    
     DOM.profileStatsGrid.innerHTML = `
         <div class="comp-card">
             <div class="comp-label">Kendi Cezalarim</div>
-            <div class="comp-value">${cases.length}</div>
+            <div class="comp-value">${myCases.length}</div>
         </div>
         <div class="comp-card">
             <div class="comp-label">Dogru</div>

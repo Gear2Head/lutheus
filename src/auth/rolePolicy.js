@@ -103,6 +103,10 @@ export const SEEDED_ROLE_MEMBERS = Object.freeze([
     { id: '1375772029982085184', role: ROLES.DISCORD_DESTEK_EKIBI, name: 'Discord Destek Ekibi' }
 ]);
 
+export const SEEDED_GOOGLE_ALLOWLIST = Object.freeze([
+    { email: 'kadirbakis45@gmail.com', role: ROLES.ADMIN, note: 'Lutheus Owner' }
+]);
+
 export const ROLE_ORDER = Object.freeze([
     ROLES.YONETICI,
     ROLES.GENEL_SORUMLU,

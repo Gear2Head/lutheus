@@ -1114,9 +1114,11 @@ function renderPointtrainTab() {
 }
 
 async function loadData() {
-    await FirebaseRepository.ensureRolePolicy(state.session?.profile).catch(() => null);
-    await FirebaseRepository.seedRoleCacheMembers(state.session?.profile).catch(() => null);
-    await FirebaseRepository.seedGoogleAllowlist(state.session?.profile).catch(() => null);
+    if (state.session?.profile) {
+        await FirebaseRepository.ensureRolePolicy(state.session.profile).catch(() => null);
+        await FirebaseRepository.seedRoleCacheMembers(state.session.profile).catch(() => null);
+        await FirebaseRepository.seedGoogleAllowlist(state.session.profile).catch(() => null);
+    }
 
     const [cases, registry, staffDirectory, rules, pointtrainRun, userInfo] = await Promise.all([
         Storage.getCases(),

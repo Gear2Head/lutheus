@@ -3,43 +3,133 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Lutheus CezaRapor</title>
-  <style>
-    body {
-      margin: 0;
-      min-height: 100vh;
-      display: grid;
-      place-items: center;
-      background: #0a0a0c;
-      color: #f5f5f7;
-      font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    }
-    main {
-      width: min(520px, calc(100% - 32px));
-      border: 1px solid #252528;
-      border-radius: 8px;
-      background: #141416;
-      padding: 24px;
-    }
-    h1 {
-      margin: 0 0 8px;
-      font-size: 22px;
-    }
-    p {
-      margin: 0;
-      color: #9a9aa0;
-      line-height: 1.55;
-    }
-    code {
-      color: #a87eff;
-    }
-  </style>
+  <title>Lutheus CezaRapor | Global Dashboard</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="global-dashboard.css">
 </head>
 <body>
-  <main>
-    <h1>Lutheus CezaRapor</h1>
-    <p>Vercel auth broker ve AI proxy yayinda. Extension girisi icin Chrome MV3 paketini kullan.</p>
-    <p>Health endpoint: <code>/api/health</code></p>
-  </main>
+  <div class="container">
+    <header>
+      <div class="logo"><i class="fa-solid fa-shield-halved"></i> Lutheus <span>CezaRapor</span></div>
+      <div class="user-zone">
+        <button class="btn-primary" id="loginBtn"><i class="fa-brands fa-google"></i> Yetkili Girişi</button>
+      </div>
+    </header>
+
+    <div id="dashboardContent" class="hidden">
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-label">Toplam Ceza</div>
+          <div class="stat-value" id="global-total">0</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Aktif Yetkili</div>
+          <div class="stat-value" id="global-mods">0</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Haftalık Verim</div>
+          <div class="stat-value" id="global-efficiency">0%</div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title"><i class="fa-solid fa-ranking-star"></i> Haftalık Liderlik Tablosu</div>
+          <div style="color:var(--text-dim); font-size:13px;">Son 7 Gün</div>
+        </div>
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Yetkili</th>
+              <th>İşlem</th>
+              <th>Doğruluk</th>
+              <th>Skor</th>
+            </tr>
+          </thead>
+          <tbody id="leaderboard"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div id="loginState" style="text-align:center; padding:100px 0;">
+      <h2 style="font-size:32px; margin-bottom:16px;">Veri Odaklı Moderasyon</h2>
+      <p style="color:var(--text-dim); max-width:500px; margin:0 auto 32px;">Lutheus CezaRapor global dashboard'una erişmek için Google yetkilendirmesi gereklidir.</p>
+    </div>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+    import { getFirestore, collection, getDocs, query, orderBy, limit, where } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+    import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyDWM0Jl3Fyyok9BIvLCQ1PjKzdl9074ZSs",
+      authDomain: "lutheus-project.firebaseapp.com",
+      projectId: "lutheus-project",
+      storageBucket: "lutheus-project.firebasestorage.app",
+      messagingSenderId: "437884095032",
+      appId: "1:437884095032:web:4a03ae2ff47d659dedf4cd"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    const auth = getAuth(app);
+
+    async function loadStats() {
+      const oneWeekAgo = new Date();
+      oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+
+      const q = query(collection(db, "punishments"), where("scrapedAt", ">=", oneWeekAgo.getTime()));
+      const snap = await getDocs(q);
+      const cases = snap.docs.map(doc => doc.data());
+      
+      const modMap = {};
+      cases.forEach(c => {
+        const name = c.authorName || 'Bilinmiyor';
+        if (!modMap[name]) modMap[name] = { name, count: 0, valid: 0 };
+        modMap[name].count++;
+        if (c.validationStatus === 'valid') modMap[name].valid++;
+      });
+
+      const mods = Object.values(modMap).sort((a,b) => b.count - a.count);
+      
+      document.getElementById('global-total').textContent = cases.length;
+      document.getElementById('global-mods').textContent = mods.length;
+      
+      const totalValid = cases.filter(c => c.validationStatus === 'valid').length;
+      document.getElementById('global-efficiency').textContent = cases.length ? Math.round((totalValid/cases.length)*100) + '%' : '0%';
+
+      const tbody = document.getElementById('leaderboard');
+      tbody.innerHTML = mods.map(m => `
+        <tr class="data-row">
+          <td style="font-weight:600;">${m.name}</td>
+          <td style="font-family:'JetBrains Mono'">${m.count}</td>
+          <td>
+            <div style="display:flex; align-items:center; gap:10px;">
+              <div class="progress-bar"><div class="progress-fill" style="width:${Math.round((m.valid/m.count)*100)}%"></div></div>
+              <span>${Math.round((m.valid/m.count)*100)}%</span>
+            </div>
+          </td>
+          <td style="font-weight:700; color:var(--accent);">${(m.count * (m.valid/m.count)).toFixed(1)}</td>
+        </tr>
+      `).join('');
+    }
+
+    document.getElementById('loginBtn').onclick = () => {
+      signInWithPopup(auth, new GoogleAuthProvider()).catch(err => alert("Giriş başarısız: " + err.message));
+    };
+
+    onAuthStateChanged(auth, (user) => {
+      if (user) {
+        document.getElementById('loginBtn').innerHTML = `<i class="fa-solid fa-user-check"></i> ${user.displayName.split(' ')[0]}`;
+        document.getElementById('loginState').classList.add('hidden');
+        document.getElementById('dashboardContent').classList.remove('hidden');
+        loadStats();
+      }
+    });
+  </script>
 </body>
 </html>

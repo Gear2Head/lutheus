@@ -380,13 +380,13 @@ export const Storage = {
         }
 
         if (changed) {
-            await this.setSync('userRegistry', registry);
+            await this.set('userRegistry', registry);
             await this.seedStaffDirectory();
         }
     },
 
     async getUserRegistry() {
-        const registry = (await this.getSync('userRegistry')) || {};
+        const registry = (await this.get('userRegistry')) || {};
         let changed = false;
         for (const member of SEEDED_ROLE_MEMBERS) {
             if (!registry[member.id]) {
@@ -394,12 +394,12 @@ export const Storage = {
                 changed = true;
             }
         }
-        if (changed) await this.setSync('userRegistry', registry);
+        if (changed) await this.set('userRegistry', registry);
         return registry;
     },
 
     async updateUserRole(id, role, manualAccuracy = null, name = null) {
-        const registry = (await this.getSync('userRegistry')) || {};
+        const registry = (await this.get('userRegistry')) || {};
         registry[id] = {
             ...(registry[id] || {}),
             id,
@@ -410,7 +410,7 @@ export const Storage = {
             manualAccuracy,
             lastSeen: Date.now()
         };
-        await this.setSync('userRegistry', registry);
+        await this.set('userRegistry', registry);
         await this.upsertStaffDirectoryEntry(id, {
             discordUserId: id,
             sapphireAuthorId: id,

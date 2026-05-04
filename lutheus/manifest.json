@@ -1,0 +1,95 @@
+{
+    "manifest_version": 3,
+    "name": "Lutheus CezaRapor",
+    "version": "2.0.0",
+    "description": "Lutheus Discord sunucusu için gelişmiş moderasyon denetim ve analiz sistemi. Sapphire Dashboard entegrasyonu.",
+    "permissions": [
+        "sidePanel",
+        "storage",
+        "tabs",
+        "scripting",
+        "activeTab",
+        "identity"
+    ],
+    "host_permissions": [
+        "https://dashboard.sapph.xyz/*",
+        "https://discord.com/*",
+        "https://accounts.google.com/*",
+        "https://cdn.discordapp.com/*",
+        "https://media.discordapp.net/*",
+        "https://lh3.googleusercontent.com/*",
+        "https://*.googleusercontent.com/*",
+        "https://identitytoolkit.googleapis.com/*",
+        "https://securetoken.googleapis.com/*",
+        "https://firestore.googleapis.com/*",
+        "https://*.sapph.xyz/*",
+        "https://*.vercel.app/*"
+    ],
+    "background": {
+        "service_worker": "src/background/service_worker.js"
+    },
+    "action": {
+        "default_title": "Open GearTech Panel",
+        "default_icon": {
+            "16": "assets/icon16.png",
+            "48": "assets/icon48.png",
+            "128": "assets/icon128.png"
+        }
+    },
+    "side_panel": {
+        "default_path": "src/auth/login.html"
+    },
+    "content_scripts": [
+        {
+            "matches": [
+                "https://dashboard.sapph.xyz/*"
+            ],
+            "js": [
+                "src/lib/lutheusGuard.js",
+                "src/content/scraper.js",
+                "src/content/navigation.js",
+                "src/content/main.js"
+            ],
+            "run_at": "document_idle",
+            "all_frames": false
+        },
+        {
+            "matches": [
+                "https://discord.com/*"
+            ],
+            "js": [
+                "src/discord/selectors.js",
+                "src/discord/parser.js",
+                "src/discord/search.js"
+            ],
+            "run_at": "document_idle",
+            "all_frames": false
+        },
+        {
+            "matches": [
+                "https://sapphire.xyz/*",
+                "https://*.sapphire.xyz/*",
+                "https://dashboard.sapph.xyz/*"
+            ],
+            "js": ["src/content/interceptor.js"],
+            "run_at": "document_start",
+            "world": "MAIN",
+            "all_frames": false
+        },
+        {
+            "matches": [
+                "https://sapphire.xyz/*",
+                "https://*.sapphire.xyz/*",
+                "https://dashboard.sapph.xyz/*"
+            ],
+            "js": ["src/content/network_listener.js"],
+            "run_at": "document_idle",
+            "all_frames": false
+        }
+    ],
+    "icons": {
+        "16": "assets/icon16.png",
+        "48": "assets/icon48.png",
+        "128": "assets/icon128.png"
+    }
+}

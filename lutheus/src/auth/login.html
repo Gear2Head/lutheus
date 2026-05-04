@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="tr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lutheus CezaRapor - Giriş</title>
+    <link rel="stylesheet" href="../sidepanel/sidepanel.css">
+    <link rel="stylesheet" href="login.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+
+<body>
+    <main class="login-shell">
+        <section class="login-panel">
+            <div class="login-brand">
+                <img src="../../assets/icon48.png" alt="Lutheus" class="login-logo">
+                <div>
+                    <h1>Lutheus CezaRapor</h1>
+                    <p id="loginSubtitle">Devam etmek için hesap bağla</p>
+                </div>
+            </div>
+
+            <div class="login-status" id="loginStatus"></div>
+
+            <button class="btn primary-btn full login-action" id="btnDiscordLogin">
+                <i class="fa-brands fa-discord"></i>
+                Discord ile Giriş Yap
+            </button>
+            <button class="btn secondary-btn full login-action" id="btnGoogleLogin">
+                <i class="fa-brands fa-google"></i>
+                Google ile Giriş Yap
+            </button>
+
+            <div class="login-note">
+                <span>Google erişimi admin allowlist kaydı gerektirir.</span>
+                <span>Discord rolleri admin onaylı role cache üzerinden uygulanır.</span>
+            </div>
+        </section>
+    </main>
+    <script type="module" src="login.js"></script>
+</body>
+
+</html>

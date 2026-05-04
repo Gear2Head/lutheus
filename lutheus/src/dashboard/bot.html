@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lutheus Bot Dashboard</title>
+  <link rel="stylesheet" href="/src/dashboard/admin.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+  <div class="toast-stack" id="toastStack"></div>
+  <div class="app-shell">
+    <nav class="sidebar">
+      <div class="sidebar-logo">B</div>
+      <div class="sidebar-nav">
+        <a class="nav-item active" href="/bot" title="Bot"><i class="fa-brands fa-discord"></i><span class="tooltip">Bot</span></a>
+        <a class="nav-item" href="/dashboard" title="Admin"><i class="fa-solid fa-chart-line"></i><span class="tooltip">Admin</span></a>
+      </div>
+      <div class="sidebar-footer"><div class="status-pulse" id="statusPulse"></div></div>
+    </nav>
+
+    <main class="main-content">
+      <header class="topbar">
+        <div class="topbar-brand">
+          <span class="brand-name">Lutheus <span>Bot</span></span>
+          <span class="brand-sub">admin :: bot dashboard</span>
+        </div>
+        <div class="topbar-actions">
+          <button class="btn btn-ghost" id="btnRefresh"><i class="fa-solid fa-arrows-rotate"></i> Yenile</button>
+          <a class="btn btn-primary" id="btnInvite" target="_blank" rel="noopener"><i class="fa-brands fa-discord"></i> Sunucuya Ekle</a>
+        </div>
+      </header>
+
+      <section class="page-body">
+        <div class="stats-row">
+          <div class="stat-card"><div class="stat-icon"><i class="fa-solid fa-signal"></i></div><div class="stat-val" id="botStatus">-</div><div class="stat-label">Durum</div></div>
+          <div class="stat-card blue"><div class="stat-icon"><i class="fa-solid fa-clock"></i></div><div class="stat-val" id="botUptime">0s</div><div class="stat-label">Uptime</div></div>
+          <div class="stat-card green"><div class="stat-icon"><i class="fa-solid fa-terminal"></i></div><div class="stat-val" id="botCommands">0</div><div class="stat-label">Komut</div></div>
+          <div class="stat-card amber"><div class="stat-icon"><i class="fa-solid fa-rotate"></i></div><div class="stat-val" id="botAttempts">0</div><div class="stat-label">Login Denemesi</div></div>
+        </div>
+
+        <div class="split-2">
+          <section class="panel">
+            <div class="panel-header"><span class="panel-title"><i class="fa-solid fa-sliders"></i> Genel Ayarlar</span></div>
+            <div class="panel-body" style="display:grid;gap:14px;">
+              <label class="field-group"><span class="field-label">Bot marka adı</span><input class="field-input" id="botBrand" placeholder="Lutheus Guard"></label>
+              <label class="field-group"><span class="field-label">HF bot health URL</span><input class="field-input" id="botHealthUrl" placeholder="https://.../health"></label>
+              <label class="field-group"><span class="field-label">Discord client ID</span><input class="field-input" id="discordClientId" placeholder="Application ID"></label>
+              <label class="field-group"><span class="field-label">Invite permissions integer</span><input class="field-input" id="invitePermissions" placeholder="8"></label>
+              <label class="field-group"><span class="field-label">Backend base URL</span><input class="field-input" id="backendBaseUrl" placeholder="https://lutheus.vercel.app"></label>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-header"><span class="panel-title"><i class="fa-solid fa-toggle-on"></i> Komutlar</span></div>
+            <div class="panel-body command-grid" id="commandGrid"></div>
+          </section>
+        </div>
+
+        <section class="panel" style="margin-top:16px;">
+          <div class="panel-header">
+            <span class="panel-title"><i class="fa-solid fa-shield-halved"></i> Moderasyon Davranışı</span>
+            <button class="btn btn-primary" id="btnSave"><i class="fa-solid fa-floppy-disk"></i> Kaydet</button>
+          </div>
+          <div class="panel-body" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;">
+            <label class="field-group"><span class="field-label">Temizle max mesaj</span><input type="number" min="1" max="100" class="field-input" id="maxPrune"></label>
+            <label class="field-group"><span class="field-label">Lockdown endpoint</span><input class="field-input" id="lockdownEndpoint" placeholder="/v1/ops/lockdown"></label>
+            <label class="field-group"><span class="field-label">Komut kayıt kapsamı</span><select class="field-input" id="commandScope"><option value="global">Global</option><option value="guild">Tek sunucu</option></select></label>
+            <label class="field-group"><span class="field-label">Guild ID</span><input class="field-input" id="guildId" placeholder="1223431616081166336"></label>
+          </div>
+        </section>
+
+        <section class="panel" style="margin-top:16px;">
+          <div class="panel-header"><span class="panel-title"><i class="fa-solid fa-triangle-exclamation"></i> Son Hata</span></div>
+          <pre id="lastError" style="white-space:pre-wrap;color:var(--text-2);font-family:var(--font-mono);font-size:12px;">-</pre>
+        </section>
+
+        <section class="panel" style="margin-top:16px;">
+          <div class="panel-header"><span class="panel-title"><i class="fa-solid fa-stethoscope"></i> Discord Diagnostics</span></div>
+          <pre id="botDiagnostics" style="white-space:pre-wrap;color:var(--text-2);font-family:var(--font-mono);font-size:12px;">Yenile ile kontrol edilir.</pre>
+        </section>
+      </section>
+    </main>
+  </div>
+  <script type="module" src="/src/dashboard/bot.js"></script>
+</body>
+</html>

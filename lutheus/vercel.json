@@ -1,0 +1,16 @@
+{
+  "outputDirectory": ".",
+  "buildCommand": "",
+  "functions": {
+    "api/**/*.js": {
+      "maxDuration": 30
+    }
+  },
+  "rewrites": [
+    { "source": "/extension", "destination": "/index.html" },
+    { "source": "/dashboard", "destination": "/src/dashboard/admin.html" },
+    { "source": "/admin", "destination": "/src/dashboard/admin.html" },
+    { "source": "/bot", "destination": "/src/dashboard/bot.html" },
+    { "source": "/bot-dashboard", "destination": "/src/dashboard/bot.html" }
+  ]
+}

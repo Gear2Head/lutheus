@@ -1,0 +1,98 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function userDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function currentRole() {
+      return signedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        ? userDoc().data.role
+        : 'pending';
+    }
+
+    function privileged() {
+      return currentRole() in ['kurucu', 'admin', 'yonetici', 'kidemli', 'senior_moderator'];
+    }
+
+    function googleAllowlistRole() {
+      return signedIn()
+        && request.auth.token.email is string
+        && exists(/databases/$(database)/documents/googleAllowlist/$(request.auth.token.email))
+        && get(/databases/$(database)/documents/googleAllowlist/$(request.auth.token.email)).data.allowed == true
+        ? get(/databases/$(database)/documents/googleAllowlist/$(request.auth.token.email)).data.role
+        : null;
+    }
+
+    function activeUser() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && userDoc().data.status != 'blocked'
+        && currentRole() != 'pending';
+    }
+
+    match /users/{userId} {
+      allow read: if activeUser() && (userId == request.auth.uid || privileged());
+      allow create: if signedIn() && userId == request.auth.uid && (
+        request.resource.data.role in ['pending', 'viewer', 'support', 'moderator']
+        || request.resource.data.role == request.auth.token.role
+        || request.resource.data.role == googleAllowlistRole()
+      );
+      allow update: if signedIn() && (
+        (userId == request.auth.uid && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'status']))
+        || privileged()
+      );
+      allow delete: if privileged();
+    }
+
+    match /googleAllowlist/{email} {
+      // signedIn() only - provisional session during login may lack email claim
+      allow get: if signedIn();
+      allow list, create, update, delete: if privileged();
+    }
+
+    match /roleCache/{identityKey} {
+      // signedIn() - needed during initial role resolution before activeUser() is true
+      allow read: if signedIn();
+      allow write: if privileged();
+    }
+
+    match /rolePolicy/{docId} {
+      allow read: if activeUser();
+      allow write: if privileged();
+    }
+
+    match /cases/{caseId} {
+      allow read: if activeUser();
+      allow create: if activeUser();
+      allow update, delete: if privileged();
+    }
+
+    match /scanRuns/{runId} {
+      allow read: if activeUser();
+      allow create, update: if privileged();
+      allow delete: if privileged();
+    }
+
+    match /analysis/{caseKey} {
+      allow read: if activeUser();
+      allow write: if privileged();
+    }
+
+    match /auditLogs/{logId} {
+      allow read: if privileged();
+      allow create: if activeUser();
+      allow update, delete: if false;
+    }
+
+    match /aiQuota/{quotaId} {
+      allow read: if activeUser();
+      allow write: if false;
+    }
+  }
+}

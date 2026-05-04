@@ -1,0 +1,312 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lutheus CezaRapor | Global Dashboard</title>
+  <link rel="icon" type="image/png" href="favicon_shield.png">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="global-dashboard.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="logo"><i class="fa-solid fa-shield-halved"></i> Lutheus <span>CezaRapor</span></div>
+      <div class="user-zone">
+        <a class="btn-ghost nav-link" href="/dashboard"><i class="fa-solid fa-chart-line"></i> Admin</a>
+        <a class="btn-ghost nav-link" href="/bot"><i class="fa-brands fa-discord"></i> Bot</a>
+        <button class="btn-primary" id="loginDiscordBtn" style="background:#5865F2;"><i class="fa-brands fa-discord"></i> Discord</button>
+        <button class="btn-primary" id="loginBtn"><i class="fa-brands fa-google"></i> Google</button>
+        <div id="userProfile" class="hidden" style="display:flex; align-items:center; gap:12px;">
+           <span id="userName" style="font-weight:600;"></span>
+           <button class="btn-ghost" id="logoutBtn" style="padding:6px 10px;"><i class="fa-solid fa-right-from-bracket"></i></button>
+        </div>
+      </div>
+    </header>
+
+    <div id="dashboardContent" class="hidden">
+      <div class="tabs">
+        <button class="tab-btn active" data-tab="overview"><i class="fa-solid fa-chart-line"></i> Genel Bakış</button>
+        <button class="tab-btn hidden" id="adminTab" data-tab="management"><i class="fa-solid fa-gears"></i> Yönetim</button>
+      </div>
+
+      <div id="overview-section">
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-label">Toplam Ceza</div>
+            <div class="stat-value" id="global-total">0</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Aktif Yetkili</div>
+            <div class="stat-value" id="global-mods">0</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Haftalık Verim</div>
+            <div class="stat-value" id="global-efficiency">0%</div>
+          </div>
+        </div>
+
+        <div class="panel" style="margin-bottom:24px;">
+          <div class="panel-header">
+            <div class="panel-title"><i class="fa-solid fa-ranking-star"></i> Haftalık Liderlik Tablosu</div>
+          </div>
+          <table class="data-table">
+            <thead><tr><th>Yetkili</th><th>İşlem</th><th>Doğruluk</th><th>Skor</th></tr></thead>
+            <tbody id="leaderboard"></tbody>
+          </table>
+        </div>
+
+        <div class="panel">
+          <div class="panel-header">
+            <div class="panel-title"><i class="fa-solid fa-list-ul"></i> Son İşlemler</div>
+          </div>
+          <table class="data-table">
+            <thead><tr><th>ID</th><th>Yetkili</th><th>Kullanıcı</th><th>Sebep</th><th>Tarih</th></tr></thead>
+            <tbody id="recentCases"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div id="management-section" class="hidden">
+        <div class="panel" style="margin-bottom:24px;">
+          <div class="panel-header"><div class="panel-title"><i class="fa-solid fa-user-shield"></i> Google Allowlist</div></div>
+          <table class="data-table">
+            <thead><tr><th>Email</th><th>Rol</th><th>Durum</th><th>İşlem</th></tr></thead>
+            <tbody id="admin-allowlist"></tbody>
+          </table>
+        </div>
+        
+        <div class="panel">
+          <div class="panel-header"><div class="panel-title"><i class="fa-solid fa-id-card"></i> Yetkili Rol Cache</div></div>
+          <table class="data-table">
+            <thead><tr><th>Kimlik</th><th>İsim</th><th>Rol</th><th>İşlem</th></tr></thead>
+            <tbody id="admin-rolecache"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div id="loginState" class="portal">
+      <section class="portal-head">
+        <div>
+          <p class="eyebrow">Extension Web Sitesi</p>
+          <h1>Lutheus moderasyon sistemi</h1>
+          <p>Side panel extension içinde çalışır. Vercel tarafında aynı veriyle admin dashboard, bot dashboard ve web izleme ekranları ayrı route olarak yönetilir.</p>
+        </div>
+        <div class="portal-actions">
+          <a class="btn-primary" href="/dashboard"><i class="fa-solid fa-chart-line"></i> Admin Dashboard</a>
+          <a class="btn-primary" href="/bot" style="background:#5865F2;"><i class="fa-brands fa-discord"></i> Bot Dashboard</a>
+        </div>
+      </section>
+
+      <section class="portal-grid">
+        <a class="portal-card" href="/dashboard">
+          <span class="card-icon"><i class="fa-solid fa-gauge-high"></i></span>
+          <strong>Vercel Admin Dashboard</strong>
+          <span>Eklentideki admin panel ile aynı veri ekranları, CUK kuralları, rol cache ve erişim yönetimi.</span>
+        </a>
+        <a class="portal-card" href="/bot">
+          <span class="card-icon"><i class="fa-brands fa-discord"></i></span>
+          <strong>Discord Bot Yönetimi</strong>
+          <span>Health durumu, invite linki, komut ayarları, moderation davranışı ve bot bağlantıları.</span>
+        </a>
+        <div class="portal-card">
+          <span class="card-icon"><i class="fa-solid fa-window-restore"></i></span>
+          <strong>Extension Side Panel</strong>
+          <span>Chrome extension içinde ayrı kalır; login sonrası eski davranışla side panel açılır.</span>
+        </div>
+      </section>
+
+      <section class="panel portal-panel">
+        <div class="panel-header"><div class="panel-title"><i class="fa-solid fa-plug-circle-check"></i> Çalışma Ayrımı</div></div>
+        <div class="route-list">
+          <div><code>/extension</code><span>Public extension web sitesi</span></div>
+          <div><code>/dashboard</code><span>Vercel admin dashboard</span></div>
+          <div><code>/bot</code><span>Discord bot dashboard</span></div>
+          <div><code>src/sidepanel/sidepanel.html</code><span>Sadece extension runtime side panel</span></div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+    import { getFirestore, collection, getDocs, query, orderBy, limit, where, doc, deleteDoc, getDoc, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+    import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyDWM0Jl3Fyyok9BIvLCQ1PjKzdl9074ZSs",
+      authDomain: "lutheus-project.firebaseapp.com",
+      projectId: "lutheus-project",
+      storageBucket: "lutheus-project.firebasestorage.app",
+      messagingSenderId: "437884095032",
+      appId: "1:437884095032:web:4a03ae2ff47d659dedf4cd"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    const auth = getAuth(app);
+    const googleProvider = new GoogleAuthProvider();
+
+    async function loadStats() {
+      const oneWeekAgo = new Date();
+      oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+
+      const q = query(collection(db, "cases"), orderBy("updatedAt", "desc"), limit(300));
+      const snap = await getDocs(q);
+      const allCases = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      
+      const cases = allCases.filter(c => {
+        const ts = c.scrapedAt || (c.updatedAt ? new Date(c.updatedAt).getTime() : 0);
+        return ts >= oneWeekAgo.getTime();
+      });
+      
+      const modMap = {};
+      cases.forEach(c => {
+        const name = c.authorName || 'Bilinmiyor';
+        if (!modMap[name]) modMap[name] = { name, count: 0, valid: 0 };
+        modMap[name].count++;
+        const isValid = c.validationStatus === 'valid' || c.validation?.status === 'valid';
+        if (isValid) modMap[name].valid++;
+      });
+
+      const mods = Object.values(modMap).sort((a,b) => b.count - a.count);
+      
+      document.getElementById('global-total').textContent = cases.length;
+      document.getElementById('global-mods').textContent = mods.length;
+      
+      const totalValid = cases.filter(c => c.validationStatus === 'valid' || c.validation?.status === 'valid').length;
+      document.getElementById('global-efficiency').textContent = cases.length ? Math.round((totalValid/cases.length)*100) + '%' : '0%';
+
+      document.getElementById('leaderboard').innerHTML = mods.map(m => `
+        <tr class="data-row">
+          <td style="font-weight:600;">${m.name}</td>
+          <td style="font-family:'JetBrains Mono'">${m.count}</td>
+          <td>
+            <div style="display:flex; align-items:center; gap:10px;">
+              <div class="progress-bar"><div class="progress-fill" style="width:${Math.round((m.valid/m.count)*100)}%"></div></div>
+              <span>${Math.round((m.valid/m.count)*100)}%</span>
+            </div>
+          </td>
+          <td style="font-weight:700; color:var(--accent);">${(m.count * (m.valid/m.count)).toFixed(1)}</td>
+        </tr>
+      `).join('');
+
+      document.getElementById('recentCases').innerHTML = allCases.slice(0, 30).map(c => `
+        <tr class="data-row">
+          <td style="font-family:var(--font-mono); font-size:12px; color:var(--accent);">#${c.caseId || c.id.slice(-8)}</td>
+          <td>${c.authorName || 'Bilinmiyor'}</td>
+          <td>${c.user || 'Bilinmiyor'}</td>
+          <td style="font-size:13px; color:var(--text-dim); max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${c.reason || '-'}</td>
+          <td style="font-size:12px;">${new Date(c.scrapedAt || c.updatedAt || 0).toLocaleDateString('tr-TR')}</td>
+        </tr>
+      `).join('');
+    }
+
+    async function loadAdminData() {
+      try {
+        const allowSnap = await getDocs(collection(db, "googleAllowlist"));
+        document.getElementById('admin-allowlist').innerHTML = allowSnap.docs.map(d => `
+          <tr class="data-row">
+            <td>${d.id}</td>
+            <td><span class="role-badge">${d.data().role}</span></td>
+            <td>${d.data().allowed ? '✅ Aktif' : '❌ Pasif'}</td>
+            <td><button class="btn-danger" onclick="deleteEntry('googleAllowlist', '${d.id}')">Kaldır</button></td>
+          </tr>
+        `).join('');
+
+        const cacheSnap = await getDocs(collection(db, "roleCache"));
+        document.getElementById('admin-rolecache').innerHTML = cacheSnap.docs.map(d => `
+          <tr class="data-row">
+            <td>${d.id}</td>
+            <td>${d.data().displayName || '-'}</td>
+            <td><span class="role-badge">${d.data().role}</span></td>
+            <td><button class="btn-danger" onclick="deleteEntry('roleCache', '${d.id}')">Kaldır</button></td>
+          </tr>
+        `).join('');
+      } catch(e) {
+        console.warn("Admin verisi yuklenemedi (Yetki yetersiz olabilir)");
+      }
+    }
+
+    window.deleteEntry = async (col, id) => {
+      if(confirm(id + ' silinsin mi?')) {
+        await deleteDoc(doc(db, col, id));
+        loadAdminData();
+      }
+    };
+
+    document.getElementById('loginBtn').onclick = () => signInWithPopup(auth, googleProvider);
+    document.getElementById('loginDiscordBtn').onclick = () => {
+      const redirectUri = new URL('/src/auth/login.html', window.location.origin);
+      redirectUri.searchParams.set('provider', 'discord');
+      redirectUri.searchParams.set('returnTo', '/dashboard');
+      const startUrl = new URL('/api/auth/discord/start', window.location.origin);
+      startUrl.searchParams.set('redirect_uri', redirectUri.toString());
+      startUrl.searchParams.set('source', 'web');
+      window.location.href = startUrl.toString();
+    };
+    document.getElementById('logoutBtn').onclick = () => signOut(auth);
+
+    onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        document.getElementById('loginBtn').classList.add('hidden');
+        document.getElementById('loginDiscordBtn').classList.add('hidden');
+        document.getElementById('userProfile').classList.remove('hidden');
+        document.getElementById('userName').textContent = user.displayName;
+        document.getElementById('loginState').classList.add('hidden');
+        document.getElementById('dashboardContent').classList.remove('hidden');
+        
+        let userRole = 'viewer';
+        const userDocRef = doc(db, "users", user.uid);
+        const existing = await getDoc(userDocRef);
+        
+        if (existing.exists()) {
+          userRole = existing.data().role;
+        } else if (user.email) {
+          const allowDoc = await getDoc(doc(db, "googleAllowlist", user.email.toLowerCase()));
+          if (allowDoc.exists() && allowDoc.data().allowed) {
+             userRole = allowDoc.data().role;
+          }
+        }
+
+        await setDoc(userDocRef, {
+           uid: user.uid,
+           displayName: user.displayName,
+           email: user.email,
+           photoURL: user.photoURL,
+           role: userRole,
+           lastLogin: serverTimestamp(),
+           updatedAt: serverTimestamp()
+        }, { merge: true });
+
+        if(['kurucu', 'admin', 'yonetici'].includes(userRole)) {
+          document.getElementById('adminTab').classList.remove('hidden');
+        }
+
+        loadStats();
+        loadAdminData();
+      } else {
+        document.getElementById('loginBtn').classList.remove('hidden');
+        document.getElementById('loginDiscordBtn').classList.remove('hidden');
+        document.getElementById('userProfile').classList.add('hidden');
+        document.getElementById('loginState').classList.remove('hidden');
+        document.getElementById('dashboardContent').classList.add('hidden');
+      }
+    });
+
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.onclick = () => {
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        const target = btn.dataset.tab;
+        document.getElementById('overview-section').classList.toggle('hidden', target !== 'overview');
+        document.getElementById('management-section').classList.toggle('hidden', target !== 'management');
+      }
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lutheus CezaRapor - Admin v3</title>
+  <link rel="stylesheet" href="/src/dashboard/admin.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <style>
+    /* page-level only */
+    .page-section { display: none; animation: fadeUp 0.3s var(--ease-out); }
+    .page-section.active { display: block; }
+    .tab-view { display: none; }
+    .tab-view.active { display: block; animation: fadeUp 0.3s var(--ease-out); }
+    /* color dots for categories */
+    .c-purple { background: var(--purple); }
+    .c-red    { background: var(--red); }
+    .c-amber  { background: var(--amber); }
+    .c-emerald{ background: var(--emerald); }
+    .c-blue   { background: var(--blue); }
+    .c-cyan   { background: var(--cyan); }
+    .c-pink   { background: #e879f9; }
+    .c-orange { background: #f97316; }
+    /* modals */
+    .modal-overlay { position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:999;display:flex;align-items:center;justify-content:center;padding:20px; }
+    .modal-overlay.hidden { display:none; }
+    .modal-box { background:var(--surface-2,#1a1a2e);border:1px solid var(--border);border-radius:12px;width:100%;max-width:700px; }
+    .modal-header { display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border); }
+  </style>
+</head>
+<body>
+
+<!-- Toasts -->
+<div class="toast-stack" id="toastStack"></div>
+
+<div class="app-shell">
+
+  <!-- ── Sidebar ────────────────────────────────────────── -->
+  <nav class="sidebar">
+    <div class="sidebar-logo">L</div>
+    <div class="sidebar-nav">
+      <button class="nav-item active" data-page="dashboard" title="">
+        <i class="fa-solid fa-chart-line"></i>
+        <span class="tooltip">Dashboard</span>
+      </button>
+      <button class="nav-item" data-page="management" title="">
+        <i class="fa-solid fa-user-gear"></i>
+        <span class="tooltip">Yönetim</span>
+      </button>
+      <button class="nav-item" data-page="cuk" title="">
+        <i class="fa-solid fa-brain"></i>
+        <span class="tooltip">CUK Kural Editörü</span>
+      </button>
+      <button class="nav-item" data-page="pointtrain" title="">
+        <i class="fa-solid fa-ranking-star"></i>
+        <span class="tooltip">Pointtrain</span>
+      </button>
+      <button class="nav-item" data-page="auth" title="">
+        <i class="fa-solid fa-id-card-clip"></i>
+        <span class="tooltip">Erişim</span>
+      </button>
+    </div>
+    <div class="sidebar-footer">
+      <div class="status-pulse" id="statusPulse"></div>
+    </div>
+  </nav>
+
+  <!-- ── Main ───────────────────────────────────────────── -->
+  <div class="main-content">
+
+    <!-- Topbar -->
+    <header class="topbar">
+      <div class="topbar-brand">
+        <span class="brand-name">Lutheus <span>CezaRapor</span></span>
+        <span class="brand-sub" id="pageSubtitle">admin :: dashboard</span>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:10px;flex:1;max-width:320px;">
+        <div class="search-field" style="flex:1;">
+          <i class="fa-solid fa-magnifying-glass"></i>
+          <input type="text" placeholder="Ara...">
+        </div>
+      </div>
+
+      <div class="topbar-actions">
+        <button class="btn btn-ghost btn-icon" id="btnRevalidate" title="Yeniden Doğrula">
+          <i class="fa-solid fa-check-double"></i>
+        </button>
+        <button class="btn btn-ghost btn-icon" id="btnCopyDiscord" title="Discord Kopyala">
+          <i class="fa-brands fa-discord"></i>
+        </button>
+        <button class="btn btn-ghost" id="btnRefresh">
+          <i class="fa-solid fa-arrows-rotate"></i> Yenile
+        </button>
+        <button class="btn btn-primary" id="btnExport">
+          <i class="fa-solid fa-file-arrow-down"></i> Rapor Al
+        </button>
+        <div class="topbar-user" id="topbarUser">
+          <img src="" alt="" class="user-avatar" id="userAvatar">
+          <div class="user-info">
+            <div class="user-name" id="userName">Gear_Head</div>
+            <div class="user-role" id="userRole">ADMİN</div>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- Page Body -->
+    <div class="page-body">
+
+      <!-- ═══ DASHBOARD PAGE ═══════════════════════════════ -->
+      <div class="page-section active" id="page-dashboard">
+        <div class="stats-row">
+          <div class="stat-card">
+            <div class="stat-icon"><i class="fa-solid fa-gavel"></i></div>
+            <div class="stat-val" id="st-total">0</div>
+            <div class="stat-label">Toplam Ceza</div>
+          </div>
+          <div class="stat-card green">
+            <div class="stat-icon"><i class="fa-solid fa-circle-check"></i></div>
+            <div class="stat-val" id="st-valid">0</div>
+            <div class="stat-label">Doğrulanmış</div>
+          </div>
+          <div class="stat-card red">
+            <div class="stat-icon"><i class="fa-solid fa-circle-xmark"></i></div>
+            <div class="stat-val" id="st-invalid">0</div>
+            <div class="stat-label">Hatalı</div>
+          </div>
+          <div class="stat-card amber">
+            <div class="stat-icon"><i class="fa-solid fa-circle-question"></i></div>
+            <div class="stat-val" id="st-pending">0</div>
+            <div class="stat-label">Bekleyen</div>
+          </div>
+          <div class="stat-card blue">
+            <div class="stat-icon"><i class="fa-solid fa-users"></i></div>
+            <div class="stat-val" id="st-mods">0</div>
+            <div class="stat-label">Aktif Yetkili</div>
+          </div>
+        </div>
+
+        <!-- Delta comparison -->
+        <div class="panel" style="margin-bottom:18px;">
+          <div class="panel-header">
+            <span class="panel-title"><i class="fa-solid fa-bolt"></i> Son Taramadan Değişim</span>
+          </div>
+          <div class="panel-body">
+            <div class="delta-grid" id="deltaGrid">
+              <div class="delta-card"><div class="delta-label">Yeni Ceza</div><div class="delta-val up" id="d-new">+0</div></div>
+              <div class="delta-card"><div class="delta-label">Hatalı Değ.</div><div class="delta-val" id="d-inv">-</div></div>
+              <div class="delta-card"><div class="delta-label">Doğruluk %</div><div class="delta-val" id="d-acc">-</div></div>
+              <div class="delta-card"><div class="delta-label">Aktif Yetkili</div><div class="delta-val" id="d-mods">-</div></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Staff performance table -->
+        <div class="split-3-1" style="align-items:start;">
+          <div class="panel">
+            <div class="panel-header">
+              <span class="panel-title"><i class="fa-solid fa-users"></i> Haftalık Yetkili Performansı</span>
+              <div class="table-tools" style="display:flex; gap:10px;">
+                <select id="dateFilter" class="btn btn-ghost" style="padding: 0 10px; font-size:12px;">
+                  <option value="all">Tm Zamanlar</option>
+                  <option value="today">Bugn</option>
+                  <option value="week" selected>Bu Hafta</option>
+                  <option value="month">Bu Ay</option>
+                </select>
+                <input type="text" id="tableSearch" placeholder="Ara..." style="background:transparent;border:1px solid var(--border);border-radius:4px;padding:4px 10px;color:white;font-size:12px;">
+              </div>
+            </div>
+            <div style="overflow:auto;">
+              <table class="data-table">
+                <thead><tr>
+                  <th>#</th><th>Yetkili</th><th>Rütbe</th><th>İşlem</th><th>Doğruluk</th><th></th>
+                </tr></thead>
+                <tbody id="modTableBody">
+                  <tr><td colspan="6" style="text-align:center;color:var(--text-3);padding:28px;">Veri bekleniyor...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-header">
+              <span class="panel-title"><i class="fa-solid fa-list-check"></i> Ceza Türleri</span>
+            </div>
+            <div class="panel-body" id="reasonList" style="display:flex;flex-direction:column;gap:6px;">
+              <div style="color:var(--text-3);font-size:12px;text-align:center;padding:20px;">Veri bekleniyor...</div>
+            </div>
+          </div>
+        </div>
+      </div><!-- /dashboard -->
+
+
+      <!-- ═══ CUK ENGINE PAGE ══════════════════════════════ -->
+      <div class="page-section" id="page-cuk">
+
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
+          <div>
+            <h2 style="font-family:var(--font-display);font-size:20px;font-weight:800;color:var(--text-1);letter-spacing:-0.3px;">
+              <span style="color:var(--purple-hi);">AI</span> Kural Eğitimi
+              <span style="font-size:13px;font-weight:400;color:var(--text-3);font-family:var(--font-mono);margin-left:8px;">CUK v2.0</span>
+            </h2>
+            <p style="font-size:12px;color:var(--text-3);margin-top:4px;">
+              Cezaları <b style="color:var(--emerald);">Doğru</b> ya da <b style="color:var(--red);">Hatalı</b> bulacağını öğretin - kategoriler, anahtar kelimeler ve tekrar kademeleri.
+            </p>
+          </div>
+          <div style="display:flex;gap:8px;">
+            <button class="btn btn-ghost" id="btnCukImport">
+              <i class="fa-solid fa-file-import"></i> İçe Aktar
+            </button>
+            <button class="btn btn-primary" id="btnCukSave">
+              <i class="fa-solid fa-floppy-disk"></i> Kaydet ve Uygula
+            </button>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="cuk-layout">
+
+            <!-- Left: Category list -->
+            <div class="cuk-sidebar">
+              <div class="cuk-sidebar-header">
+                <span>Kategoriler</span>
+                <button class="btn btn-ghost btn-icon" id="btnAddCategory" title="Kategori Ekle" style="width:26px;height:26px;font-size:12px;">
+                  <i class="fa-solid fa-plus"></i>
+                </button>
+              </div>
+              <div id="cukCategoryList" style="display:flex;flex-direction:column;gap:6px;">
+                <!-- JS renders here -->
+              </div>
+            </div>
+
+            <!-- Right: Editor -->
+            <div class="cuk-editor" id="cukEditor">
+
+              <!-- Empty state -->
+              <div class="cuk-empty-state" id="cukEmptyState">
+                <i class="fa-solid fa-hand-pointer"></i>
+                <p>Düzenlemek için sol taraftan bir kategori seçin</p>
+              </div>
+
+              <!-- Editor content (hidden until selection) -->
+              <div id="cukEditorContent" class="hidden">
+
+                <!-- Category name -->
+                <div class="field-group">
+                  <label class="field-label">Kategori Adı</label>
+                  <input type="text" class="field-input accent" id="cukCatName" placeholder="Kategori adını girin...">
+                </div>
+
+                <!-- Timeline preview -->
+                <div class="field-group">
+                  <label class="field-label">Adım Önizleme</label>
+                  <div class="steps-timeline" id="stepsTimeline"></div>
+                </div>
+
+                <!-- Repeat steps -->
+                <div class="field-group">
+                  <div class="repeat-steps-header">
+                    <label class="field-label" style="margin:0;">Tekrar Kademeleri</label>
+                    <button class="btn btn-ghost" id="btnAddStep" style="height:28px;font-size:12px;padding:0 10px;">
+                      <i class="fa-solid fa-plus"></i> Adım Ekle
+                    </button>
+                  </div>
+                  <div class="repeat-steps-list" id="repeatStepsList">
+                    <!-- steps rendered by JS -->
+                  </div>
+                </div>
+
+                <!-- Keywords -->
+                <div class="field-group">
+                  <label class="field-label">Anahtar Kelimeler</label>
+                  <div class="keyword-tags-area" id="keywordTagsArea">
+                    <input type="text" class="keyword-tag-input" id="keywordInput"
+                      placeholder="Kelime yaz, Enter ile ekle...">
+                  </div>
+                  <p style="font-size:11px;color:var(--text-3);margin-top:6px;">
+                    <i class="fa-solid fa-circle-info" style="margin-right:4px;"></i>
+                    Sistem bu kelimeleri yakaladığında cezayı bu kategoriye sokar.
+                  </p>
+                </div>
+
+                <!-- Auto-invalid keywords -->
+                <div class="field-group">
+                  <label class="field-label">
+                    <i class="fa-solid fa-ban" style="color:var(--red);margin-right:4px;"></i>
+                    Otomatik Hatalı Anahtar Kelimeler
+                  </label>
+                  <div class="keyword-tags-area" id="autoInvalidTagsArea"
+                       style="border-color:rgba(240,78,78,0.2);">
+                    <input type="text" class="keyword-tag-input" id="autoInvalidInput"
+                      placeholder="Hatalı kelime yaz, Enter ile ekle...">
+                  </div>
+                  <p style="font-size:11px;color:var(--text-3);margin-top:6px;">
+                    Bu kelimeler bulunursa ceza anında <span style="color:var(--red);">Hatalı</span> işaretlenir.
+                  </p>
+                </div>
+
+                <!-- Footer actions -->
+                <div style="display:flex;justify-content:space-between;align-items:center;
+                            padding-top:16px;border-top:1px solid var(--border);margin-top:8px;">
+                  <button class="btn btn-danger" id="btnDeleteCategory">
+                    <i class="fa-solid fa-trash"></i> Kategoriyi Sil
+                  </button>
+                  <div style="display:flex;gap:8px;">
+                    <button class="btn btn-ghost" id="btnDuplicateCategory">
+                      <i class="fa-solid fa-copy"></i> Kopyala
+                    </button>
+                    <button class="btn btn-primary" id="btnSaveCategoryInline">
+                      <i class="fa-solid fa-check"></i> Kaydet
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Global auto-invalid section -->
+        <div class="panel" style="margin-top:16px;">
+          <div class="panel-header">
+            <span class="panel-title">
+              <i class="fa-solid fa-shield-halved" style="color:var(--red);"></i>
+              Global Otomatik Hatalı Kurallar
+            </span>
+            <span style="font-size:11px;color:var(--text-3);">Tüm kategoriler için geçerli</span>
+          </div>
+          <div class="panel-body">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+              <div class="field-group">
+                <label class="field-label">Boş sebep</label>
+                <label style="display:flex;align-items:center;gap:10px;cursor:pointer;">
+                  <input type="checkbox" id="chkEmptyReason" checked>
+                  <span style="font-size:13px;color:var(--text-2);">Sebep boşsa otomatik Hatalı say</span>
+                </label>
+              </div>
+              <div class="field-group">
+                <label class="field-label">Global Hatalı Kelimeler</label>
+                <div class="keyword-tags-area" id="globalInvalidArea">
+                  <input type="text" class="keyword-tag-input" id="globalInvalidInput"
+                    placeholder="Global hatalı kelime...">
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- /cuk -->
+
+
+      <!-- ??? MANAGEMENT PAGE ??????????????????????????????? -->
+      <div class="page-section" id="page-management">
+        <div class="split-2">
+          <div class="panel">
+            <div class="panel-header">
+              <span class="panel-title"><i class="fa-solid fa-user-shield"></i> Yetkili Listesi</span>
+              <button class="btn btn-ghost btn-icon" id="roleBtn" title="Yetki Ekle">
+                <i class="fa-solid fa-user-plus"></i>
+              </button>
+            </div>
+            <div style="overflow:auto; max-height: 640px;">
+              <table class="data-table">
+                <thead><tr><th>Yetkili</th><th>Rol</th><th>??lem</th></tr></thead>
+                <tbody id="mgmtModList">
+                  <tr><td colspan="3" style="text-align:center;color:var(--text-3);padding:40px;">Y?kleniyor...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="panel-header">
+              <span class="panel-title"><i class="fa-solid fa-clock-rotate-left"></i> Son Cezalar</span>
+              <div class="case-toolbar">
+                <select id="casePeriodFilter" class="btn btn-ghost">
+                  <option value="today">Bugün</option>
+                  <option value="week" selected>Bu Hafta</option>
+                  <option value="month">Bu Ay</option>
+                  <option value="all">Tümü</option>
+                </select>
+                <select id="caseSortFilter" class="btn btn-ghost">
+                  <option value="newest" selected>Yeni</option>
+                  <option value="oldest">Eski</option>
+                  <option value="status">Durum</option>
+                  <option value="staff">Yetkili</option>
+                </select>
+                <div class="search-field case-search">
+                  <i class="fa-solid fa-magnifying-glass"></i>
+                  <input type="text" id="caseSearch" placeholder="Case ID, yetkili veya sebep...">
+                </div>
+              </div>
+            </div>
+            <div style="overflow:auto; max-height: 640px;">
+              <table class="data-table">
+                <thead><tr><th>ID</th><th>Yetkili</th><th>Sebep</th><th>Durum</th></tr></thead>
+                <tbody id="mgmtCaseList">
+                  <tr><td colspan="4" style="text-align:center;color:var(--text-3);padding:40px;">Y?kleniyor...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ??? POINTTRAIN PAGE ??????????????????????????????? -->
+      <div class="page-section" id="page-pointtrain">
+        <div id="pointtrainAdminSummary" class="stats-row"></div>
+        <div class="panel">
+          <div class="panel-header">
+            <span class="panel-title"><i class="fa-solid fa-ranking-star"></i> Pointtrain Raporu</span>
+            <div style="display:flex; gap:8px;">
+               <button class="btn btn-ghost btn-icon" id="pointtrainRefreshBtn" title="Yenile"><i class="fa-solid fa-rotate"></i></button>
+               <button class="btn btn-ghost" id="pointtrainCopyBtn"><i class="fa-solid fa-copy"></i> Kopyala</button>
+               <button class="btn btn-primary" id="pointtrainExportBtn"><i class="fa-solid fa-file-csv"></i> CSV İndir</button>
+            </div>
+          </div>
+          <div style="overflow:auto;">
+            <table class="data-table">
+              <thead><tr>
+                <th>#</th><th>Yetkili</th><th>Rol</th><th>Sapphire</th><th>Mesaj</th><th>Kanal</th><th>Aktif Gün</th><th>Skor</th><th>Hata</th>
+              </tr></thead>
+              <tbody id="pointtrainTableBody">
+                <tr><td colspan="9" style="text-align:center;color:var(--text-3);padding:40px;">Veri bekleniyor...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ??? AUTH / ACCESS PAGE ???????????????????????????? -->
+      <div class="page-section" id="page-auth">
+        <div class="split-2">
+          <div class="panel">
+             <div class="panel-header"><span class="panel-title"><i class="fa-brands fa-google"></i> Google Allowlist</span></div>
+             <div class="panel-body">
+                <div style="display:flex; gap:8px; margin-bottom:16px;">
+                   <input type="text" id="allowEmail" class="field-input" placeholder="Email..." style="flex:1;">
+                   <select id="allowRole" class="field-input" style="width:110px;">
+                      <option value="moderator">Mod</option>
+                      <option value="admin">Admin</option>
+                      <option value="viewer">İzleyici</option>
+                   </select>
+                   <button class="btn btn-primary" id="saveAllowBtn">Ekle</button>
+                </div>
+                <table class="data-table">
+                   <thead><tr><th>Email</th><th>Rol</th><th>Durum</th><th>İşlem</th></tr></thead>
+                   <tbody id="allowlistTableBody"></tbody>
+                </table>
+             </div>
+          </div>
+          <div class="panel">
+             <div class="panel-header"><span class="panel-title"><i class="fa-brands fa-discord"></i> Rol Cache</span></div>
+             <div class="panel-body">
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px; margin-bottom:12px;">
+                   <input type="text" id="roleCacheIdentity" class="field-input" placeholder="ID (discord:...)">
+                   <input type="text" id="roleCacheName" class="field-input" placeholder="Görünen İsim">
+                </div>
+                <div style="display:flex; gap:8px; margin-bottom:16px;">
+                   <select id="roleCacheRole" class="field-input" style="flex:1;">
+                      <option value="moderator">Mod</option>
+                      <option value="admin">Admin</option>
+                      <option value="senior_mod">Senior</option>
+                   </select>
+                   <button class="btn btn-primary" id="saveRoleCacheBtn">Kaydet</button>
+                </div>
+                <table class="data-table">
+                   <thead><tr><th>Kimlik</th><th>İsim</th><th>Rol</th><th>İşlem</th></tr></thead>
+                   <tbody id="roleCacheTableBody"></tbody>
+                </table>
+             </div>
+          </div>
+        </div>
+
+        <div class="split-3-1" style="margin-top:18px;">
+          <div class="panel">
+             <div class="panel-header">
+                <span class="panel-title"><i class="fa-solid fa-microchip"></i> AI (Groq) Limit Politikası</span>
+                <button class="btn btn-primary" id="saveGroqPolicyBtn">Limitleri Kaydet</button>
+             </div>
+             <div class="panel-body">
+                <div id="groqLimitGrid" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap:12px;">
+                   <!-- JS renders limit inputs -->
+                </div>
+             </div>
+          </div>
+          <div class="panel">
+             <div class="panel-header">
+                <span class="panel-title"><i class="fa-solid fa-list-ul"></i> Audit Log</span>
+                <button class="btn btn-ghost btn-icon" id="refreshAuditBtn" style="width:26px;height:26px;"><i class="fa-solid fa-rotate"></i></button>
+             </div>
+             <div class="panel-body" id="auditList" style="display:flex; flex-direction:column; gap:8px; max-height:400px; overflow:auto; padding:12px;">
+                <!-- Logs rendered here -->
+             </div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /page-body -->
+
+    <footer style="text-align:center;padding:14px;font-size:11px;color:var(--text-3);border-top:1px solid var(--border);">
+      (c) 2031 GearHead - Lutheus CezaRapor v3
+    </footer>
+
+  </div><!-- /main-content -->
+</div><!-- /app-shell -->
+
+<!-- ??? DETAIL MODAL ???????????????????????????????????????? -->
+<div class="modal-overlay hidden" id="detailModal">
+  <div class="modal-box" style="max-width:700px;max-height:85vh;overflow:auto;">
+    <div class="modal-header">
+      <span id="modalTitle" style="font-weight:700;font-size:15px;">Ceza Detaylar?</span>
+      <button class="btn btn-ghost btn-icon" id="closeModal"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div id="modalContent" style="padding:16px;display:flex;flex-direction:column;gap:12px;"></div>
+  </div>
+</div>
+
+<!-- ??? ROLE MODAL ???????????????????????????????????????? -->
+<div class="modal-overlay hidden" id="roleModal">
+  <div class="modal-box" style="max-width:420px;">
+    <div class="modal-header">
+      <span style="font-weight:700;font-size:15px;">Yetkili Rol Ynetimi</span>
+      <button class="btn btn-ghost btn-icon" id="closeRoleModal"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div style="padding:16px;display:flex;flex-direction:column;gap:12px;">
+      <div class="field-group">
+        <label class="field-label">Discord ID</label>
+        <div style="display:flex;gap:8px;">
+          <input type="text" id="roleUserId" class="field-input" placeholder="Kullanıcı ID..." style="flex:1;">
+          <button class="btn btn-ghost" id="lookupUserBtn">Ara</button>
+        </div>
+        <small id="roleUserNameHint" style="color:var(--text-3);font-size:11px;margin-top:4px;display:block;">Kullanıcı seçin</small>
+      </div>
+      <div class="field-group">
+        <label class="field-label">Grnen ?sim</label>
+        <input type="text" id="roleDisplayName" class="field-input" placeholder="?sim...">
+      </div>
+      <div class="field-group">
+        <label class="field-label">Rol</label>
+        <select id="roleSelect" class="field-input">
+          <option value="discord_moderatoru">Discord Moderatr</option>
+          <option value="kidemli_discord_moderatoru">K?demli Moderatr</option>
+          <option value="discord_yoneticisi">Discord Yneticisi</option>
+          <option value="genel_sorumlu">Genel Sorumlu</option>
+          <option value="yonetici">Ynetici</option>
+          <option value="admin">Admin</option>
+          <option value="discord_destek_ekibi">Destek Ekibi</option>
+          <option value="viewer">Viewer</option>
+          <option value="blocked">Engelli</option>
+        </select>
+      </div>
+      <div class="field-group">
+        <label class="field-label">Manuel Do?ruluk % (iste?e ba?l?)</label>
+        <input type="number" id="manualAccuracy" class="field-input" placeholder="0-100" min="0" max="100">
+      </div>
+      <div style="display:flex;justify-content:flex-end;gap:8px;padding-top:8px;border-top:1px solid var(--border);">
+        <button class="btn btn-ghost" id="closeRoleModalFooter">?ptal</button>
+        <button class="btn btn-primary" id="saveRoleBtn">Kaydet</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="/src/dashboard/admin.js"></script>
+</body>
+</html>

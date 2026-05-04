@@ -1,0 +1,46 @@
+{
+  "name": "lutheus-cezarapor",
+  "version": "2.1.0",
+  "private": true,
+  "description": "Lutheus CezaRapor - Moderation Analysis System",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "echo 'No workspaces to build'",
+    "lint": "eslint -c eslintrc.cjs \"src/**/*.{js,ts}\" \"apps/**/*.ts\" \"packages/**/*.ts\" \"tests/**/*.{js,ts}\"",
+    "check": "npm run lint && npm run test",
+    "env:check": "node scripts/check-env.cjs",
+    "test": "jest --runInBand --passWithNoTests",
+    "test:unit": "jest --runInBand --testPathPattern=tests/unit",
+    "dev:ext": "echo Extension uses MV3 source files directly; no webpack config is present.",
+    "dev:api": "npm run dev --workspace=apps/backend",
+    "dev:bot": "npm run dev --workspace=apps/discord-bot"
+  },
+  "dependencies": {
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vercel/analytics": "^2.0.1",
+    "discord.js": "^14.26.4",
+    "dotenv": "^17.4.2",
+    "firebase": "^11.10.0",
+    "firebase-admin": "^13.0.2",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5"
+  },
+  "devDependencies": {
+    "@babel/preset-env": "^7.26.0",
+    "@typescript-eslint/eslint-plugin": "^7.18.0",
+    "@typescript-eslint/parser": "^7.18.0",
+    "babel-jest": "^29.7.0",
+    "eslint": "^8.57.1",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.2.5",
+    "typescript": "^5.7.2"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=10.0.0"
+  }
+}

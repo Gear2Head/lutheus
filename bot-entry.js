@@ -390,42 +390,7 @@ async function registerCommands(commands) {
   audit('COMMANDS_REGISTERED', { scope: 'global', count: body.length });
 }
 
-async function loginWithRetry(client) {
-  const maxDelay = Number(process.env.DISCORD_LOGIN_MAX_DELAY_MS || 60000);
-  let delay = Number(process.env.DISCORD_LOGIN_INITIAL_DELAY_MS || 5000);
-  while (!runtime.ready) {
-    runtime.status = 'logging_in';
-    runtime.loginAttempts += 1;
-    audit('LOGIN_ATTEMPT', { attempt: runtime.loginAttempts });
-    try {
-      await withTimeout(client.login(process.env.DISCORD_TOKEN), LOGIN_TIMEOUT_MS, 'DISCORD_LOGIN');
-      return;
-    } catch (error) {
-      runtime.ready = false;
-      runtime.status = 'login_retry_wait';
-      runtime.lastError = error.message;
-      client.destroy();
-      if (error.code === 'TokenInvalid' || /invalid token/i.test(error.message || '')) {
-        audit('CONFIG_ERROR', { error: 'DISCORD_TOKEN gecersiz' });
-        return;
-      }
-      audit('LOGIN_RETRY_SCHEDULED', { attempt: runtime.loginAttempts, retryInMs: delay, error: error.message });
-      await sleep(delay);
-      delay = Math.min(maxDelay, Math.round(delay * 1.6));
-    }
-  }
-}
-
-async function main() {
-  if (!process.env.DISCORD_TOKEN) {
-    runtime.status = 'missing_token';
-    runtime.lastError = 'DISCORD_TOKEN_MISSING';
-    audit('CONFIG_ERROR', { error: runtime.lastError });
-    startHealthServer();
-    return;
-  }
-
-  const commands = mergeCommands();
+function createClient(commands) {
   const client = new Client({
     intents: resolveGatewayIntents(),
     rest: { timeout: REST_TIMEOUT_MS, retries: 5 }
@@ -447,28 +412,11 @@ async function main() {
     });
   });
 
-  client.on('guildCreate', (guild) => {
-    runtime.guilds = client.guilds.cache.size;
-    audit('GUILD_JOINED', { guildId: guild.id, guildName: guild.name });
-  });
-  client.on('guildDelete', (guild) => {
-    runtime.guilds = client.guilds.cache.size;
-    audit('GUILD_LEFT', { guildId: guild.id, guildName: guild.name });
-  });
-  client.on('error', (error) => {
-    runtime.lastError = error.message;
-    audit('CLIENT_ERROR', { error: error.message });
-  });
-  client.on('shardDisconnect', (event) => {
-    runtime.ready = false;
-    runtime.status = 'disconnected';
-    audit('SHARD_DISCONNECTED', { code: event?.code, reason: event?.reason });
-  });
-  client.on('shardReconnecting', () => {
-    runtime.ready = false;
-    runtime.status = 'reconnecting';
-    audit('SHARD_RECONNECTING');
-  });
+  client.on('guildCreate', (guild) => { runtime.guilds = client.guilds.cache.size; audit('GUILD_JOINED', { guildId: guild.id }); });
+  client.on('guildDelete', (guild) => { runtime.guilds = client.guilds.cache.size; audit('GUILD_LEFT', { guildId: guild.id }); });
+  client.on('error', (error) => { runtime.lastError = error.message; audit('CLIENT_ERROR', { error: error.message }); });
+  client.on('shardDisconnect', (event) => { runtime.ready = false; runtime.status = 'disconnected'; audit('SHARD_DISCONNECTED', { code: event?.code }); });
+  client.on('shardReconnecting', () => { runtime.ready = false; runtime.status = 'reconnecting'; audit('SHARD_RECONNECTING'); });
   client.on('interactionCreate', async (interaction) => {
     if (!interaction.isChatInputCommand()) return;
     const command = commands.get(interaction.commandName);
@@ -486,14 +434,65 @@ async function main() {
     }
   });
 
-  process.on('SIGTERM', () => {
-    audit('SIGTERM_RECEIVED');
-    client.destroy();
-    process.exit(0);
-  });
+  return client;
+}
 
+async function loginWithRetry(commands) {
+  const maxDelay = Number(process.env.DISCORD_LOGIN_MAX_DELAY_MS || 60000);
+  let delay = Number(process.env.DISCORD_LOGIN_INITIAL_DELAY_MS || 5000);
+
+  while (!runtime.ready) {
+    // Her denemede taze bir client olustur (destroy sonrasi yeniden kullanilmaz)
+    const client = createClient(commands);
+    runtime.status = 'logging_in';
+    runtime.loginAttempts += 1;
+    audit('LOGIN_ATTEMPT', { attempt: runtime.loginAttempts });
+
+    try {
+      // client.login() sadece token kabul edildiginde resolve olur.
+      // Gercek 'ready' eventi icin ayri bekliyoruz.
+      await withTimeout(
+        new Promise((resolve, reject) => {
+          client.once('ready', resolve);
+          client.once('error', reject);
+          client.login(process.env.DISCORD_TOKEN).catch(reject);
+        }),
+        LOGIN_TIMEOUT_MS,
+        'DISCORD_LOGIN'
+      );
+      // Basarili: dongu 'ready' eventi ile bitti
+      process.on('SIGTERM', () => { audit('SIGTERM_RECEIVED'); client.destroy(); process.exit(0); });
+      return;
+    } catch (error) {
+      runtime.ready = false;
+      runtime.status = 'login_retry_wait';
+      runtime.lastError = error.message;
+      client.destroy();
+
+      if (error.code === 'TokenInvalid' || /invalid token/i.test(error.message || '')) {
+        audit('CONFIG_ERROR', { error: 'DISCORD_TOKEN gecersiz - retry durduruldu' });
+        return;
+      }
+
+      audit('LOGIN_RETRY_SCHEDULED', { attempt: runtime.loginAttempts, retryInMs: delay, error: error.message });
+      await sleep(delay);
+      delay = Math.min(maxDelay, Math.round(delay * 1.6));
+    }
+  }
+}
+
+async function main() {
+  if (!process.env.DISCORD_TOKEN) {
+    runtime.status = 'missing_token';
+    runtime.lastError = 'DISCORD_TOKEN_MISSING';
+    audit('CONFIG_ERROR', { error: runtime.lastError });
+    startHealthServer();
+    return;
+  }
+
+  const commands = mergeCommands();
   startHealthServer();
-  await loginWithRetry(client);
+  await loginWithRetry(commands);
 }
 
 main().catch((error) => {

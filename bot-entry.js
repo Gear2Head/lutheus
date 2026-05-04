@@ -418,21 +418,64 @@ function createClient(commands) {
   client.on('shardDisconnect', (event) => { runtime.ready = false; runtime.status = 'disconnected'; audit('SHARD_DISCONNECTED', { code: event?.code }); });
   client.on('shardReconnecting', () => { runtime.ready = false; runtime.status = 'reconnecting'; audit('SHARD_RECONNECTING'); });
   client.on('interactionCreate', async (interaction) => {
-    if (!interaction.isChatInputCommand()) return;
-    const command = commands.get(interaction.commandName);
-    if (!command) return;
-    runtime.commandCount += 1;
-    runtime.lastCommandAt = new Date().toISOString();
     try {
-      await command.execute(interaction, client);
+      // --- Slash komutlari ---
+      if (interaction.isChatInputCommand()) {
+        const command = commands.get(interaction.commandName);
+        if (!command) return;
+        runtime.commandCount += 1;
+        runtime.lastCommandAt = new Date().toISOString();
+        await command.execute(interaction, client);
+        return;
+      }
+
+      // --- Buton etkilesimleri ---
+      if (interaction.isButton()) {
+        const [ns, action] = interaction.customId.split(':');
+
+        if (ns === 'ticket' && action === 'olustur') {
+          await interaction.deferReply({ ephemeral: true });
+          const guild = interaction.guild;
+          const existing = guild.channels.cache.find(c => c.name === `ticket-${interaction.user.id}`);
+          if (existing) return interaction.editReply({ content: `Zaten açık bir ticket var: ${existing}` });
+          const ch = await guild.channels.create({
+            name: `ticket-${interaction.user.id}`,
+            topic: `Destek: ${interaction.user.tag}`,
+            permissionOverwrites: [
+              { id: guild.id, deny: ['ViewChannel'] },
+              { id: interaction.user.id, allow: ['ViewChannel', 'SendMessages', 'ReadMessageHistory'] },
+              { id: guild.members.me.id, allow: ['ViewChannel', 'SendMessages', 'ReadMessageHistory', 'ManageChannels'] },
+            ],
+          });
+          await ch.send(`Merhaba ${interaction.user}! Yardımcı olunacak. Kapatmak için \`/ticket kapat\` yazın.`);
+          await interaction.editReply({ content: `✅ Ticket oluşturuldu: ${ch}` });
+          return;
+        }
+
+        if (ns === 'cekilis' && action === 'katil') {
+          await interaction.deferReply({ ephemeral: true });
+          const msg = interaction.message;
+          const embed = msg.embeds[0];
+          if (!embed) return interaction.editReply({ content: 'Çekiliş verisi bulunamadı.' });
+          const { EmbedBuilder } = require('discord.js');
+          const fields = embed.fields.map(f =>
+            f.name === '🎟️ Katılımcı' ? { ...f, value: String(Number(f.value) + 1) } : f
+          );
+          await msg.edit({ embeds: [EmbedBuilder.from(embed).setFields(fields)] }).catch(() => null);
+          await interaction.editReply({ content: '🎉 Çekilişe katıldınız!' });
+          return;
+        }
+        return;
+      }
     } catch (error) {
       runtime.lastError = error.message;
-      audit('INTERACTION_ERROR', { command: interaction.commandName, error: error.message });
-      const payload = { content: `Islem tamamlanamadi: ${error.message}`, ephemeral: true };
-      if (interaction.deferred || interaction.replied) await interaction.editReply(payload).catch(() => undefined);
-      else await interaction.reply(payload).catch(() => undefined);
+      audit('INTERACTION_ERROR', { id: interaction.customId || interaction.commandName, error: error.message });
+      const errPayload = { content: `İşlem başarısız: \`${error.message}\``, ephemeral: true };
+      if (interaction.deferred || interaction.replied) await interaction.editReply(errPayload).catch(() => undefined);
+      else await interaction.reply(errPayload).catch(() => undefined);
     }
   });
+
 
   return client;
 }

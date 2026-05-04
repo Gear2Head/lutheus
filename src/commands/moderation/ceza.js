@@ -44,9 +44,18 @@ module.exports = {
       return interaction.reply({ content: 'Hedef uye bulunamadi.', ephemeral: true });
     }
 
-    // Hiyerarsi kontrolu
+    // Bot hiyerarsisi kontrolu — botun rolu hedeften ustte olmali
+    const botMember = interaction.guild.members.me;
+    if (target.roles.highest.position >= botMember.roles.highest.position) {
+      return interaction.reply({
+        content: `❌ Bu işlemi yapamam — **${target.user.tag}** kullanıcısının rolü benim rolümden üstte veya eşit.\n📌 Çözüm: Sunucu ayarlarında **Lutheus Guard** rolünü hedef kullanıcının rolünün **üstüne** taşıyın.`,
+        ephemeral: true
+      });
+    }
+
+    // Yetkili hiyerarsisi kontrolu
     if (target.roles.highest.position >= interaction.member.roles.highest.position) {
-      return interaction.reply({ content: 'Bu kullaniciya ceza veremezsiniz (rol hiyerarsisi).', ephemeral: true });
+      return interaction.reply({ content: '❌ Bu kullanıcıya ceza veremezsiniz — rolünüz hedefin rolünden düşük veya eşit.', ephemeral: true });
     }
 
     const cezaId = `C-${Date.now().toString(36).toUpperCase()}`;
@@ -88,7 +97,7 @@ module.exports = {
 
       await interaction.reply({ embeds: [embed] });
     } catch (err) {
-      await interaction.reply({ content: `İşlem başarısız: ${err.message}`, ephemeral: true });
+      await interaction.reply({ content: `❌ İşlem başarısız: ${err.message}`, ephemeral: true });
     }
   }
 };

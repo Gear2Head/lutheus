@@ -491,6 +491,23 @@ async function main() {
   }
 
   const commands = mergeCommands();
+
+  // Komutlari gateway baglantisından ONCE REST ile kaydet (anlik etki eder)
+  try {
+    const body = Array.from(commands.values()).map((c) => c.data.toJSON());
+    const rest = new REST({ timeout: REST_TIMEOUT_MS, retries: 3 }).setToken(process.env.DISCORD_TOKEN);
+    const guildId = process.env.DISCORD_GUILD_ID;
+    if (guildId) {
+      await rest.put(Routes.applicationGuildCommands(CLIENT_ID, guildId), { body });
+      audit('COMMANDS_REGISTERED', { scope: 'guild', guildId, count: body.length });
+    } else {
+      await rest.put(Routes.applicationCommands(CLIENT_ID), { body });
+      audit('COMMANDS_REGISTERED', { scope: 'global', count: body.length });
+    }
+  } catch (error) {
+    audit('COMMAND_REGISTER_ERROR', { error: error.message });
+  }
+
   startHealthServer();
   await loginWithRetry(commands);
 }

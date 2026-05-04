@@ -77,8 +77,8 @@ function inviteDiagnostics(clientId = getClientId()) {
     integrationType: 0,
     targetGuildId: DEFAULT_GUILD_ID,
     canonicalInvite: canonical,
-    targetGuildInvite: targetGuild,
-    commonBadInvite: `https://discord.com/oauth2/authorize?client_id=${clientId}`,
+    targetGuildInvite: canonical,
+    commonBadInvite: `https://discord.com/oauth2/authorize?client_id=${clientId}&scope=bot+applications.commands&permissions=${INVITE_PERMISSIONS}&integration_type=0`,
     checks: [
       'Sadece client_id iceren link botu eklemez; scope=bot+applications.commands zorunludur.',
       'Discord Developer Portal > Installation: Guild Install acik olmali.',
@@ -771,7 +771,41 @@ async function main() {
   await loginWithRetry(client);
 }
 
+async function deployCommands() {
+  const { REST, Routes } = require('discord.js');
+  const commands = [];
+  const commandsPath = path.join(__dirname, 'src/commands');
+  
+  if (fs.existsSync(commandsPath)) {
+    const commandFolders = fs.readdirSync(commandsPath);
+    for (const folder of commandFolders) {
+      const folderPath = path.join(commandsPath, folder);
+      const commandFiles = fs.readdirSync(folderPath).filter(file => file.endsWith('.js'));
+      for (const file of commandFiles) {
+        const filePath = path.join(folderPath, file);
+        const command = require(filePath);
+        if ('data' in command && 'execute' in command) {
+          commands.push(command.data.toJSON());
+        }
+      }
+    }
+
+    const rest = new REST().setToken(process.env.DISCORD_TOKEN);
+    try {
+      console.log(`[System] ${commands.length} komut Discord'a kaydediliyor...`);
+      await rest.put(
+        Routes.applicationCommands(process.env.DISCORD_CLIENT_ID),
+        { body: commands },
+      );
+      console.log(`[System] Komutlar basariyla güncellendi!`);
+    } catch (error) {
+      console.error('[Error] Komut kaydi sirasinda hata:', error);
+    }
+  }
+}
+
 async function loginWithRetry(client) {
+  await deployCommands();
   const maxDelay = Number(process.env.DISCORD_LOGIN_MAX_DELAY_MS || 60000);
   let delay = Number(process.env.DISCORD_LOGIN_INITIAL_DELAY_MS || 5000);
 

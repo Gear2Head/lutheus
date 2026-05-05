@@ -41,21 +41,50 @@ module.exports = {
       );
     }
 
+    // Yetkili hiyerarsisi kontrolu
+    if (target.roles.highest.position >= interaction.member.roles.highest.position) {
+      return interaction.editReply({ content: '❌ Bu kullanıcıya karantina uygulayamazsınız — rolünüz hedefin rolünden düşük veya eşit.' });
+    }
+
+    // Bot hiyerarşisi kontrolü
+    const botMember = interaction.guild.members.me;
+    if (target.roles.highest.position >= botMember.roles.highest.position) {
+      return interaction.editReply({
+        content: `❌ Bu işlemi yapamam — **${target.user.tag}** kullanıcısının rolü benim rolümden üstte veya eşit.\n📌 Çözüm: Sunucu ayarlarında **Lutheus Guard** rolünü hedef kullanıcının rolünün **üstüne** taşıyın.`
+      });
+    }
+
     if (sub === 'uygula') {
       const sebep = interaction.options.getString('sebep');
-      await target.roles.add(karRole, sebep);
-      const embed = new EmbedBuilder()
-        .setColor(0xef4444)
-        .setTitle('🔒 Karantina Uygulandı')
-        .addFields(
-          { name: 'Kullanıcı', value: `${target}`, inline: true },
-          { name: 'Yetkili', value: `${interaction.user}`, inline: true },
-          { name: 'Sebep', value: sebep, inline: false }
-        ).setTimestamp();
-      await interaction.editReply({ embeds: [embed] });
+      try {
+        await target.roles.add(karRole, sebep);
+        const embed = new EmbedBuilder()
+          .setColor(0xef4444)
+          .setTitle('🔒 Karantina Uygulandı')
+          .addFields(
+            { name: 'Kullanıcı', value: `${target}`, inline: true },
+            { name: 'Yetkili', value: `${interaction.user}`, inline: true },
+            { name: 'Sebep', value: sebep, inline: false }
+          ).setTimestamp();
+        await interaction.editReply({ embeds: [embed] });
+      } catch (err) {
+        if (err.code === 50013 || err.message.includes('Missing Permissions')) {
+          await interaction.editReply({ content: `❌ İşlem başarısız: Yetkim yetersiz (Missing Permissions).\n📌 Çözüm: Botun rolünü hedef kullanıcının ve Karantina rolünün üstüne taşıyın.` });
+        } else {
+          await interaction.editReply({ content: `❌ İşlem başarısız: ${err.message}` });
+        }
+      }
     } else {
-      await target.roles.remove(karRole, 'Karantina kaldırıldı');
-      await interaction.editReply({ content: `✅ ${target} karantinadan çıkarıldı.` });
+      try {
+        await target.roles.remove(karRole, 'Karantina kaldırıldı');
+        await interaction.editReply({ content: `✅ ${target} karantinadan çıkarıldı.` });
+      } catch (err) {
+        if (err.code === 50013 || err.message.includes('Missing Permissions')) {
+          await interaction.editReply({ content: `❌ İşlem başarısız: Yetkim yetersiz (Missing Permissions).\n📌 Çözüm: Botun rolünü hedef kullanıcının ve Karantina rolünün üstüne taşıyın.` });
+        } else {
+          await interaction.editReply({ content: `❌ İşlem başarısız: ${err.message}` });
+        }
+      }
     }
   }
 };

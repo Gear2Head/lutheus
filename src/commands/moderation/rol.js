@@ -35,17 +35,31 @@ module.exports = {
       }
 
       if (sub === 'ver') {
-        await target.roles.add(rol);
-        await interaction.reply({ embeds: [
-          new EmbedBuilder().setColor(0x22c55e)
-            .setDescription(`✅ ${target} kullanıcısına **${rol.name}** rolü verildi.`)
-        ]});
+        try {
+          await target.roles.add(rol);
+          await interaction.reply({ embeds: [
+            new EmbedBuilder().setColor(0x22c55e)
+              .setDescription(`✅ ${target} kullanıcısına **${rol.name}** rolü verildi.`)
+          ]});
+        } catch(err) {
+          if (err.code === 50013 || err.message.includes('Missing Permissions')) {
+            return interaction.reply({ content: `❌ İşlem başarısız: Yetkim yetersiz (Missing Permissions).\n📌 Çözüm: Botun rolünü verilecek rolden daha üste taşıyın.`, ephemeral: true });
+          }
+          return interaction.reply({ content: `❌ İşlem başarısız: ${err.message}`, ephemeral: true });
+        }
       } else {
-        await target.roles.remove(rol);
-        await interaction.reply({ embeds: [
-          new EmbedBuilder().setColor(0xef4444)
-            .setDescription(`✅ ${target} kullanıcısından **${rol.name}** rolü alındı.`)
-        ]});
+        try {
+          await target.roles.remove(rol);
+          await interaction.reply({ embeds: [
+            new EmbedBuilder().setColor(0xef4444)
+              .setDescription(`✅ ${target} kullanıcısından **${rol.name}** rolü alındı.`)
+          ]});
+        } catch(err) {
+          if (err.code === 50013 || err.message.includes('Missing Permissions')) {
+            return interaction.reply({ content: `❌ İşlem başarısız: Yetkim yetersiz (Missing Permissions).\n📌 Çözüm: Botun rolünü alınacak rolden daha üste taşıyın.`, ephemeral: true });
+          }
+          return interaction.reply({ content: `❌ İşlem başarısız: ${err.message}`, ephemeral: true });
+        }
       }
     } else if (sub === 'liste') {
       const roles = interaction.guild.roles.cache

@@ -97,7 +97,11 @@ module.exports = {
 
       await interaction.reply({ embeds: [embed] });
     } catch (err) {
-      await interaction.reply({ content: `❌ İşlem başarısız: ${err.message}`, ephemeral: true });
+      if (err.code === 50013 || err.message.includes('Missing Permissions')) {
+        await interaction.reply({ content: `❌ Bu işlemi yapamam — yetkim yetersiz (Missing Permissions).\n📌 Çözüm: Sunucu ayarlarında **Lutheus Guard** rolünü hedef kullanıcının rolünün **üstüne** taşıyın veya yetkilerimi kontrol edin.`, ephemeral: true }).catch(() => null);
+      } else {
+        await interaction.reply({ content: `❌ İşlem başarısız: ${err.message}`, ephemeral: true }).catch(() => null);
+      }
     }
   }
 };

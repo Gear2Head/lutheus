@@ -16,7 +16,8 @@
     "test:unit": "jest --runInBand --testPathPattern=tests/unit",
     "dev:ext": "echo Extension uses MV3 source files directly; no webpack config is present.",
     "dev:api": "npm run dev --workspace=apps/backend",
-    "dev:bot": "npm run dev --workspace=apps/discord-bot"
+    "dev:bot": "npm run dev --workspace=apps/discord-bot",
+    "dev:dashboard": "npm run dev --workspace=apps/dashboard"
   },
   "dependencies": {
     "@types/react": "^19.2.14",

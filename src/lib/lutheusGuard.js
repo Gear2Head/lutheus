@@ -3,7 +3,7 @@
 
 const LutheusGuard = {
     // Lutheus Discord Server Guild ID - LOCKED
-    LUTHEUS_GUILD_ID: '1354854696874938590',
+    LUTHEUS_GUILD_ID: '1223431616081166336',
     LUTHEUS_NAME: 'Lutheus',
 
     /**

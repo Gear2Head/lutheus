@@ -373,20 +373,55 @@ function avatarImg(url, className, alt) {
     return `<img src="${escapeHtml(resolveAvatar(url))}" class="${className}" alt="${escapeHtml(alt || 'Avatar')}" data-avatar-img>`;
 }
 
-function computeModeratorStats(cases, registry) {
+function computeModeratorStats(cases, registry, roleCache = []) {
     const map = new Map();
 
     cases.forEach((entry) => {
-        const key = entry.authorId || entry.authorName || 'unknown';
-        const registryEntry = registry[entry.authorId] || {};
+        const id = entry.authorId || '';
+        const rawName = entry.authorName || '';
+
+        // ASSUME: Query role cache mapping first using actual Discord ID
+        const roleEntry = roleCache.find((r) => {
+            const cacheId = r.discordId || String(r.identityKey || r.id || '').replace(/^discord:/, '');
+            return cacheId === id;
+        }) || {};
+
+        const registryEntry = registry[id] || {};
         const validation = getValidation(entry);
+        const isGeneric = (name) => {
+            if (!name) return true;
+            const lower = name.toLowerCase().trim();
+            return lower === 'discord desteg ekibi' || lower === 'discord destek ekibi' || 
+                   lower === 'discord moderator' || lower === 'discord moderatoru' ||
+                   lower === 'discord yoneticisi' || lower === 'genel sorumlu' ||
+                   lower === 'yonetici' || lower === 'bilinmeyen yetkili' ||
+                   lower === 'kidemli' || lower === 'kidemli_discord_moderatoru' ||
+                   lower === 'kidemli discord moderatoru';
+        };
+
+        const key = id || rawName || 'unknown';
+        let displayName = roleEntry.displayName || registryEntry.name;
+        if (rawName && (!displayName || isGeneric(displayName))) {
+            displayName = rawName;
+        }
+        if (!displayName) {
+            displayName = 'Bilinmiyor';
+        }
+
+        let caseAvatar = null;
+        if (id && cases) {
+            const matchingCase = cases.find(c => 
+                (c.authorId && String(c.authorId) === id) && c.authorAvatar
+            );
+            if (matchingCase) caseAvatar = matchingCase.authorAvatar;
+        }
 
         if (!map.has(key)) {
             map.set(key, {
-                id: entry.authorId || '',
-                name: registryEntry.name || entry.authorName || 'Bilinmiyor',
-                avatar: resolveAvatar(registryEntry.avatar),
-                role: registryEntry.role || 'moderator',
+                id: id,
+                name: displayName,
+                avatar: resolveAvatar(roleEntry.avatar || registryEntry.avatar || caseAvatar || entry.authorAvatar),
+                role: normalizeRole(roleEntry.role || registryEntry.role || entry.role || 'moderator'),
                 count: 0,
                 valid: 0,
                 invalid: 0,
@@ -461,11 +496,16 @@ async function updateUserProfile() {
 }
 
 async function updateStats() {
-    const [cases, registry, rules] = await Promise.all([Storage.getCases(), Storage.getUserRegistry(), Storage.getDynamicRules()]);
+    const [cases, registry, rules, roleCache] = await Promise.all([
+        Storage.getCases(),
+        Storage.getUserRegistry(),
+        Storage.getDynamicRules(),
+        Storage.getRoleCache()
+    ]);
     CUKEngine.setRules(rules);
     const visibleCases = filterCasesByRole(cases);
     const weekly = Storage.calculateWeeklyStats(visibleCases);
-    state.currentModeratorStats = computeModeratorStats(visibleCases, registry);
+    state.currentModeratorStats = computeModeratorStats(visibleCases, registry, roleCache);
     DOM.totalCases.textContent = String(weekly.totalCases || 0);
     DOM.totalMods.textContent = String(weekly.totalModerators || 0);
     DOM.scannedPagesVal.textContent = String(state.scannedPages || 0);
@@ -620,12 +660,15 @@ function exitFocusMode() {
 }
 
 async function exportReport() {
-    const cases = await Storage.getCases();
-    const registry = await Storage.getUserRegistry();
+    const [cases, registry, roleCache] = await Promise.all([
+        Storage.getCases(),
+        Storage.getUserRegistry(),
+        Storage.getRoleCache()
+    ]);
     const report = {
         exportedAt: new Date().toISOString(),
         cases: cases.length,
-        moderators: computeModeratorStats(cases, registry)
+        moderators: computeModeratorStats(cases, registry, roleCache)
     };
     downloadFile(`lutheus-rapor-${Date.now()}.json`, JSON.stringify(report, null, 2), 'application/json;charset=utf-8');
     Toast.success('Rapor hazir', 'JSON raporu indirildi');

@@ -10,6 +10,15 @@
     const seenIds = new Set();
     const MAX_SEEN = 500;
 
+    // ASSUME: Hydrating seenKeys from local storage asynchronously at startup to prevent double interception after page reloads
+    chrome.storage.local.get(['lutheus_seen_keys'], (result) => {
+        if (Array.isArray(result.lutheus_seen_keys)) {
+            for (const key of result.lutheus_seen_keys) {
+                seenIds.add(key);
+            }
+        }
+    });
+
     function firstValue(...values) {
         for (const value of values) {
             if (value !== undefined && value !== null && value !== '') return value;
@@ -75,8 +84,8 @@
                 const punishment = item.punishment && typeof item.punishment === 'object' ? item.punishment : {};
                 const target = firstValue(item.target, item.targetUser, item.member, item.user, punishment.target, punishment.user);
                 const moderator = firstValue(item.moderator, item.executor, item.author, item.staff, punishment.moderator, punishment.executor);
-                const targetObj = typeof target === 'object' ? target : {};
-                const moderatorObj = typeof moderator === 'object' ? moderator : {};
+                const targetObj = (target && typeof target === 'object') ? target : {};
+                const moderatorObj = (moderator && typeof moderator === 'object') ? moderator : {};
                 const id = firstValue(
                     caseObj.id,
                     caseObj._id,
@@ -137,6 +146,7 @@
 
     function deduplicate(records) {
         const fresh = [];
+        let changed = false;
         for (const r of records) {
             const normalizedDate = new Date(r.createdAt).getTime();
             const key = `${r.id}:${r.userId}:${r.type}:${normalizedDate}`;
@@ -147,6 +157,10 @@
             }
             seenIds.add(key);
             fresh.push(r);
+            changed = true;
+        }
+        if (changed) {
+            chrome.storage.local.set({ lutheus_seen_keys: Array.from(seenIds) }).catch(() => {});
         }
         return fresh;
     }

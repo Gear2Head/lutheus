@@ -19,7 +19,7 @@ window.GearTech.Scraper = {
             if (row.classList.contains('dummy')) return;
             if (row.innerText.includes('ID') && row.innerText.includes('User') && row.innerText.includes('Reason')) return;
 
-            const cols = row.querySelectorAll('[class*="column"]');
+            const cols = this.getRowColumns(row);
             const text = row.innerText || '';
             const hasCaseId = /\b[A-Za-z0-9]{4,15}\b/.test(text);
             const looksLikeCase = hasCaseId && /(mute|ban|warn|kick|timeout|permanent|\d{1,2}\.\d{1,2}\.\d{4})/i.test(text);
@@ -123,7 +123,7 @@ window.GearTech.Scraper = {
      */
     extractRowData: function (row, rowIdx) {
         // Get all column elements
-        const columns = Array.from(row.querySelectorAll('[class*="column"]'));
+        const columns = this.getRowColumns(row);
 
         if (columns.length < 6) return this.extractCompactRowData(row, rowIdx);
 
@@ -156,7 +156,12 @@ window.GearTech.Scraper = {
 
         // Extract Reason
         const reasonCol = columns[2 + colOffset] || columns[2];
-        const reason = reasonCol ? reasonCol.innerText.trim() : '';
+        let reason = reasonCol ? reasonCol.innerText.trim() : '';
+        if (this.isInvalidReasonCandidate(reason)) {
+            const fallbackReasonCol = columns.slice(2, Math.min(columns.length, 5))
+                .find((col) => col && !this.isInvalidReasonCandidate(col.innerText?.trim()));
+            reason = fallbackReasonCol ? fallbackReasonCol.innerText.trim() : '';
+        }
 
         // Extract Author
         const authorCol = columns[3 + colOffset] || columns[3];
@@ -219,7 +224,7 @@ window.GearTech.Scraper = {
             user: userName || 'Unknown',
             userId: userId || '',
             userAvatar: userAvatar,
-            reason: reason || '',
+            reason: this.cleanReasonCandidate(reason),
             authorName: authorName || 'Unknown',
             authorId: authorId || '',
             authorAvatar: authorAvatar,
@@ -259,9 +264,15 @@ window.GearTech.Scraper = {
             user = parts[1] || '';
             reason = parts[2] || '';
             duration = parts[3] || '';
+            if (this.isInvalidReasonCandidate(reason)) {
+                const fallback = parts.slice(2).find((part) => !this.isInvalidReasonCandidate(part)
+                    && !/\d{1,2}\.\d{1,2}\.\d{4}/.test(part)
+                    && !/^(mute|ban|warn|kick|timeout|permanent)$/i.test(part));
+                reason = fallback || '';
+            }
         } else {
             const withoutCase = rawText.replace(caseId, '').replace(/\b\d{17,20}\b/g, '').trim();
-            reason = parts.find((part) => !/^(mute|ban|warn|kick|timeout|permanent)$/i.test(part) && !/\d{1,2}\.\d{1,2}\.\d{4}/.test(part)) || withoutCase;
+            reason = parts.find((part) => !this.isInvalidReasonCandidate(part) && !/^(mute|ban|warn|kick|timeout|permanent)$/i.test(part) && !/\d{1,2}\.\d{1,2}\.\d{4}/.test(part)) || withoutCase;
         }
 
         return {
@@ -270,7 +281,7 @@ window.GearTech.Scraper = {
             user: user || 'Bilinmiyor',
             userId: idMatches[0] || '',
             userAvatar,
-            reason: reason || '',
+            reason: this.cleanReasonCandidate(reason),
             authorName: 'Bilinmeyen Yetkili',
             authorId: '',
             authorAvatar: null,
@@ -284,9 +295,40 @@ window.GearTech.Scraper = {
         };
     },
 
+    isLikelyCaseId: function (value, options = {}) {
+        const text = String(value || '').trim();
+        if (!/^[A-Za-z0-9_-]{4,18}$/.test(text)) return false;
+        if (/^\d{17,20}$/.test(text)) return false;
+        if (/^(mute|ban|warn|kick|timeout|user|reason|author|duration|created|bilinmiyor|sunucu|discord|yetkili)$/i.test(text)) return false;
+        if (/[ğĞüÜşŞıİöÖçÇ]/.test(text)) return false;
+        if (options.tagged) return true;
+        if (/^[A-Za-z]{4,18}$/.test(text)) {
+            const uppercaseCount = (text.match(/[A-Z]/g) || []).length;
+            return text.length >= 6 && uppercaseCount >= 2 && /[a-z]/.test(text);
+        }
+        return /[A-Za-z]/.test(text) && /\d/.test(text);
+    },
+
+    isInvalidReasonCandidate: function (value) {
+        const text = String(value || '').trim();
+        if (!text) return true;
+        if (/^\d{4,20}$/.test(text)) return true;
+        if (/^\d{17,20}$/.test(text)) return true;
+        if (this.isLikelyCaseId(text)) return true;
+        return false;
+    },
+
+    cleanReasonCandidate: function (value) {
+        const text = String(value || '').trim();
+        return this.isInvalidReasonCandidate(text) ? '' : text;
+    },
+
     extractCaseIdFromText: function (text) {
-        const candidates = String(text || '').match(/\b[A-Za-z0-9]{4,15}\b/g) || [];
-        return candidates.find((candidate) => !/^(mute|ban|warn|kick|timeout|user|reason|author|duration|created)$/i.test(candidate)) || '';
+        const raw = String(text || '');
+        const tagged = raw.match(/#([A-Za-z0-9_-]{4,18})\b/);
+        if (tagged && this.isLikelyCaseId(tagged[1], { tagged: true })) return tagged[1];
+        const candidates = raw.match(/\b[A-Za-z0-9_-]{4,18}\b/g) || [];
+        return candidates.find((candidate) => this.isLikelyCaseId(candidate)) || '';
     },
 
     buildCaseUrl: function (caseId) {
@@ -343,6 +385,13 @@ window.GearTech.Scraper = {
         const text = col.innerText || col.textContent || '';
         const match = text.match(/\b\d{17,20}\b/);
         return match ? match[0] : '';
+    },
+
+    getRowColumns: function (row) {
+        if (!row) return [];
+        const tds = Array.from(row.querySelectorAll('td'));
+        if (tds.length > 0) return tds;
+        return Array.from(row.children);
     },
 
     /**

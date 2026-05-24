@@ -61,6 +61,10 @@
         <i class="fa-solid fa-id-card-clip"></i>
         <span class="tooltip">Erişim</span>
       </button>
+      <button class="nav-item" data-page="profile" title="">
+        <i class="fa-solid fa-id-card"></i>
+        <span class="tooltip">Profil</span>
+      </button>
     </div>
     <div class="sidebar-footer">
       <div class="status-pulse" id="statusPulse"></div>
@@ -348,6 +352,56 @@
           </div>
         </div>
 
+        <!-- CUK Rule Simulator Section -->
+        <div class="panel" style="margin-top:16px;">
+          <div class="panel-header">
+            <span class="panel-title"><i class="fa-solid fa-wand-magic-sparkles" style="color:var(--purple-hi);"></i> CUK Simülasyon Kumandası</span>
+          </div>
+          <div class="panel-body" style="display:flex; flex-direction:column; gap:12px;">
+            <p style="font-size:12px; color:var(--text-3);">Bir ceza sebebi veya notu girerek AI'sız CUK motorunun kategoriyi nasıl saptayacağını ve hangi aşamada hangi cezayı keseceğini gerçek zamanlı test edin.</p>
+            <div style="display:flex; gap:12px; align-items:start;">
+              <div style="flex:2; display:flex; flex-direction:column; gap:8px;">
+                <input type="text" id="simReasonInput" class="field-input" placeholder="Örn: Yetkillere saygısızlık veya reklam..." style="font-size:13px; font-weight:500;">
+                <div style="display:flex; gap:8px;">
+                  <input type="number" id="simRepeatInput" class="field-input" placeholder="Tekrar Sayısı (Örn: 2)" min="1" max="10" style="flex:1; font-size:12px;">
+                  <select id="simTypeInput" class="field-input" style="flex:1; font-size:12px;">
+                    <option value="mute">MUTE</option>
+                    <option value="ban">BAN</option>
+                    <option value="warn">WARN</option>
+                    <option value="kick">KICK</option>
+                  </select>
+                </div>
+              </div>
+              <button class="btn btn-primary" id="btnRunSimulation" style="padding: 12px 24px; font-weight:600; height:74px;">
+                <i class="fa-solid fa-play" style="margin-right:6px;"></i> Simüle Et
+              </button>
+            </div>
+            
+            <div id="simResultPanel" class="hidden" style="background:rgba(255,255,255,0.02); border:1px dashed var(--border); border-radius:8px; padding:16px; display:flex; flex-direction:column; gap:12px; animation: fadeIn 0.2s ease;">
+              <div style="display:flex; justify-content:space-between; align-items:center;">
+                <h4 style="font-size:13px; font-weight:700; color:var(--text-1);">Simülasyon Sonucu</h4>
+                <span id="simStatusBadge" class="status-badge" style="font-size:11px; font-weight:700;">VALID</span>
+              </div>
+              <div class="delta-grid" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap:10px;">
+                <div class="delta-card" style="padding:10px;">
+                  <div class="delta-label">Saptanan Kategori</div>
+                  <div class="delta-val" id="simResultCategory" style="font-size:16px; color:var(--purple-hi);">-</div>
+                </div>
+                <div class="delta-card" style="padding:10px;">
+                  <div class="delta-label">Uygulanacak Ceza</div>
+                  <div class="delta-val" id="simResultPunishment" style="font-size:16px; color:var(--text-1);">-</div>
+                </div>
+                <div class="delta-card" style="padding:10px;">
+                  <div class="delta-label">Doğruluk Analizi</div>
+                  <div class="delta-val" id="simResultAccuracy" style="font-size:16px;">-</div>
+                </div>
+              </div>
+              <div id="simResultDetails" style="font-size:12px; color:var(--text-3); line-height:1.5; padding:8px; background:rgba(0,0,0,0.2); border-radius:4px;">
+              </div>
+            </div>
+          </div>
+        </div>
+
       </div><!-- /cuk -->
 
 
@@ -361,13 +415,10 @@
                 <i class="fa-solid fa-user-plus"></i>
               </button>
             </div>
-            <div style="overflow:auto; max-height: 640px;">
-              <table class="data-table">
-                <thead><tr><th>Yetkili</th><th>Rol</th><th>??lem</th></tr></thead>
-                <tbody id="mgmtModList">
-                  <tr><td colspan="3" style="text-align:center;color:var(--text-3);padding:40px;">Y?kleniyor...</td></tr>
-                </tbody>
-              </table>
+            <div style="overflow:auto; max-height: 640px; padding: 12px;">
+              <div id="mgmtModList" class="mod-cards-grid">
+                <div class="empty-cell" style="text-align:center;color:var(--text-3);padding:40px;">Yükleniyor...</div>
+              </div>
             </div>
           </div>
           <div class="panel">
@@ -493,6 +544,188 @@
              <div class="panel-body" id="auditList" style="display:flex; flex-direction:column; gap:8px; max-height:400px; overflow:auto; padding:12px;">
                 <!-- Logs rendered here -->
              </div>
+        </div>
+
+        <div class="split-2" style="margin-top:18px;">
+          <div class="panel">
+             <div class="panel-header">
+                <span class="panel-title"><i class="fa-brands fa-discord" style="color:#5865F2;"></i> Discord Bot Entegrasyonu</span>
+                <span class="status-pulse green" id="botStatusPulse" style="width:10px; height:10px; border-radius:50%; background:var(--emerald);" title="Bot Aktif"></span>
+             </div>
+             <div class="panel-body" style="display:flex; flex-direction:column; gap:12px;">
+                <p style="font-size:12px; color:var(--text-3);">Discord botunun ceza loglarını anlık olarak göndereceği log kanalını ayarlayın ve entegrasyonu test edin.</p>
+                <div class="field-group">
+                   <label class="field-label">Discord Log Kanal ID</label>
+                   <div style="display:flex; gap:8px;">
+                      <input type="text" id="botLogChannelId" class="field-input" placeholder="Kanal ID girin..." style="flex:1;">
+                      <button class="btn btn-primary" id="btnSaveBotConfig">Kaydet</button>
+                   </div>
+                </div>
+                <div style="display:flex; gap:8px; margin-top:4px;">
+                   <button class="btn btn-ghost" id="btnSyncProfiles" style="flex:1; font-size:12px; height:32px;">
+                      <i class="fa-solid fa-arrows-spin"></i> Profilleri Eşitle
+                   </button>
+                   <button class="btn btn-ghost" id="btnTestBotLog" style="flex:1; font-size:12px; height:32px;">
+                      <i class="fa-solid fa-paper-plane"></i> Test Logu Yolla
+                   </button>
+                </div>
+             </div>
+          </div>
+          <div class="panel">
+             <div class="panel-header">
+                <span class="panel-title"><i class="fa-solid fa-server"></i> SRE Sistem Durumu</span>
+             </div>
+             <div class="panel-body" style="display:flex; flex-direction:column; gap:12px;">
+                <div class="delta-grid" style="grid-template-columns: 1fr 1fr; gap:10px;">
+                  <div class="delta-card" style="padding:10px;">
+                    <div class="delta-label">Sistem API</div>
+                    <div class="delta-val" style="font-size:14px; color:var(--emerald);"><i class="fa-solid fa-circle-nodes"></i> Çevrimiçi</div>
+                  </div>
+                  <div class="delta-card" style="padding:10px;">
+                    <div class="delta-label">Veritabanı Enteğ.</div>
+                    <div class="delta-val" style="font-size:14px; color:var(--emerald);"><i class="fa-solid fa-database"></i> Senkronize</div>
+                  </div>
+                </div>
+                <div style="font-size:12px; color:var(--text-3); line-height:1.4;">
+                  <p><strong>Lutheus Engine v3.2.0</strong></p>
+                  <p style="margin-top:4px;">Güvenlik seviyesi: <span style="color:var(--purple-hi); font-weight:700;">MAKSİMUM</span>. Tüm işlemler HMAC imzalı olarak doğrulanmaktadır.</p>
+                </div>
+             </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── STAFF PROFILES PAGE ──────────────────────────────── -->
+      <div class="page-section" id="page-profile">
+        <div class="split-3-1" style="grid-template-columns: 280px 1fr; gap:18px;">
+          <!-- Left: Staff List Selector -->
+          <div class="panel" style="display:flex; flex-direction:column; max-height: 680px; overflow:hidden;">
+            <div class="panel-header">
+              <span class="panel-title"><i class="fa-solid fa-users"></i> Yetkililer</span>
+            </div>
+            <div style="padding:12px; border-bottom:1px solid var(--border);">
+              <div class="search-field">
+                <i class="fa-solid fa-magnifying-glass"></i>
+                <input type="text" id="profileSearchInput" placeholder="Yetkili ara...">
+              </div>
+            </div>
+            <div id="profileStaffList" class="mod-cards-grid" style="overflow-y:auto; padding:12px; flex:1;">
+              <div class="empty-cell" style="text-align:center;color:var(--text-3);padding:40px;">Yükleniyor...</div>
+            </div>
+          </div>
+
+          <!-- Right: Profile Details View -->
+          <div class="panel" id="profileDetailCard" style="min-height:600px; display:flex; flex-direction:column;">
+            <div class="panel-body" style="flex:1; display:flex; flex-direction:column; gap:20px;">
+              <!-- Placeholder when no profile selected or loaded -->
+              <div id="profileEmptyState" class="cuk-empty-state">
+                <i class="fa-solid fa-id-card" style="font-size:48px;"></i>
+                <p>Profil detaylarını görmek için soldan bir yetkili seçin.</p>
+              </div>
+
+              <!-- Main Detail Content -->
+              <div id="profileDetailContent" class="hidden" style="display:flex; flex-direction:column; gap:20px;">
+                <!-- Header Card -->
+                <div class="profile-header-card" id="profHeaderCard">
+                  <div class="profile-header-left">
+                    <div class="profile-avatar-glow" id="profAvatarGlow">
+                      <img src="" id="profAvatar" alt="Avatar" data-avatar-img>
+                    </div>
+                    <div class="profile-meta">
+                      <h2 id="profName" style="font-size:20px; font-weight:800; color:var(--text-1); margin:0;"></h2>
+                      <span id="profRoleBadge" class="role-chip"></span>
+                      <span id="profDiscordId" style="font-size:12px; font-family:var(--font-mono); color:var(--text-3); margin-top:2px;"></span>
+                    </div>
+                  </div>
+                  <div class="profile-header-right" id="profJoinDateContainer">
+                    <span style="font-size:10px; color:var(--text-3); text-transform:uppercase; font-weight:700;">Ekibe Katılım</span>
+                    <span id="profJoinDate" style="font-size:14px; font-weight:600; color:var(--text-2);"></span>
+                  </div>
+                </div>
+
+                <!-- Stats Grid -->
+                <div class="delta-grid" style="grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap:12px;">
+                  <div class="delta-card">
+                    <div class="delta-label">Toplam İşlem</div>
+                    <div class="delta-val" id="profStatTotal">0</div>
+                  </div>
+                  <div class="delta-card">
+                    <div class="delta-label">Doğruluk Oranı</div>
+                    <div class="delta-val" id="profStatAccuracy">0%</div>
+                  </div>
+                  <div class="delta-card">
+                    <div class="delta-label">Hatalı İşlem</div>
+                    <div class="delta-val" id="profStatInvalid" style="color:var(--red);">0</div>
+                  </div>
+                  <div class="delta-card">
+                    <div class="delta-label">Point Train Puanı</div>
+                    <div class="delta-val" id="profStatPtScore" style="color:var(--purple-hi);">0</div>
+                  </div>
+                </div>
+
+                <!-- Warn & İkaz Status Section -->
+                <div class="split-2" style="gap:16px;">
+                  <!-- Warn Points Card -->
+                  <div class="delta-card" style="display:flex; flex-direction:column; align-items:center; gap:8px; padding:16px; background:rgba(240,78,78,0.05); border-color:rgba(240,78,78,0.2);">
+                    <span style="font-size:11px; font-weight:700; color:var(--red); text-transform:uppercase; letter-spacing:0.5px;">Yetkili Uyarı Puanı</span>
+                    <div style="display:flex; gap:6px;" id="profWarnDots">
+                      <!-- Active/Inactive warning dots -->
+                    </div>
+                    <span style="font-size:11px; color:var(--text-3);" id="profWarnLimitLabel"></span>
+                  </div>
+                  <!-- İkaz Points Card -->
+                  <div class="delta-card" style="display:flex; flex-direction:column; align-items:center; gap:8px; padding:16px; background:rgba(251,146,60,0.05); border-color:rgba(251,146,60,0.2);">
+                    <span style="font-size:11px; font-weight:700; color:var(--amber); text-transform:uppercase; letter-spacing:0.5px;">İkaz Puanı</span>
+                    <div style="display:flex; gap:6px;" id="profIkazDots">
+                      <!-- Active/Inactive ikaz dots -->
+                    </div>
+                    <span style="font-size:11px; color:var(--text-3);">2 İkaz = 1 Uyarı Puanı</span>
+                  </div>
+                </div>
+
+                <!-- Admin Edit Form Container -->
+                <div class="panel" style="background:var(--bg-elevated); border:1px solid var(--border); border-radius:var(--radius-md); padding:16px;" id="profAdminForm">
+                  <div style="font-weight:700; font-size:13px; color:var(--text-1); margin-bottom:12px; display:flex; align-items:center; gap:6px;">
+                    <i class="fa-solid fa-user-pen" style="color:var(--purple-hi);"></i> Yetkili Bilgilerini Düzenle
+                  </div>
+                  <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">
+                    <div class="field-group">
+                      <label class="field-label">Ekibe Katılma Tarihi</label>
+                      <input type="date" id="profFormJoinDate" class="field-input">
+                    </div>
+                    <div class="field-group">
+                      <label class="field-label">Performans Notu</label>
+                      <input type="text" id="profFormNotes" class="field-input" placeholder="Performans değerlendirme notu...">
+                    </div>
+                  </div>
+                  <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:16px;">
+                    <div class="field-group">
+                      <label class="field-label">Uyarı Puanı</label>
+                      <select id="profFormWarns" class="field-input">
+                        <option value="0">0 Uyarı (Temiz)</option>
+                        <option value="1">1 Uyarı</option>
+                        <option value="2">2 Uyarı</option>
+                        <option value="3">3 Uyarı</option>
+                      </select>
+                    </div>
+                    <div class="field-group">
+                      <label class="field-label">İkaz Puanı</label>
+                      <select id="profFormIkaz" class="field-input">
+                        <option value="0">0 İkaz</option>
+                        <option value="1">1 İkaz</option>
+                        <option value="2">2 İkaz</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div style="display:flex; justify-content:flex-end;">
+                    <button class="btn btn-primary" id="btnSaveProfileDetails">
+                      <i class="fa-solid fa-save"></i> Profili Kaydet
+                    </button>
+                  </div>
+                </div>
+
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -506,22 +739,22 @@
   </div><!-- /main-content -->
 </div><!-- /app-shell -->
 
-<!-- ??? DETAIL MODAL ???????????????????????????????????????? -->
+<!-- ═══ DETAIL MODAL ════════════════════════════════════════ -->
 <div class="modal-overlay hidden" id="detailModal">
   <div class="modal-box" style="max-width:700px;max-height:85vh;overflow:auto;">
     <div class="modal-header">
-      <span id="modalTitle" style="font-weight:700;font-size:15px;">Ceza Detaylar?</span>
+      <span id="modalTitle" style="font-weight:700;font-size:15px;">Ceza Detayları</span>
       <button class="btn btn-ghost btn-icon" id="closeModal"><i class="fa-solid fa-xmark"></i></button>
     </div>
     <div id="modalContent" style="padding:16px;display:flex;flex-direction:column;gap:12px;"></div>
   </div>
 </div>
 
-<!-- ??? ROLE MODAL ???????????????????????????????????????? -->
+<!-- ═══ ROLE MODAL ═════════════════════════════════════════ -->
 <div class="modal-overlay hidden" id="roleModal">
   <div class="modal-box" style="max-width:420px;">
     <div class="modal-header">
-      <span style="font-weight:700;font-size:15px;">Yetkili Rol Ynetimi</span>
+      <span style="font-weight:700;font-size:15px;">Yetkili Rol Yönetimi</span>
       <button class="btn btn-ghost btn-icon" id="closeRoleModal"><i class="fa-solid fa-xmark"></i></button>
     </div>
     <div style="padding:16px;display:flex;flex-direction:column;gap:12px;">
@@ -533,30 +766,38 @@
         </div>
         <small id="roleUserNameHint" style="color:var(--text-3);font-size:11px;margin-top:4px;display:block;">Kullanıcı seçin</small>
       </div>
+      <!-- User Preview Box -->
+      <div id="roleUserPreview" class="hidden" style="display:flex; align-items:center; gap:12px; background:rgba(255,255,255,0.02); border:1px solid var(--border); border-radius:8px; padding:10px; margin-bottom:4px;">
+         <img src="" id="roleUserPreviewAvatar" class="staff-avatar small" style="width:38px; height:38px; border-radius:50%; object-fit:cover; border:1px solid var(--border);">
+         <div style="display:flex; flex-direction:column; gap:2px;">
+            <strong id="roleUserPreviewName" style="font-size:13px; color:var(--text-1); font-family:var(--font-display);">-</strong>
+            <small id="roleUserPreviewId" style="font-size:11px; color:var(--text-3); font-family:var(--font-mono);">-</small>
+         </div>
+      </div>
       <div class="field-group">
-        <label class="field-label">Grnen ?sim</label>
-        <input type="text" id="roleDisplayName" class="field-input" placeholder="?sim...">
+        <label class="field-label">Görünen İsim</label>
+        <input type="text" id="roleDisplayName" class="field-input" placeholder="İsim...">
       </div>
       <div class="field-group">
         <label class="field-label">Rol</label>
         <select id="roleSelect" class="field-input">
-          <option value="discord_moderatoru">Discord Moderatr</option>
-          <option value="kidemli_discord_moderatoru">K?demli Moderatr</option>
-          <option value="discord_yoneticisi">Discord Yneticisi</option>
+          <option value="discord_moderatoru">Discord Moderatör</option>
+          <option value="kidemli_discord_moderatoru">Kıdemli Moderatör</option>
+          <option value="discord_yoneticisi">Discord Yöneticisi</option>
           <option value="genel_sorumlu">Genel Sorumlu</option>
-          <option value="yonetici">Ynetici</option>
+          <option value="yonetici">Yönetici</option>
           <option value="admin">Admin</option>
-          <option value="discord_destek_ekibi">Destek Ekibi</option>
+          <option value="discord_destek_ekibi">Discord Destek Ekibi</option>
           <option value="viewer">Viewer</option>
           <option value="blocked">Engelli</option>
         </select>
       </div>
       <div class="field-group">
-        <label class="field-label">Manuel Do?ruluk % (iste?e ba?l?)</label>
+        <label class="field-label">Manuel Doğruluk % (isteğe bağlı)</label>
         <input type="number" id="manualAccuracy" class="field-input" placeholder="0-100" min="0" max="100">
       </div>
       <div style="display:flex;justify-content:flex-end;gap:8px;padding-top:8px;border-top:1px solid var(--border);">
-        <button class="btn btn-ghost" id="closeRoleModalFooter">?ptal</button>
+        <button class="btn btn-ghost" id="closeRoleModalFooter">İptal</button>
         <button class="btn btn-primary" id="saveRoleBtn">Kaydet</button>
       </div>
     </div>

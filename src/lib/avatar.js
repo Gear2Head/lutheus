@@ -5,7 +5,7 @@ function isAllowedAvatarUrl(url) {
 
     try {
         const parsed = new URL(url, window.location.href);
-        if (parsed.protocol === 'chrome-extension:') return true;
+        if (parsed.protocol === 'chrome-extension:' || parsed.protocol === 'data:') return true;
         if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return false;
         if (/https?:/i.test(decodeURIComponent(parsed.pathname))) return false;
 
@@ -15,25 +15,40 @@ function isAllowedAvatarUrl(url) {
             || host === 'lh3.googleusercontent.com'
             || host.endsWith('.googleusercontent.com')
             || host === 'dashboard.sapph.xyz'
-            || host.endsWith('.sapph.xyz');
+            || host.endsWith('.sapph.xyz')
+            || host.endsWith('.discordapp.com')
+            || host.endsWith('.discordapp.net')
+            || host.endsWith('.discord.com')
+            || host.endsWith('.discord.net');
     } catch {
         return false;
     }
 }
 
 export function resolveAvatar(url) {
-    return isAllowedAvatarUrl(url) ? url : FALLBACK_AVATAR;
+    if (!url || typeof url !== 'string') return FALLBACK_AVATAR;
+    let normalized = url.trim();
+    if (normalized.startsWith('//')) {
+        normalized = 'https:' + normalized;
+    }
+    return isAllowedAvatarUrl(normalized) ? normalized : FALLBACK_AVATAR;
 }
 
 export function bindAvatarFallbacks(root = document) {
-    root.querySelectorAll('img[data-avatar-img]').forEach((img) => {
-        if (img.dataset.avatarBound === '1') return;
-        img.dataset.avatarBound = '1';
-        img.addEventListener('error', () => {
-            img.src = FALLBACK_AVATAR;
-            img.classList.add('avatar-fallback');
-        });
-    });
+    const isDoc = root === document;
+    const targetEl = isDoc ? document.body : root;
+    if (!targetEl || targetEl.dataset?.avatarDelegated === '1') return;
+    targetEl.dataset.avatarDelegated = '1';
+
+    targetEl.addEventListener('error', (event) => {
+        const target = event.target;
+        if (target && target.tagName === 'IMG' && (target.hasAttribute('data-avatar-img') || target.dataset.avatarImg)) {
+            if (target.src !== FALLBACK_AVATAR) {
+                target.src = FALLBACK_AVATAR;
+                target.classList.add('avatar-fallback');
+            }
+        }
+    }, true); // error events do not bubble, capturing listener is required
 }
 
 export { FALLBACK_AVATAR };

@@ -289,6 +289,83 @@ function isInDateRange(caseData, startDate, endDate) {
     return true;
 }
 
+async function updateRegistryFromCases(cases) {
+    const registry = (await getLocal('userRegistry')) || (await getSync('userRegistry')) || {};
+    const directory = (await getLocal('staffDirectory')) || (await getSync('staffDirectory')) || {};
+    let changedRegistry = false;
+    let changedDirectory = false;
+
+    for (const entry of cases) {
+        if (entry.authorId && entry.authorName) {
+            const authorId = entry.authorId;
+            const authorName = entry.authorName;
+            const previous = registry[authorId] || {};
+            const aliases = Array.from(new Set([
+                ...(previous.aliases || []),
+                previous.name,
+                authorName
+            ].filter(Boolean)));
+            
+            registry[authorId] = {
+                ...previous,
+                id: authorId,
+                name: authorName,
+                avatar: entry.authorAvatar || previous.avatar || null,
+                role: previous.role || 'moderator',
+                aliases,
+                source: previous.source || 'sapphire-intercept-listener',
+                scanCount: Number(previous.scanCount || 0) + 1,
+                lastSeen: Date.now()
+            };
+            changedRegistry = true;
+        }
+
+        if (entry.userId && entry.user) {
+            const userId = entry.userId;
+            const user = entry.user;
+            const previous = registry[userId] || {};
+            registry[userId] = {
+                ...previous,
+                id: userId,
+                name: user,
+                avatar: entry.userAvatar || previous.avatar || null,
+                role: previous.role,
+                aliases: Array.from(new Set([...(previous.aliases || []), previous.name, user].filter(Boolean))),
+                source: previous.source || 'sapphire-intercept-target',
+                scanCount: Number(previous.scanCount || 0) + 1,
+                lastSeen: Date.now()
+            };
+            changedRegistry = true;
+        }
+
+        if (entry.authorId || entry.authorName) {
+            const key = entry.authorId || `name:${entry.authorName}`;
+            const aliases = [entry.authorName].filter(Boolean);
+            directory[key] = {
+                ...(directory[key] || {}),
+                sapphireAuthorId: entry.authorId || directory[key]?.sapphireAuthorId || '',
+                discordUserId: directory[key]?.discordUserId || entry.authorId || '',
+                displayName: entry.authorName || directory[key]?.displayName || 'Bilinmiyor',
+                avatar: entry.authorAvatar || directory[key]?.avatar || null,
+                role: directory[key]?.role || 'moderator',
+                aliases: Array.from(new Set([...(directory[key]?.aliases || []), ...aliases])),
+                source: directory[key]?.source || 'sapphire-intercept-listener',
+                scanCount: Number(directory[key]?.scanCount || 0) + 1,
+                lastSeen: Date.now(),
+                updatedAt: new Date().toISOString()
+            };
+            changedDirectory = true;
+        }
+    }
+
+    if (changedRegistry) {
+        await setLocal('userRegistry', registry);
+    }
+    if (changedDirectory) {
+        await setLocal('staffDirectory', directory);
+    }
+}
+
 async function storageSaveCases(newCases, append = true) {
     const existing = append
         ? await new Promise((resolve) => chrome.storage.local.get(['cases'], (result) => resolve(result.cases || [])))
@@ -902,6 +979,7 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
                             rawData: r.rawData || null
                         }));
                         await storageSaveCases(normalized, true);
+                        await updateRegistryFromCases(normalized);
                         console.log(`[Lutheus SW] Intercepted ${normalized.length} punishments saved`);
                     }
                     sendResponse({ status: 'received', count: records.length });

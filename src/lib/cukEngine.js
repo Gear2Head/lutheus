@@ -113,12 +113,12 @@ export const CUK_RULES = {
             degrees: [
                 {
                     degree: 1, // Şahsa edilmiş hakaret
-                    keywords: ['şahsa hakaret', '1. derece saygısızlık'],
+                    keywords: ['şahsa hakaret', '1. derece saygısızlık', 'sahsa edilmis hakaret'],
                     repeats: {
-                        1: { duration: 180, type: 'mute' }, // 3 Saat
-                        2: { duration: 360, type: 'mute' }, // 6 Saat
-                        3: { duration: 720, type: 'mute' }, // 12 Saat
-                        4: { type: 'ban' }
+                        1: { duration: 720, type: 'mute' },  // 12 Saat
+                        2: { duration: 1440, type: 'mute' }, // 24 Saat
+                        3: { duration: 2880, type: 'mute' }, // 48 Saat
+                        4: { type: 'ban', notes: 'Kısıtlama' }
                     }
                 },
                 {
@@ -128,27 +128,27 @@ export const CUK_RULES = {
                         1: { duration: 360, type: 'mute' }, // 6 Saat
                         2: { duration: 720, type: 'mute' }, // 12 Saat
                         3: { duration: 1440, type: 'mute' }, // 24 Saat
-                        4: { type: 'ban' }
+                        4: { type: 'ban', notes: 'Kısıtlama' }
                     }
                 },
                 {
                     degree: 3, // Rahatsız edici davranış/troll
                     keywords: ['rahatsız edici', 'troll', '3. derece saygısızlık', 'trol', 'huzur bozma', 'rahatsızlık'],
                     repeats: {
-                        1: { duration: 360, type: 'mute' },
-                        2: { duration: 720, type: 'mute' },
-                        3: { duration: 1440, type: 'mute' },
-                        4: { type: 'ban' }
+                        1: { duration: 360, type: 'mute' },  // 6 Saat
+                        2: { duration: 720, type: 'mute' },  // 12 Saat
+                        3: { duration: 1440, type: 'mute' }, // 24 Saat
+                        4: { type: 'ban', notes: 'Kısıtlama' }
                     }
                 },
                 {
                     degree: 4, // Kitleye hakaret
                     keywords: ['kitleye hakaret', '4. derece saygısızlık'],
                     repeats: {
-                        1: { duration: 720, type: 'mute' },
-                        2: { duration: 1440, type: 'mute' },
-                        3: { duration: 2880, type: 'mute' },
-                        4: { type: 'ban' }
+                        1: { duration: 360, type: 'mute' },  // 6 Saat
+                        2: { duration: 720, type: 'mute' },  // 12 Saat
+                        3: { duration: 1440, type: 'mute' }, // 24 Saat
+                        4: { type: 'ban', notes: 'Kısıtlama' }
                     }
                 }
             ]
@@ -162,7 +162,7 @@ export const CUK_RULES = {
                     repeats: {
                         1: { duration: 15, type: 'mute' }, 2: { duration: 30, type: 'mute' }, 3: { duration: 60, type: 'mute' },
                         4: { duration: 120, type: 'mute' }, 5: { duration: 240, type: 'mute' }, 6: { duration: 480, type: 'mute' },
-                        7: { duration: 960, type: 'mute' }, 8: { duration: 1920, type: 'mute' }, 9: { type: 'ban' }
+                        7: { duration: 960, type: 'mute' }, 8: { duration: 1920, type: 'mute' }, 9: { type: 'ban', notes: 'Kısıtlama' }
                     }
                 },
                 {
@@ -172,7 +172,7 @@ export const CUK_RULES = {
                         1: { duration: 720, type: 'mute' }, // 12 Saat
                         2: { duration: 1440, type: 'mute' }, // 24 Saat
                         3: { duration: 2880, type: 'mute' }, // 48 Saat
-                        4: { type: 'ban' }
+                        4: { type: 'ban', notes: 'Kısıtlama' }
                     }
                 }
             ]
@@ -193,28 +193,37 @@ export const CUK_RULES = {
                     repeats: {
                         1: { duration: 15, type: 'mute' }, 2: { duration: 30, type: 'mute' }, 3: { duration: 60, type: 'mute' },
                         4: { duration: 120, type: 'mute' }, 5: { duration: 240, type: 'mute' }, 6: { duration: 480, type: 'mute' },
-                        7: { duration: 960, type: 'mute' }, 8: { duration: 1920, type: 'mute' }, 9: { type: 'ban' }
+                        7: { duration: 960, type: 'mute' }, 8: { duration: 1920, type: 'mute' }, 9: { type: 'ban', notes: 'Kısıtlama' }
                     }
                 },
                 {
                     degree: 2, // Markaya zarar
-                    keywords: ['markasına zarar', 'adalances zarar', '2. derece dinamik', 'markaya'],
+                    keywords: ['markasına zarar', 'adalances zarar', '2. derece dinamik', 'markaya', 'marka'],
                     repeats: {
-                        1: { duration: 1440, type: 'mute' }, 2: { duration: 2880, type: 'mute' }, 3: { duration: 5760, type: 'mute' }, 4: { type: 'ban' }
+                        1: { duration: 1440, type: 'mute' }, // 24 Saat
+                        2: { duration: 2880, type: 'mute' }, // 48 Saat
+                        3: { duration: 5760, type: 'mute' }, // 96 Saat
+                        4: { type: 'ban', notes: 'Kısıtlama' }
                     }
                 },
                 {
                     degree: 3, // Yanlış/yanıltıcı bilgi
                     keywords: ['yanlış bilgi', 'yanıltıcı bilgi', '3. derece dinamik', 'yanlış'],
                     repeats: {
-                        1: { duration: 360, type: 'mute' }, 2: { duration: 720, type: 'mute' }, 3: { duration: 1440, type: 'mute' }, 4: { type: 'ban' }
+                        1: { duration: 360, type: 'mute' },  // 6 Saat
+                        2: { duration: 720, type: 'mute' },  // 12 Saat
+                        3: { duration: 1440, type: 'mute' }, // 24 Saat
+                        4: { type: 'ban', notes: 'Kısıtlama' }
                     }
                 },
                 {
                     degree: 4, // Polemik (dini/milli/ırki/siyasi)
-                    keywords: ['polemik', 'siyasi', 'ırki', '4. derece dinamik', 'ırki', 'politika'],
+                    keywords: ['polemik', 'siyasi', 'ırki', '4. derece dinamik', 'ırki', 'politika', 'siyaset'],
                     repeats: {
-                        1: { duration: 360, type: 'mute' }, 2: { duration: 720, type: 'mute' }, 3: { duration: 1440, type: 'mute' }, 4: { type: 'ban' }
+                        1: { duration: 360, type: 'mute' },  // 6 Saat
+                        2: { duration: 720, type: 'mute' },  // 12 Saat
+                        3: { duration: 1440, type: 'mute' }, // 24 Saat
+                        4: { type: 'ban', notes: 'Kısıtlama' }
                     }
                 },
                 {
@@ -223,31 +232,52 @@ export const CUK_RULES = {
                     repeats: {
                         1: { duration: 15, type: 'mute' }, 2: { duration: 30, type: 'mute' }, 3: { duration: 60, type: 'mute' },
                         4: { duration: 120, type: 'mute' }, 5: { duration: 240, type: 'mute' }, 6: { duration: 480, type: 'mute' },
-                        7: { duration: 960, type: 'mute' }, 8: { duration: 1920, type: 'mute' }, 9: { type: 'ban' }
+                        7: { duration: 960, type: 'mute' }, 8: { duration: 1920, type: 'mute' }, 9: { type: 'ban', notes: 'Kısıtlama' }
                     }
                 },
                 {
                     degree: 6, // Kampanya başlatmak
-                    keywords: ['kampanya', '6. derece dinamik'],
+                    keywords: ['kampanya', '6. derece dinamik', 'kampanya başlatmak'],
                     repeats: {
-                        1: { duration: 360, type: 'mute' }, 2: { duration: 720, type: 'mute' }, 3: { duration: 1440, type: 'mute' }, 4: { type: 'ban' }
+                        1: { duration: 360, type: 'mute' },  // 6 Saat
+                        2: { duration: 720, type: 'mute' },  // 12 Saat
+                        3: { duration: 1440, type: 'mute' }, // 24 Saat
+                        4: { type: 'ban', notes: 'Kısıtlama' }
                     }
                 },
                 {
                     degree: 7, // Yönetime etiket
                     keywords: ['yönetime etiket', 'admin etiket', '7. derece dinamik', 'yetkiliye etiket', 'etiketleme'],
                     repeats: {
-                        1: { duration: 180, type: 'mute' }, 2: { duration: 360, type: 'mute' }, 3: { duration: 720, type: 'mute' }, 4: { type: 'ban' }
+                        1: { duration: 180, type: 'mute' }, // 3 Saat
+                        2: { duration: 360, type: 'mute' }, // 6 Saat
+                        3: { duration: 720, type: 'mute' }, // 12 Saat
+                        4: { type: 'ban', notes: 'Kısıtlama' }
                     }
                 }
             ]
         },
         'Reklam': {
-            keywords: ['reklam', 'davet linki', 'discord.gg', 'youtube.com'],
+            keywords: ['reklam', 'davet linki', 'discord.gg', 'youtube.com', 'üye çekme', 'minecraft sunucusu'],
             repeats: {
-                1: { duration: 1440, type: 'mute' }, // 24 Saat
+                1: { duration: 1440, type: 'mute' }, // 24 Saat / 1 Gün
                 2: { type: 'ban', notes: 'Kısıtlama' }
             }
+        },
+        'Destek Talebi': {
+            keywords: ['destek talebi', 'bilet', 'ticket', 'ticket troll', 'tekrarlı bilet'],
+            degrees: [
+                {
+                    degree: 1, // Devamlı bilet açımı
+                    keywords: ['tekrarlı bilet', 'aynı konu', 'bilet açımı'],
+                    repeats: { 1: { duration: 60, type: 'mute' } } // 1 Saat
+                },
+                {
+                    degree: 2, // Uygunsuz üslup / troll
+                    keywords: ['uygunsuz üslup', 'üslup', 'troll', 'destek troll'],
+                    repeats: { 1: { duration: 1440, type: 'mute' } } // 24 Saat
+                }
+            ]
         },
         'Yönetim': {
             keywords: ['yönetim kararı', 'yönetim onaylı', 'üst yönetim', 'admin kararı'],
@@ -256,7 +286,7 @@ export const CUK_RULES = {
         },
         'Discord ToS': {
             type: 'ban',
-            keywords: ['tos', 'discord terms', 'kural dışı'],
+            keywords: ['tos', 'discord terms', 'kural dışı', '13 yaş', 'terör', '3. parti'],
             notes: 'Süresiz Kısıtlama'
         }
     }

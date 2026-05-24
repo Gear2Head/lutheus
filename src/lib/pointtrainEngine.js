@@ -48,17 +48,36 @@ export function rankPointtrainMetrics(metrics = [], weights = {}) {
         .sort((left, right) => right.weightedScore - left.weightedScore);
 }
 
+function isManagementMetric(metric = {}) {
+    const role = String(metric.role || '').toLowerCase();
+    return [
+        'admin',
+        'yonetici',
+        'yönetici',
+        'genel_sorumlu',
+        'discord_yoneticisi',
+        'discord_yöneticisi',
+        'kidemli',
+        'kıdemli',
+        'kidemli_discord_moderatoru',
+        'kıdemli_discord_moderatörü'
+    ].includes(role);
+}
+
 export function buildPointtrainMarkdown(run) {
+    const metrics = (run.metrics || []).filter((metric) => !isManagementMetric(metric));
+    const managementCount = (run.metrics || []).length - metrics.length;
     const lines = [
         '```md',
         '# LUTHEUS POINTTRAIN',
         `> Calistirma: ${run.createdAt || '-'}`,
         `> Basarisiz Sorgu: ${run.partialFailures || 0}`,
+        `> Yonetim Haric Tutulan: ${managementCount}`,
         '',
         '[ SIRALAMA ]'
     ];
 
-    run.metrics.forEach((metric, index) => {
+    metrics.forEach((metric, index) => {
         lines.push(
             `${String(index + 1).padStart(2, '0')}. ${metric.displayName.padEnd(20)} | ` +
             `Puan ${metric.weightedScore.toFixed(2).padStart(7, ' ')} | ` +
@@ -73,7 +92,7 @@ export function buildPointtrainMarkdown(run) {
 
 export function buildPointtrainCsv(run) {
     const header = 'rank,displayName,role,punishments,messages,channelCount,activeDays,weightedScore';
-    const rows = run.metrics.map((metric, index) => (
+    const rows = (run.metrics || []).filter((metric) => !isManagementMetric(metric)).map((metric, index) => (
         [
             index + 1,
             `"${String(metric.displayName || '').replace(/"/g, '""')}"`,

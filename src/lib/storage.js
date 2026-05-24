@@ -111,6 +111,8 @@ function normalizeCaseEntry(entry = {}, previous = null) {
     const embeddedAuthorId = String(entry.authorId || entry.moderatorId || entry.authorName || '').match(/\d{17,20}/)?.[0] || '';
     const authorId = String(entry.authorId || entry.moderatorId || previous?.authorId || embeddedAuthorId || '').trim();
     const cleanedAuthorName = String(entry.authorName || entry.moderator || '').replace(authorId, '').trim();
+    const incomingReason = String(entry.reason || '').trim();
+    const safeReason = /^\d{4,20}$/.test(incomingReason) ? '' : incomingReason;
     const merged = {
         ...(previous || {}),
         ...entry,
@@ -121,7 +123,7 @@ function normalizeCaseEntry(entry = {}, previous = null) {
         authorName: cleanedAuthorName || previous?.authorName || (entry.authorMissing ? 'Bilinmeyen Yetkili' : 'Bilinmiyor'),
         authorMissing: Boolean(entry.authorMissing || (!authorId && (!cleanedAuthorName || cleanedAuthorName === 'Bilinmeyen Yetkili'))),
         user: entry.user || previous?.user || 'Unknown',
-        reason: entry.reason || previous?.reason || '',
+        reason: safeReason || previous?.reason || '',
         duration: entry.duration || previous?.duration || '',
         type: entry.type || previous?.type || 'unknown',
         createdRaw: entry.createdRaw || previous?.createdRaw || '',
@@ -328,16 +330,30 @@ export const Storage = {
         let changed = false;
 
         for (const entry of cases) {
-            if (entry.authorId && entry.authorName) {
-                const previous = registry[entry.authorId] || {};
+            let authorId = entry.authorId || '';
+            const authorName = entry.authorName || '';
+
+            // ASSUME: If authorId is missing (fast scan), attempt resolution via exact name or alias match
+            if (!authorId && authorName) {
+                const normalizedSearch = authorName.trim().toLowerCase();
+                const matchedId = Object.keys(registry).find((id) => {
+                    const reg = registry[id];
+                    return reg.name?.trim().toLowerCase() === normalizedSearch ||
+                           reg.aliases?.some((alias) => alias.trim().toLowerCase() === normalizedSearch);
+                });
+                if (matchedId) authorId = matchedId;
+            }
+
+            if (authorId && authorName) {
+                const previous = registry[authorId] || {};
                 const aliases = Array.from(new Set([
                     ...(previous.aliases || []),
                     previous.name,
                     entry.authorName
                 ].filter(Boolean)));
-                registry[entry.authorId] = {
+                registry[authorId] = {
                     ...previous,
-                    id: entry.authorId,
+                    id: authorId,
                     name: entry.authorName || previous.name || 'Bilinmiyor',
                     avatar: hasBetterAvatar(entry.authorAvatar, previous.avatar)
                         ? entry.authorAvatar
@@ -480,9 +496,13 @@ export const Storage = {
 
     async saveDynamicRules(rules) {
         await this.setSync('dynamicRules', rules);
-        await FirebaseRepository.saveRolePolicy({ dynamicRules: rules }, await getActor()).catch((error) => {
+        try {
+            await FirebaseRepository.saveRolePolicy({ dynamicRules: rules }, await getActor());
+            return { synced: true };
+        } catch (error) {
             console.warn('Lutheus: Firestore CUK policy update failed:', error.message);
-        });
+            return { synced: false, error: error.message };
+        }
     },
 
     async addScanLog(entry) {
@@ -648,17 +668,32 @@ export const Storage = {
 
     async upsertStaffDirectoryFromCases(cases) {
         const directory = await this.getStaffDirectory();
+        const registry = (await this.get('userRegistry')) || {};
         let changed = false;
 
         for (const entry of cases) {
-            if (!entry.authorId && !entry.authorName) continue;
-            const key = entry.authorId || `name:${entry.authorName}`;
-            const aliases = [entry.authorName].filter(Boolean);
+            let authorId = entry.authorId || '';
+            const authorName = entry.authorName || '';
+
+            // ASSUME: Resolve missing authorId from registry via exact name or alias match
+            if (!authorId && authorName) {
+                const normalizedSearch = authorName.trim().toLowerCase();
+                const matchedId = Object.keys(registry).find((id) => {
+                    const reg = registry[id];
+                    return reg.name?.trim().toLowerCase() === normalizedSearch ||
+                           reg.aliases?.some((alias) => alias.trim().toLowerCase() === normalizedSearch);
+                });
+                if (matchedId) authorId = matchedId;
+            }
+
+            if (!authorId && !authorName) continue;
+            const key = authorId || `name:${authorName}`;
+            const aliases = [authorName].filter(Boolean);
             directory[key] = {
                 ...(directory[key] || {}),
-                sapphireAuthorId: entry.authorId || directory[key]?.sapphireAuthorId || '',
-                discordUserId: directory[key]?.discordUserId || entry.authorId || '',
-                displayName: entry.authorName || directory[key]?.displayName || 'Bilinmiyor',
+                sapphireAuthorId: authorId || directory[key]?.sapphireAuthorId || '',
+                discordUserId: directory[key]?.discordUserId || authorId || '',
+                displayName: authorName || directory[key]?.displayName || 'Bilinmiyor',
                 avatar: hasBetterAvatar(entry.authorAvatar, directory[key]?.avatar)
                     ? entry.authorAvatar
                     : (directory[key]?.avatar || entry.authorAvatar || null),
@@ -721,6 +756,23 @@ export const Storage = {
     async getLatestPointtrainRun() {
         const runs = await this.getPointtrainRuns();
         return runs[0] || null;
+    },
+
+    async getRoleCache() {
+        const cached = await this.get('roleCache');
+        // Fetch from Firestore and update cache asynchronously
+        FirebaseRepository.listRoleCache().then(async (remoteCache) => {
+            if (Array.isArray(remoteCache) && remoteCache.length) {
+                await this.set('roleCache', remoteCache);
+            }
+        }).catch((err) => {
+            console.warn('Lutheus: Failed to fetch remote roleCache:', err.message);
+        });
+        return Array.isArray(cached) ? cached : [];
+    },
+
+    async saveRoleCache(roleCache) {
+        await this.set('roleCache', roleCache);
     },
 
     async clear() {

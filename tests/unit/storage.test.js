@@ -83,6 +83,12 @@ describe('Storage.updateCases', () => {
         expect(cases[0].reason).toBe('New');
     });
 
+    test('drops numeric ids from reason field', async () => {
+        await Storage.saveCases([{ id: 'case-1', reason: '1249283105467007026', authorName: 'Mod1' }]);
+        const cases = await Storage.get('cases');
+        expect(cases[0].reason).toBe('');
+    });
+
     test('does not store case payloads in chrome sync quota', async () => {
         await Storage.updateCases([{ id: 'abc123', reason: 'Reklam', authorName: 'Mod2' }], true);
         expect(syncStore.cases_meta.count).toBe(1);

@@ -104,7 +104,7 @@ export const SEEDED_ROLE_MEMBERS = Object.freeze([
 ]);
 
 export const SEEDED_GOOGLE_ALLOWLIST = Object.freeze([
-    { email: 'kadirbakis45@gmail.com', role: ROLES.ADMIN, note: 'Lutheus Owner' }
+    { email: 'gearheadd0@gmail.com', role: ROLES.ADMIN, note: 'Lutheus Admin Seed' }
 ]);
 
 export const ROLE_ORDER = Object.freeze([

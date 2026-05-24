@@ -1,37 +1,28 @@
 ## Project Snapshot
-Stack: TypeScript, React, Tailwind CSS, Shadcn UI
-Active module: Rule Editor & Punishment Algorithm
-Architecture pattern: Feature-based, Serverless/Firebase Rules
+Stack: Chrome Extension MV3, Vanilla CSS/HTML/JS, Firebase, discord.js, Groq AI API
+Active module: Discord Bot & Dashboard Enhancements
+Architecture pattern: Monorepo workspace structure with extension MV3 dashboard UI and standalone Node.js Discord gateway bot.
 
 ## Completed in This Session
-[x] Create Escalation Algorithm data structure in `config/punishments.ts`
-[x] Create `calculatePunishmentDuration` utility in `src/utils/punishments.ts`
-[x] Rewrite `CukRuleEditor` page using Next.js, Tailwind CSS, and Shadcn UI
-[x] Design weekly/monthly penalty search & PT (Point Train) architecture
-[x] Implement `PointTrainDashboard` UI
-[x] Integrate Firebase data fetching into `PointTrainDashboard` via `pointTrainService.ts`
-[x] Add Firestore composite indexes in `firestore.indexes.json` and linked to `firebase.json`
-[x] Fix moderator list query in `admin.js` to only show active mods with roles
-[x] Redesign CUK Rule Editor UI in `src/dashboard/admin.html` with modern glassmorphism
-[x] Fix sidepanel logic where all cases show under current user (`renderProfileStats`)
-[x] Fix PointTrain ranking, message counts (fixed Discord search `insertText` input and Enter event handling)
-[x] Fix Date-based PT search and weekly scan using `toLocalDateString` instead of UTC `toISOString`
-[x] Update `src/lib/cukEngine.js` to parse unspaced duration formats (e.g. 3ay, 5gün)
-[x] Secure `api/auth/discord/callback.js` to prevent secret leakage
-[x] Refactor `src/content/scraper.js` to remove hardcoded selectors and prevent memory leaks
-[x] Update `src/content/navigation.js` to use MutationObserver for robust page loads
-[x] Merge `admin-redesign.html` and `admin-redesign.css` into `src/dashboard/`
+[x] Turkish Modal character cleanup in admin.html
+[x] Premium Text Report (.txt) export in admin.js
+[x] Aligned premium Markdown table for Discord copies in admin.js
+[x] Scraped case-avatar fallback checks in admin.js and sidepanel.js
+[x] DOM raw selector alignment in admin.js
+[x] Replaced admin.html moderator table with modern, gorgeous card-based flex layout.
+[x] Stylized mod-cards-grid and mod-card components with custom left borders and avatar rings matching role colors.
+[x] Resolved Vercel uncommitted code 403 Forbidden and login anomalies.
+[x] Fixed QumruClaus non-snowflake ID resolution bug, grouping all her cases together successfully.
+[x] Incorporated updated CUK repeats, reklam Minecraft exceptions, and support ticket penalty rules in cukEngine.js.
+[x] Built the brand new Staff Profiles (Yetkili Profilleri) visual management suite.
 
 ## Current Task
-[ ] Refactor `admin.js` to map to new DOM IDs from `admin-redesign.html`
-[ ] Implement Firebase Real-time Synchronization (SyncGateway)
-[ ] Implement Heatmap visualization
-[ ] Add Cyberpunk empty states and AI Agent integration
+[x] Deliver premium design styling and deployment instructions for Vercel.
 
 ## Key Contracts (do not break these)
-calculatePunishmentDuration(userId: string, ruleId: string) -> number [calculates punishment time based on history]
-CukRuleEditor [UI Component for editing CUK rules]
-PointTrainDashboard [UI Component for viewing PT stats]
+resolveStaffProfile(source) → Object [Resolves display name, role, avatar for a staff member]
+updateUserRole(id, role, manualAccuracy, name) → Promise<Boolean> [Saves a moderator profile to local storage & Firestore cache]
+isCaseInPeriod(entry, period) → Boolean [Filters case timestamp against period filters]
 
 ## Open Decisions / Assumptions
-ASSUME: No further Firebase architectural setup required for this scope unless user requests index deployment.
+ASSUME: Storing the custom moderator profile parameters (Join Date, Notes, Warn Points, Ikaz Points) inside the roleCache collection is highly efficient as it operates within existing Firestore security rules, requiring no security rule updates for the Vercel site.

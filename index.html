@@ -1,274 +1,810 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="tr">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Lutheus CezaRapor | Global Dashboard</title>
-  <link rel="icon" type="image/png" href="favicon_shield.png">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lutheus CezaRapor - Admin v3</title>
+  <link rel="stylesheet" href="src/dashboard/admin.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="global-dashboard.css">
+  <style>
+    /* page-level only */
+    .page-section { display: none; animation: fadeUp 0.3s var(--ease-out); }
+    .page-section.active { display: block; }
+    .tab-view { display: none; }
+    .tab-view.active { display: block; animation: fadeUp 0.3s var(--ease-out); }
+    /* color dots for categories */
+    .c-purple { background: var(--purple); }
+    .c-red    { background: var(--red); }
+    .c-amber  { background: var(--amber); }
+    .c-emerald{ background: var(--emerald); }
+    .c-blue   { background: var(--blue); }
+    .c-cyan   { background: var(--cyan); }
+    .c-pink   { background: #e879f9; }
+    .c-orange { background: #f97316; }
+    /* modals */
+    .modal-overlay { position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:999;display:flex;align-items:center;justify-content:center;padding:20px; }
+    .modal-overlay.hidden { display:none; }
+    .modal-box { background:var(--surface-2,#1a1a2e);border:1px solid var(--border);border-radius:12px;width:100%;max-width:700px; }
+    .modal-header { display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border); }
+  </style>
 </head>
 <body>
-  <div class="container">
-    <header>
-      <div class="logo"><i class="fa-solid fa-shield-halved"></i> Lutheus <span>CezaRapor</span></div>
-      <div class="user-zone">
-        <button class="btn-primary" id="loginDiscordBtn" style="background:#5865F2;"><i class="fa-brands fa-discord"></i> Discord</button>
-        <button class="btn-primary" id="loginBtn"><i class="fa-brands fa-google"></i> Google</button>
-        <div id="userProfile" class="hidden" style="display:flex; align-items:center; gap:12px;">
-           <span id="userName" style="font-weight:600;"></span>
-           <button class="btn-ghost" id="logoutBtn" style="padding:6px 10px;"><i class="fa-solid fa-right-from-bracket"></i></button>
+
+<!-- Toasts -->
+<div class="toast-stack" id="toastStack"></div>
+
+<div class="app-shell">
+
+  <!-- ── Sidebar ────────────────────────────────────────── -->
+  <nav class="sidebar">
+    <div class="sidebar-logo">L</div>
+    <div class="sidebar-nav">
+      <button class="nav-item active" data-page="dashboard" title="">
+        <i class="fa-solid fa-chart-line"></i>
+        <span class="tooltip">Dashboard</span>
+      </button>
+      <button class="nav-item" data-page="management" title="">
+        <i class="fa-solid fa-user-gear"></i>
+        <span class="tooltip">Yönetim</span>
+      </button>
+      <button class="nav-item" data-page="cuk" title="">
+        <i class="fa-solid fa-brain"></i>
+        <span class="tooltip">CUK Kural Editörü</span>
+      </button>
+      <button class="nav-item" data-page="pointtrain" title="">
+        <i class="fa-solid fa-ranking-star"></i>
+        <span class="tooltip">Pointtrain</span>
+      </button>
+      <button class="nav-item" data-page="auth" title="">
+        <i class="fa-solid fa-id-card-clip"></i>
+        <span class="tooltip">Erişim</span>
+      </button>
+      <button class="nav-item" data-page="profile" title="">
+        <i class="fa-solid fa-id-card"></i>
+        <span class="tooltip">Profil</span>
+      </button>
+    </div>
+    <div class="sidebar-footer">
+      <div class="status-pulse" id="statusPulse"></div>
+    </div>
+  </nav>
+
+  <!-- ── Main ───────────────────────────────────────────── -->
+  <div class="main-content">
+
+    <!-- Topbar -->
+    <header class="topbar">
+      <div class="topbar-brand">
+        <span class="brand-name">Lutheus <span>CezaRapor</span></span>
+        <span class="brand-sub" id="pageSubtitle">admin :: dashboard</span>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:10px;flex:1;max-width:320px;">
+        <div class="search-field" style="flex:1;">
+          <i class="fa-solid fa-magnifying-glass"></i>
+          <input type="text" placeholder="Ara...">
+        </div>
+      </div>
+
+      <div class="topbar-actions">
+        <button class="btn btn-ghost btn-icon" id="btnRevalidate" title="Yeniden Doğrula">
+          <i class="fa-solid fa-check-double"></i>
+        </button>
+        <button class="btn btn-ghost btn-icon" id="btnCopyDiscord" title="Discord Kopyala">
+          <i class="fa-brands fa-discord"></i>
+        </button>
+        <button class="btn btn-ghost" id="btnRefresh">
+          <i class="fa-solid fa-arrows-rotate"></i> Yenile
+        </button>
+        <button class="btn btn-primary" id="btnExport">
+          <i class="fa-solid fa-file-arrow-down"></i> Rapor Al
+        </button>
+        <div class="topbar-user" id="topbarUser">
+          <img src="" alt="" class="user-avatar" id="userAvatar">
+          <div class="user-info">
+            <div class="user-name" id="userName">Gear_Head</div>
+            <div class="user-role" id="userRole">ADMİN</div>
+          </div>
         </div>
       </div>
     </header>
 
-    <div id="dashboardContent" class="hidden">
-      <div class="tabs">
-        <button class="tab-btn active" data-tab="overview"><i class="fa-solid fa-chart-line"></i> Genel Bakış</button>
-        <button class="tab-btn hidden" id="adminTab" data-tab="management"><i class="fa-solid fa-gears"></i> Yönetim</button>
-      </div>
+    <!-- Page Body -->
+    <div class="page-body">
 
-      <div id="overview-section">
-        <div class="stats-grid">
+      <!-- ═══ DASHBOARD PAGE ═══════════════════════════════ -->
+      <div class="page-section active" id="page-dashboard">
+        <div class="stats-row">
           <div class="stat-card">
+            <div class="stat-icon"><i class="fa-solid fa-gavel"></i></div>
+            <div class="stat-val" id="st-total">0</div>
             <div class="stat-label">Toplam Ceza</div>
-            <div class="stat-value" id="global-total">0</div>
           </div>
-          <div class="stat-card">
+          <div class="stat-card green">
+            <div class="stat-icon"><i class="fa-solid fa-circle-check"></i></div>
+            <div class="stat-val" id="st-valid">0</div>
+            <div class="stat-label">Doğrulanmış</div>
+          </div>
+          <div class="stat-card red">
+            <div class="stat-icon"><i class="fa-solid fa-circle-xmark"></i></div>
+            <div class="stat-val" id="st-invalid">0</div>
+            <div class="stat-label">Hatalı</div>
+          </div>
+          <div class="stat-card amber">
+            <div class="stat-icon"><i class="fa-solid fa-circle-question"></i></div>
+            <div class="stat-val" id="st-pending">0</div>
+            <div class="stat-label">Bekleyen</div>
+          </div>
+          <div class="stat-card blue">
+            <div class="stat-icon"><i class="fa-solid fa-users"></i></div>
+            <div class="stat-val" id="st-mods">0</div>
             <div class="stat-label">Aktif Yetkili</div>
-            <div class="stat-value" id="global-mods">0</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-label">Haftalık Verim</div>
-            <div class="stat-value" id="global-efficiency">0%</div>
           </div>
         </div>
 
-        <div class="panel" style="margin-bottom:24px;">
+        <!-- Delta comparison -->
+        <div class="panel" style="margin-bottom:18px;">
           <div class="panel-header">
-            <div class="panel-title"><i class="fa-solid fa-ranking-star"></i> Haftalık Liderlik Tablosu</div>
+            <span class="panel-title"><i class="fa-solid fa-bolt"></i> Son Taramadan Değişim</span>
           </div>
-          <table class="data-table">
-            <thead><tr><th>Yetkili</th><th>İşlem</th><th>Doğruluk</th><th>Skor</th></tr></thead>
-            <tbody id="leaderboard"></tbody>
-          </table>
+          <div class="panel-body">
+            <div class="delta-grid" id="deltaGrid">
+              <div class="delta-card"><div class="delta-label">Yeni Ceza</div><div class="delta-val up" id="d-new">+0</div></div>
+              <div class="delta-card"><div class="delta-label">Hatalı Değ.</div><div class="delta-val" id="d-inv">-</div></div>
+              <div class="delta-card"><div class="delta-label">Doğruluk %</div><div class="delta-val" id="d-acc">-</div></div>
+              <div class="delta-card"><div class="delta-label">Aktif Yetkili</div><div class="delta-val" id="d-mods">-</div></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Staff performance table -->
+        <div class="split-3-1" style="align-items:start;">
+          <div class="panel">
+            <div class="panel-header">
+              <span class="panel-title"><i class="fa-solid fa-users"></i> Haftalık Yetkili Performansı</span>
+              <div class="table-tools" style="display:flex; gap:10px;">
+                <select id="dateFilter" class="btn btn-ghost" style="padding: 0 10px; font-size:12px;">
+                  <option value="all">Tm Zamanlar</option>
+                  <option value="today">Bugn</option>
+                  <option value="week" selected>Bu Hafta</option>
+                  <option value="month">Bu Ay</option>
+                </select>
+                <input type="text" id="tableSearch" placeholder="Ara..." style="background:transparent;border:1px solid var(--border);border-radius:4px;padding:4px 10px;color:white;font-size:12px;">
+              </div>
+            </div>
+            <div style="overflow:auto;">
+              <table class="data-table">
+                <thead><tr>
+                  <th>#</th><th>Yetkili</th><th>Rütbe</th><th>İşlem</th><th>Doğruluk</th><th></th>
+                </tr></thead>
+                <tbody id="modTableBody">
+                  <tr><td colspan="6" style="text-align:center;color:var(--text-3);padding:28px;">Veri bekleniyor...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-header">
+              <span class="panel-title"><i class="fa-solid fa-list-check"></i> Ceza Türleri</span>
+            </div>
+            <div class="panel-body" id="reasonList" style="display:flex;flex-direction:column;gap:6px;">
+              <div style="color:var(--text-3);font-size:12px;text-align:center;padding:20px;">Veri bekleniyor...</div>
+            </div>
+          </div>
+        </div>
+      </div><!-- /dashboard -->
+
+
+      <!-- ═══ CUK ENGINE PAGE ══════════════════════════════ -->
+      <div class="page-section" id="page-cuk">
+
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
+          <div>
+            <h2 style="font-family:var(--font-display);font-size:20px;font-weight:800;color:var(--text-1);letter-spacing:-0.3px;">
+              <span style="color:var(--purple-hi);">AI</span> Kural Eğitimi
+              <span style="font-size:13px;font-weight:400;color:var(--text-3);font-family:var(--font-mono);margin-left:8px;">CUK v2.0</span>
+            </h2>
+            <p style="font-size:12px;color:var(--text-3);margin-top:4px;">
+              Cezaları <b style="color:var(--emerald);">Doğru</b> ya da <b style="color:var(--red);">Hatalı</b> bulacağını öğretin - kategoriler, anahtar kelimeler ve tekrar kademeleri.
+            </p>
+          </div>
+          <div style="display:flex;gap:8px;">
+            <button class="btn btn-ghost" id="btnCukImport">
+              <i class="fa-solid fa-file-import"></i> İçe Aktar
+            </button>
+            <button class="btn btn-primary" id="btnCukSave">
+              <i class="fa-solid fa-floppy-disk"></i> Kaydet ve Uygula
+            </button>
+          </div>
         </div>
 
         <div class="panel">
-          <div class="panel-header">
-            <div class="panel-title"><i class="fa-solid fa-list-ul"></i> Son İşlemler</div>
+          <div class="cuk-layout">
+
+            <!-- Left: Category list -->
+            <div class="cuk-sidebar">
+              <div class="cuk-sidebar-header">
+                <span>Kategoriler</span>
+                <button class="btn btn-ghost btn-icon" id="btnAddCategory" title="Kategori Ekle" style="width:26px;height:26px;font-size:12px;">
+                  <i class="fa-solid fa-plus"></i>
+                </button>
+              </div>
+              <div id="cukCategoryList" style="display:flex;flex-direction:column;gap:6px;">
+                <!-- JS renders here -->
+              </div>
+            </div>
+
+            <!-- Right: Editor -->
+            <div class="cuk-editor" id="cukEditor">
+
+              <!-- Empty state -->
+              <div class="cuk-empty-state" id="cukEmptyState">
+                <i class="fa-solid fa-hand-pointer"></i>
+                <p>Düzenlemek için sol taraftan bir kategori seçin</p>
+              </div>
+
+              <!-- Editor content (hidden until selection) -->
+              <div id="cukEditorContent" class="hidden">
+
+                <!-- Category name -->
+                <div class="field-group">
+                  <label class="field-label">Kategori Adı</label>
+                  <input type="text" class="field-input accent" id="cukCatName" placeholder="Kategori adını girin...">
+                </div>
+
+                <!-- Timeline preview -->
+                <div class="field-group">
+                  <label class="field-label">Adım Önizleme</label>
+                  <div class="steps-timeline" id="stepsTimeline"></div>
+                </div>
+
+                <!-- Repeat steps -->
+                <div class="field-group">
+                  <div class="repeat-steps-header">
+                    <label class="field-label" style="margin:0;">Tekrar Kademeleri</label>
+                    <button class="btn btn-ghost" id="btnAddStep" style="height:28px;font-size:12px;padding:0 10px;">
+                      <i class="fa-solid fa-plus"></i> Adım Ekle
+                    </button>
+                  </div>
+                  <div class="repeat-steps-list" id="repeatStepsList">
+                    <!-- steps rendered by JS -->
+                  </div>
+                </div>
+
+                <!-- Keywords -->
+                <div class="field-group">
+                  <label class="field-label">Anahtar Kelimeler</label>
+                  <div class="keyword-tags-area" id="keywordTagsArea">
+                    <input type="text" class="keyword-tag-input" id="keywordInput"
+                      placeholder="Kelime yaz, Enter ile ekle...">
+                  </div>
+                  <p style="font-size:11px;color:var(--text-3);margin-top:6px;">
+                    <i class="fa-solid fa-circle-info" style="margin-right:4px;"></i>
+                    Sistem bu kelimeleri yakaladığında cezayı bu kategoriye sokar.
+                  </p>
+                </div>
+
+                <!-- Auto-invalid keywords -->
+                <div class="field-group">
+                  <label class="field-label">
+                    <i class="fa-solid fa-ban" style="color:var(--red);margin-right:4px;"></i>
+                    Otomatik Hatalı Anahtar Kelimeler
+                  </label>
+                  <div class="keyword-tags-area" id="autoInvalidTagsArea"
+                       style="border-color:rgba(240,78,78,0.2);">
+                    <input type="text" class="keyword-tag-input" id="autoInvalidInput"
+                      placeholder="Hatalı kelime yaz, Enter ile ekle...">
+                  </div>
+                  <p style="font-size:11px;color:var(--text-3);margin-top:6px;">
+                    Bu kelimeler bulunursa ceza anında <span style="color:var(--red);">Hatalı</span> işaretlenir.
+                  </p>
+                </div>
+
+                <!-- Footer actions -->
+                <div style="display:flex;justify-content:space-between;align-items:center;
+                            padding-top:16px;border-top:1px solid var(--border);margin-top:8px;">
+                  <button class="btn btn-danger" id="btnDeleteCategory">
+                    <i class="fa-solid fa-trash"></i> Kategoriyi Sil
+                  </button>
+                  <div style="display:flex;gap:8px;">
+                    <button class="btn btn-ghost" id="btnDuplicateCategory">
+                      <i class="fa-solid fa-copy"></i> Kopyala
+                    </button>
+                    <button class="btn btn-primary" id="btnSaveCategoryInline">
+                      <i class="fa-solid fa-check"></i> Kaydet
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
-          <table class="data-table">
-            <thead><tr><th>ID</th><th>Yetkili</th><th>Kullanıcı</th><th>Sebep</th><th>Tarih</th></tr></thead>
-            <tbody id="recentCases"></tbody>
-          </table>
+        </div>
+
+        <!-- Global auto-invalid section -->
+        <div class="panel" style="margin-top:16px;">
+          <div class="panel-header">
+            <span class="panel-title">
+              <i class="fa-solid fa-shield-halved" style="color:var(--red);"></i>
+              Global Otomatik Hatalı Kurallar
+            </span>
+            <span style="font-size:11px;color:var(--text-3);">Tüm kategoriler için geçerli</span>
+          </div>
+          <div class="panel-body">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+              <div class="field-group">
+                <label class="field-label">Boş sebep</label>
+                <label style="display:flex;align-items:center;gap:10px;cursor:pointer;">
+                  <input type="checkbox" id="chkEmptyReason" checked>
+                  <span style="font-size:13px;color:var(--text-2);">Sebep boşsa otomatik Hatalı say</span>
+                </label>
+              </div>
+              <div class="field-group">
+                <label class="field-label">Global Hatalı Kelimeler</label>
+                <div class="keyword-tags-area" id="globalInvalidArea">
+                  <input type="text" class="keyword-tag-input" id="globalInvalidInput"
+                    placeholder="Global hatalı kelime...">
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- CUK Rule Simulator Section -->
+        <div class="panel" style="margin-top:16px;">
+          <div class="panel-header">
+            <span class="panel-title"><i class="fa-solid fa-wand-magic-sparkles" style="color:var(--purple-hi);"></i> CUK Simülasyon Kumandası</span>
+          </div>
+          <div class="panel-body" style="display:flex; flex-direction:column; gap:12px;">
+            <p style="font-size:12px; color:var(--text-3);">Bir ceza sebebi veya notu girerek AI'sız CUK motorunun kategoriyi nasıl saptayacağını ve hangi aşamada hangi cezayı keseceğini gerçek zamanlı test edin.</p>
+            <div style="display:flex; gap:12px; align-items:start;">
+              <div style="flex:2; display:flex; flex-direction:column; gap:8px;">
+                <input type="text" id="simReasonInput" class="field-input" placeholder="Örn: Yetkillere saygısızlık veya reklam..." style="font-size:13px; font-weight:500;">
+                <div style="display:flex; gap:8px;">
+                  <input type="number" id="simRepeatInput" class="field-input" placeholder="Tekrar Sayısı (Örn: 2)" min="1" max="10" style="flex:1; font-size:12px;">
+                  <select id="simTypeInput" class="field-input" style="flex:1; font-size:12px;">
+                    <option value="mute">MUTE</option>
+                    <option value="ban">BAN</option>
+                    <option value="warn">WARN</option>
+                    <option value="kick">KICK</option>
+                  </select>
+                </div>
+              </div>
+              <button class="btn btn-primary" id="btnRunSimulation" style="padding: 12px 24px; font-weight:600; height:74px;">
+                <i class="fa-solid fa-play" style="margin-right:6px;"></i> Simüle Et
+              </button>
+            </div>
+            
+            <div id="simResultPanel" class="hidden" style="background:rgba(255,255,255,0.02); border:1px dashed var(--border); border-radius:8px; padding:16px; display:flex; flex-direction:column; gap:12px; animation: fadeIn 0.2s ease;">
+              <div style="display:flex; justify-content:space-between; align-items:center;">
+                <h4 style="font-size:13px; font-weight:700; color:var(--text-1);">Simülasyon Sonucu</h4>
+                <span id="simStatusBadge" class="status-badge" style="font-size:11px; font-weight:700;">VALID</span>
+              </div>
+              <div class="delta-grid" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap:10px;">
+                <div class="delta-card" style="padding:10px;">
+                  <div class="delta-label">Saptanan Kategori</div>
+                  <div class="delta-val" id="simResultCategory" style="font-size:16px; color:var(--purple-hi);">-</div>
+                </div>
+                <div class="delta-card" style="padding:10px;">
+                  <div class="delta-label">Uygulanacak Ceza</div>
+                  <div class="delta-val" id="simResultPunishment" style="font-size:16px; color:var(--text-1);">-</div>
+                </div>
+                <div class="delta-card" style="padding:10px;">
+                  <div class="delta-label">Doğruluk Analizi</div>
+                  <div class="delta-val" id="simResultAccuracy" style="font-size:16px;">-</div>
+                </div>
+              </div>
+              <div id="simResultDetails" style="font-size:12px; color:var(--text-3); line-height:1.5; padding:8px; background:rgba(0,0,0,0.2); border-radius:4px;">
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- /cuk -->
+
+
+      <!-- ??? MANAGEMENT PAGE ??????????????????????????????? -->
+      <div class="page-section" id="page-management">
+        <div class="split-2">
+          <div class="panel">
+            <div class="panel-header">
+              <span class="panel-title"><i class="fa-solid fa-user-shield"></i> Yetkili Listesi</span>
+              <button class="btn btn-ghost btn-icon" id="roleBtn" title="Yetki Ekle">
+                <i class="fa-solid fa-user-plus"></i>
+              </button>
+            </div>
+            <div style="overflow:auto; max-height: 640px; padding: 12px;">
+              <div id="mgmtModList" class="mod-cards-grid">
+                <div class="empty-cell" style="text-align:center;color:var(--text-3);padding:40px;">Yükleniyor...</div>
+              </div>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="panel-header">
+              <span class="panel-title"><i class="fa-solid fa-clock-rotate-left"></i> Son Cezalar</span>
+              <div class="case-toolbar">
+                <select id="casePeriodFilter" class="btn btn-ghost">
+                  <option value="today">Bugün</option>
+                  <option value="week" selected>Bu Hafta</option>
+                  <option value="month">Bu Ay</option>
+                  <option value="all">Tümü</option>
+                </select>
+                <select id="caseSortFilter" class="btn btn-ghost">
+                  <option value="newest" selected>Yeni</option>
+                  <option value="oldest">Eski</option>
+                  <option value="status">Durum</option>
+                  <option value="staff">Yetkili</option>
+                </select>
+                <div class="search-field case-search">
+                  <i class="fa-solid fa-magnifying-glass"></i>
+                  <input type="text" id="caseSearch" placeholder="Case ID, yetkili veya sebep...">
+                </div>
+              </div>
+            </div>
+            <div style="overflow:auto; max-height: 640px;">
+              <table class="data-table">
+                <thead><tr><th>ID</th><th>Yetkili</th><th>Sebep</th><th>Durum</th></tr></thead>
+                <tbody id="mgmtCaseList">
+                  <tr><td colspan="4" style="text-align:center;color:var(--text-3);padding:40px;">Y?kleniyor...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
       </div>
 
-      <div id="management-section" class="hidden">
-        <div class="panel" style="margin-bottom:24px;">
-          <div class="panel-header"><div class="panel-title"><i class="fa-solid fa-user-shield"></i> Google Allowlist</div></div>
-          <table class="data-table">
-            <thead><tr><th>Email</th><th>Rol</th><th>Durum</th><th>İşlem</th></tr></thead>
-            <tbody id="admin-allowlist"></tbody>
-          </table>
-        </div>
-        
+      <!-- ??? POINTTRAIN PAGE ??????????????????????????????? -->
+      <div class="page-section" id="page-pointtrain">
+        <div id="pointtrainAdminSummary" class="stats-row"></div>
         <div class="panel">
-          <div class="panel-header"><div class="panel-title"><i class="fa-solid fa-id-card"></i> Yetkili Rol Cache</div></div>
-          <table class="data-table">
-            <thead><tr><th>Kimlik</th><th>İsim</th><th>Rol</th><th>İşlem</th></tr></thead>
-            <tbody id="admin-rolecache"></tbody>
-          </table>
+          <div class="panel-header">
+            <span class="panel-title"><i class="fa-solid fa-ranking-star"></i> Pointtrain Raporu</span>
+            <div style="display:flex; gap:8px;">
+               <button class="btn btn-ghost btn-icon" id="pointtrainRefreshBtn" title="Yenile"><i class="fa-solid fa-rotate"></i></button>
+               <button class="btn btn-ghost" id="pointtrainCopyBtn"><i class="fa-solid fa-copy"></i> Kopyala</button>
+               <button class="btn btn-primary" id="pointtrainExportBtn"><i class="fa-solid fa-file-csv"></i> CSV İndir</button>
+            </div>
+          </div>
+          <div style="overflow:auto;">
+            <table class="data-table">
+              <thead><tr>
+                <th>#</th><th>Yetkili</th><th>Rol</th><th>Sapphire</th><th>Mesaj</th><th>Kanal</th><th>Aktif Gün</th><th>Skor</th><th>Hata</th>
+              </tr></thead>
+              <tbody id="pointtrainTableBody">
+                <tr><td colspan="9" style="text-align:center;color:var(--text-3);padding:40px;">Veri bekleniyor...</td></tr>
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
+
+      <!-- ??? AUTH / ACCESS PAGE ???????????????????????????? -->
+      <div class="page-section" id="page-auth">
+        <div class="split-2">
+          <div class="panel">
+             <div class="panel-header"><span class="panel-title"><i class="fa-brands fa-google"></i> Google Allowlist</span></div>
+             <div class="panel-body">
+                <div style="display:flex; gap:8px; margin-bottom:16px;">
+                   <input type="text" id="allowEmail" class="field-input" placeholder="Email..." style="flex:1;">
+                   <select id="allowRole" class="field-input" style="width:110px;">
+                      <option value="moderator">Mod</option>
+                      <option value="admin">Admin</option>
+                      <option value="viewer">İzleyici</option>
+                   </select>
+                   <button class="btn btn-primary" id="saveAllowBtn">Ekle</button>
+                </div>
+                <table class="data-table">
+                   <thead><tr><th>Email</th><th>Rol</th><th>Durum</th><th>İşlem</th></tr></thead>
+                   <tbody id="allowlistTableBody"></tbody>
+                </table>
+             </div>
+          </div>
+          <div class="panel">
+             <div class="panel-header"><span class="panel-title"><i class="fa-brands fa-discord"></i> Rol Cache</span></div>
+             <div class="panel-body">
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px; margin-bottom:12px;">
+                   <input type="text" id="roleCacheIdentity" class="field-input" placeholder="ID (discord:...)">
+                   <input type="text" id="roleCacheName" class="field-input" placeholder="Görünen İsim">
+                </div>
+                <div style="display:flex; gap:8px; margin-bottom:16px;">
+                   <select id="roleCacheRole" class="field-input" style="flex:1;">
+                      <option value="moderator">Mod</option>
+                      <option value="admin">Admin</option>
+                      <option value="senior_mod">Senior</option>
+                   </select>
+                   <button class="btn btn-primary" id="saveRoleCacheBtn">Kaydet</button>
+                </div>
+                <table class="data-table">
+                   <thead><tr><th>Kimlik</th><th>İsim</th><th>Rol</th><th>İşlem</th></tr></thead>
+                   <tbody id="roleCacheTableBody"></tbody>
+                </table>
+             </div>
+          </div>
+        </div>
+
+        <div class="split-3-1" style="margin-top:18px;">
+          <div class="panel">
+             <div class="panel-header">
+                <span class="panel-title"><i class="fa-solid fa-microchip"></i> AI (Groq) Limit Politikası</span>
+                <button class="btn btn-primary" id="saveGroqPolicyBtn">Limitleri Kaydet</button>
+             </div>
+             <div class="panel-body">
+                <div id="groqLimitGrid" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap:12px;">
+                   <!-- JS renders limit inputs -->
+                </div>
+             </div>
+          </div>
+          <div class="panel">
+             <div class="panel-header">
+                <span class="panel-title"><i class="fa-solid fa-list-ul"></i> Audit Log</span>
+                <button class="btn btn-ghost btn-icon" id="refreshAuditBtn" style="width:26px;height:26px;"><i class="fa-solid fa-rotate"></i></button>
+             </div>
+             <div class="panel-body" id="auditList" style="display:flex; flex-direction:column; gap:8px; max-height:400px; overflow:auto; padding:12px;">
+                <!-- Logs rendered here -->
+             </div>
+          </div>
+        </div>
+
+        <div class="split-2" style="margin-top:18px;">
+          <div class="panel">
+             <div class="panel-header">
+                <span class="panel-title"><i class="fa-brands fa-discord" style="color:#5865F2;"></i> Discord Bot Entegrasyonu</span>
+                <span class="status-pulse green" id="botStatusPulse" style="width:10px; height:10px; border-radius:50%; background:var(--emerald);" title="Bot Aktif"></span>
+             </div>
+             <div class="panel-body" style="display:flex; flex-direction:column; gap:12px;">
+                <p style="font-size:12px; color:var(--text-3);">Discord botunun ceza loglarını anlık olarak göndereceği log kanalını ayarlayın ve entegrasyonu test edin.</p>
+                <div class="field-group">
+                   <label class="field-label">Discord Log Kanal ID</label>
+                   <div style="display:flex; gap:8px;">
+                      <input type="text" id="botLogChannelId" class="field-input" placeholder="Kanal ID girin..." style="flex:1;">
+                      <button class="btn btn-primary" id="btnSaveBotConfig">Kaydet</button>
+                   </div>
+                </div>
+                <div style="display:flex; gap:8px; margin-top:4px;">
+                   <button class="btn btn-ghost" id="btnSyncProfiles" style="flex:1; font-size:12px; height:32px;">
+                      <i class="fa-solid fa-arrows-spin"></i> Profilleri Eşitle
+                   </button>
+                   <button class="btn btn-ghost" id="btnTestBotLog" style="flex:1; font-size:12px; height:32px;">
+                      <i class="fa-solid fa-paper-plane"></i> Test Logu Yolla
+                   </button>
+                </div>
+             </div>
+          </div>
+          <div class="panel">
+             <div class="panel-header">
+                <span class="panel-title"><i class="fa-solid fa-server"></i> SRE Sistem Durumu</span>
+             </div>
+             <div class="panel-body" style="display:flex; flex-direction:column; gap:12px;">
+                <div class="delta-grid" style="grid-template-columns: 1fr 1fr; gap:10px;">
+                  <div class="delta-card" style="padding:10px;">
+                    <div class="delta-label">Sistem API</div>
+                    <div class="delta-val" style="font-size:14px; color:var(--emerald);"><i class="fa-solid fa-circle-nodes"></i> Çevrimiçi</div>
+                  </div>
+                  <div class="delta-card" style="padding:10px;">
+                    <div class="delta-label">Veritabanı Enteğ.</div>
+                    <div class="delta-val" style="font-size:14px; color:var(--emerald);"><i class="fa-solid fa-database"></i> Senkronize</div>
+                  </div>
+                </div>
+                <div style="font-size:12px; color:var(--text-3); line-height:1.4;">
+                  <p><strong>Lutheus Engine v3.2.0</strong></p>
+                  <p style="margin-top:4px;">Güvenlik seviyesi: <span style="color:var(--purple-hi); font-weight:700;">MAKSİMUM</span>. Tüm işlemler HMAC imzalı olarak doğrulanmaktadır.</p>
+                </div>
+             </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── STAFF PROFILES PAGE ──────────────────────────────── -->
+      <div class="page-section" id="page-profile">
+        <div class="split-3-1" style="grid-template-columns: 280px 1fr; gap:18px;">
+          <!-- Left: Staff List Selector -->
+          <div class="panel" style="display:flex; flex-direction:column; max-height: 680px; overflow:hidden;">
+            <div class="panel-header">
+              <span class="panel-title"><i class="fa-solid fa-users"></i> Yetkililer</span>
+            </div>
+            <div style="padding:12px; border-bottom:1px solid var(--border);">
+              <div class="search-field">
+                <i class="fa-solid fa-magnifying-glass"></i>
+                <input type="text" id="profileSearchInput" placeholder="Yetkili ara...">
+              </div>
+            </div>
+            <div id="profileStaffList" class="mod-cards-grid" style="overflow-y:auto; padding:12px; flex:1;">
+              <div class="empty-cell" style="text-align:center;color:var(--text-3);padding:40px;">Yükleniyor...</div>
+            </div>
+          </div>
+
+          <!-- Right: Profile Details View -->
+          <div class="panel" id="profileDetailCard" style="min-height:600px; display:flex; flex-direction:column;">
+            <div class="panel-body" style="flex:1; display:flex; flex-direction:column; gap:20px;">
+              <!-- Placeholder when no profile selected or loaded -->
+              <div id="profileEmptyState" class="cuk-empty-state">
+                <i class="fa-solid fa-id-card" style="font-size:48px;"></i>
+                <p>Profil detaylarını görmek için soldan bir yetkili seçin.</p>
+              </div>
+
+              <!-- Main Detail Content -->
+              <div id="profileDetailContent" class="hidden" style="display:flex; flex-direction:column; gap:20px;">
+                <!-- Header Card -->
+                <div class="profile-header-card" id="profHeaderCard">
+                  <div class="profile-header-left">
+                    <div class="profile-avatar-glow" id="profAvatarGlow">
+                      <img src="" id="profAvatar" alt="Avatar" data-avatar-img>
+                    </div>
+                    <div class="profile-meta">
+                      <h2 id="profName" style="font-size:20px; font-weight:800; color:var(--text-1); margin:0;"></h2>
+                      <span id="profRoleBadge" class="role-chip"></span>
+                      <span id="profDiscordId" style="font-size:12px; font-family:var(--font-mono); color:var(--text-3); margin-top:2px;"></span>
+                    </div>
+                  </div>
+                  <div class="profile-header-right" id="profJoinDateContainer">
+                    <span style="font-size:10px; color:var(--text-3); text-transform:uppercase; font-weight:700;">Ekibe Katılım</span>
+                    <span id="profJoinDate" style="font-size:14px; font-weight:600; color:var(--text-2);"></span>
+                  </div>
+                </div>
+
+                <!-- Stats Grid -->
+                <div class="delta-grid" style="grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap:12px;">
+                  <div class="delta-card">
+                    <div class="delta-label">Toplam İşlem</div>
+                    <div class="delta-val" id="profStatTotal">0</div>
+                  </div>
+                  <div class="delta-card">
+                    <div class="delta-label">Doğruluk Oranı</div>
+                    <div class="delta-val" id="profStatAccuracy">0%</div>
+                  </div>
+                  <div class="delta-card">
+                    <div class="delta-label">Hatalı İşlem</div>
+                    <div class="delta-val" id="profStatInvalid" style="color:var(--red);">0</div>
+                  </div>
+                  <div class="delta-card">
+                    <div class="delta-label">Point Train Puanı</div>
+                    <div class="delta-val" id="profStatPtScore" style="color:var(--purple-hi);">0</div>
+                  </div>
+                </div>
+
+                <!-- Warn & İkaz Status Section -->
+                <div class="split-2" style="gap:16px;">
+                  <!-- Warn Points Card -->
+                  <div class="delta-card" style="display:flex; flex-direction:column; align-items:center; gap:8px; padding:16px; background:rgba(240,78,78,0.05); border-color:rgba(240,78,78,0.2);">
+                    <span style="font-size:11px; font-weight:700; color:var(--red); text-transform:uppercase; letter-spacing:0.5px;">Yetkili Uyarı Puanı</span>
+                    <div style="display:flex; gap:6px;" id="profWarnDots">
+                      <!-- Active/Inactive warning dots -->
+                    </div>
+                    <span style="font-size:11px; color:var(--text-3);" id="profWarnLimitLabel"></span>
+                  </div>
+                  <!-- İkaz Points Card -->
+                  <div class="delta-card" style="display:flex; flex-direction:column; align-items:center; gap:8px; padding:16px; background:rgba(251,146,60,0.05); border-color:rgba(251,146,60,0.2);">
+                    <span style="font-size:11px; font-weight:700; color:var(--amber); text-transform:uppercase; letter-spacing:0.5px;">İkaz Puanı</span>
+                    <div style="display:flex; gap:6px;" id="profIkazDots">
+                      <!-- Active/Inactive ikaz dots -->
+                    </div>
+                    <span style="font-size:11px; color:var(--text-3);">2 İkaz = 1 Uyarı Puanı</span>
+                  </div>
+                </div>
+
+                <!-- Admin Edit Form Container -->
+                <div class="panel" style="background:var(--bg-elevated); border:1px solid var(--border); border-radius:var(--radius-md); padding:16px;" id="profAdminForm">
+                  <div style="font-weight:700; font-size:13px; color:var(--text-1); margin-bottom:12px; display:flex; align-items:center; gap:6px;">
+                    <i class="fa-solid fa-user-pen" style="color:var(--purple-hi);"></i> Yetkili Bilgilerini Düzenle
+                  </div>
+                  <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">
+                    <div class="field-group">
+                      <label class="field-label">Ekibe Katılma Tarihi</label>
+                      <input type="date" id="profFormJoinDate" class="field-input">
+                    </div>
+                    <div class="field-group">
+                      <label class="field-label">Performans Notu</label>
+                      <input type="text" id="profFormNotes" class="field-input" placeholder="Performans değerlendirme notu...">
+                    </div>
+                  </div>
+                  <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:16px;">
+                    <div class="field-group">
+                      <label class="field-label">Uyarı Puanı</label>
+                      <select id="profFormWarns" class="field-input">
+                        <option value="0">0 Uyarı (Temiz)</option>
+                        <option value="1">1 Uyarı</option>
+                        <option value="2">2 Uyarı</option>
+                        <option value="3">3 Uyarı</option>
+                      </select>
+                    </div>
+                    <div class="field-group">
+                      <label class="field-label">İkaz Puanı</label>
+                      <select id="profFormIkaz" class="field-input">
+                        <option value="0">0 İkaz</option>
+                        <option value="1">1 İkaz</option>
+                        <option value="2">2 İkaz</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div style="display:flex; justify-content:flex-end;">
+                    <button class="btn btn-primary" id="btnSaveProfileDetails">
+                      <i class="fa-solid fa-save"></i> Profili Kaydet
+                    </button>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /page-body -->
+
+    <footer style="text-align:center;padding:14px;font-size:11px;color:var(--text-3);border-top:1px solid var(--border);">
+      (c) 2031 GearHead - Lutheus CezaRapor v3
+    </footer>
+
+  </div><!-- /main-content -->
+</div><!-- /app-shell -->
+
+<!-- ═══ DETAIL MODAL ════════════════════════════════════════ -->
+<div class="modal-overlay hidden" id="detailModal">
+  <div class="modal-box" style="max-width:700px;max-height:85vh;overflow:auto;">
+    <div class="modal-header">
+      <span id="modalTitle" style="font-weight:700;font-size:15px;">Ceza Detayları</span>
+      <button class="btn btn-ghost btn-icon" id="closeModal"><i class="fa-solid fa-xmark"></i></button>
     </div>
+    <div id="modalContent" style="padding:16px;display:flex;flex-direction:column;gap:12px;"></div>
+  </div>
+</div>
 
-    <div id="loginState" style="text-align:center; padding:100px 0;">
-      <h2 style="font-size:32px; margin-bottom:16px;">Veri Odaklı Moderasyon</h2>
-      <p style="color:var(--text-dim); max-width:500px; margin:0 auto 32px;">Global dashboard'a erişmek için giriş yapın.</p>
+<!-- ═══ ROLE MODAL ═════════════════════════════════════════ -->
+<div class="modal-overlay hidden" id="roleModal">
+  <div class="modal-box" style="max-width:420px;">
+    <div class="modal-header">
+      <span style="font-weight:700;font-size:15px;">Yetkili Rol Yönetimi</span>
+      <button class="btn btn-ghost btn-icon" id="closeRoleModal"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div style="padding:16px;display:flex;flex-direction:column;gap:12px;">
+      <div class="field-group">
+        <label class="field-label">Discord ID</label>
+        <div style="display:flex;gap:8px;">
+          <input type="text" id="roleUserId" class="field-input" placeholder="Kullanıcı ID..." style="flex:1;">
+          <button class="btn btn-ghost" id="lookupUserBtn">Ara</button>
+        </div>
+        <small id="roleUserNameHint" style="color:var(--text-3);font-size:11px;margin-top:4px;display:block;">Kullanıcı seçin</small>
+      </div>
+      <!-- User Preview Box -->
+      <div id="roleUserPreview" class="hidden" style="display:flex; align-items:center; gap:12px; background:rgba(255,255,255,0.02); border:1px solid var(--border); border-radius:8px; padding:10px; margin-bottom:4px;">
+         <img src="" id="roleUserPreviewAvatar" class="staff-avatar small" style="width:38px; height:38px; border-radius:50%; object-fit:cover; border:1px solid var(--border);">
+         <div style="display:flex; flex-direction:column; gap:2px;">
+            <strong id="roleUserPreviewName" style="font-size:13px; color:var(--text-1); font-family:var(--font-display);">-</strong>
+            <small id="roleUserPreviewId" style="font-size:11px; color:var(--text-3); font-family:var(--font-mono);">-</small>
+         </div>
+      </div>
+      <div class="field-group">
+        <label class="field-label">Görünen İsim</label>
+        <input type="text" id="roleDisplayName" class="field-input" placeholder="İsim...">
+      </div>
+      <div class="field-group">
+        <label class="field-label">Rol</label>
+        <select id="roleSelect" class="field-input">
+          <option value="discord_moderatoru">Discord Moderatör</option>
+          <option value="kidemli_discord_moderatoru">Kıdemli Moderatör</option>
+          <option value="discord_yoneticisi">Discord Yöneticisi</option>
+          <option value="genel_sorumlu">Genel Sorumlu</option>
+          <option value="yonetici">Yönetici</option>
+          <option value="admin">Admin</option>
+          <option value="discord_destek_ekibi">Discord Destek Ekibi</option>
+          <option value="viewer">Viewer</option>
+          <option value="blocked">Engelli</option>
+        </select>
+      </div>
+      <div class="field-group">
+        <label class="field-label">Manuel Doğruluk % (isteğe bağlı)</label>
+        <input type="number" id="manualAccuracy" class="field-input" placeholder="0-100" min="0" max="100">
+      </div>
+      <div style="display:flex;justify-content:flex-end;gap:8px;padding-top:8px;border-top:1px solid var(--border);">
+        <button class="btn btn-ghost" id="closeRoleModalFooter">İptal</button>
+        <button class="btn btn-primary" id="saveRoleBtn">Kaydet</button>
+      </div>
     </div>
   </div>
+</div>
 
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-    import { getFirestore, collection, getDocs, query, orderBy, limit, where, doc, deleteDoc, getDoc, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-    import { getAuth, signInWithPopup, GoogleAuthProvider, OAuthProvider, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-
-    const firebaseConfig = {
-      apiKey: "AIzaSyDWM0Jl3Fyyok9BIvLCQ1PjKzdl9074ZSs",
-      authDomain: "lutheus-project.firebaseapp.com",
-      projectId: "lutheus-project",
-      storageBucket: "lutheus-project.firebasestorage.app",
-      messagingSenderId: "437884095032",
-      appId: "1:437884095032:web:4a03ae2ff47d659dedf4cd"
-    };
-
-    const app = initializeApp(firebaseConfig);
-    const db = getFirestore(app);
-    const auth = getAuth(app);
-    const googleProvider = new GoogleAuthProvider();
-    const discordProvider = new OAuthProvider('oidc.discord');
-
-    async function loadStats() {
-      const oneWeekAgo = new Date();
-      oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
-
-      const q = query(collection(db, "cases"), orderBy("updatedAt", "desc"), limit(300));
-      const snap = await getDocs(q);
-      const allCases = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      
-      const cases = allCases.filter(c => {
-        const ts = c.scrapedAt || (c.updatedAt ? new Date(c.updatedAt).getTime() : 0);
-        return ts >= oneWeekAgo.getTime();
-      });
-      
-      const modMap = {};
-      cases.forEach(c => {
-        const name = c.authorName || 'Bilinmiyor';
-        if (!modMap[name]) modMap[name] = { name, count: 0, valid: 0 };
-        modMap[name].count++;
-        const isValid = c.validationStatus === 'valid' || c.validation?.status === 'valid';
-        if (isValid) modMap[name].valid++;
-      });
-
-      const mods = Object.values(modMap).sort((a,b) => b.count - a.count);
-      
-      document.getElementById('global-total').textContent = cases.length;
-      document.getElementById('global-mods').textContent = mods.length;
-      
-      const totalValid = cases.filter(c => c.validationStatus === 'valid' || c.validation?.status === 'valid').length;
-      document.getElementById('global-efficiency').textContent = cases.length ? Math.round((totalValid/cases.length)*100) + '%' : '0%';
-
-      document.getElementById('leaderboard').innerHTML = mods.map(m => `
-        <tr class="data-row">
-          <td style="font-weight:600;">${m.name}</td>
-          <td style="font-family:'JetBrains Mono'">${m.count}</td>
-          <td>
-            <div style="display:flex; align-items:center; gap:10px;">
-              <div class="progress-bar"><div class="progress-fill" style="width:${Math.round((m.valid/m.count)*100)}%"></div></div>
-              <span>${Math.round((m.valid/m.count)*100)}%</span>
-            </div>
-          </td>
-          <td style="font-weight:700; color:var(--accent);">${(m.count * (m.valid/m.count)).toFixed(1)}</td>
-        </tr>
-      `).join('');
-
-      document.getElementById('recentCases').innerHTML = allCases.slice(0, 30).map(c => `
-        <tr class="data-row">
-          <td style="font-family:var(--font-mono); font-size:12px; color:var(--accent);">#${c.caseId || c.id.slice(-8)}</td>
-          <td>${c.authorName || 'Bilinmiyor'}</td>
-          <td>${c.user || 'Bilinmiyor'}</td>
-          <td style="font-size:13px; color:var(--text-dim); max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${c.reason || '-'}</td>
-          <td style="font-size:12px;">${new Date(c.scrapedAt || c.updatedAt || 0).toLocaleDateString('tr-TR')}</td>
-        </tr>
-      `).join('');
-    }
-
-    async function loadAdminData() {
-      try {
-        const allowSnap = await getDocs(collection(db, "googleAllowlist"));
-        document.getElementById('admin-allowlist').innerHTML = allowSnap.docs.map(d => `
-          <tr class="data-row">
-            <td>${d.id}</td>
-            <td><span class="role-badge">${d.data().role}</span></td>
-            <td>${d.data().allowed ? '✅ Aktif' : '❌ Pasif'}</td>
-            <td><button class="btn-danger" onclick="deleteEntry('googleAllowlist', '${d.id}')">Kaldır</button></td>
-          </tr>
-        `).join('');
-
-        const cacheSnap = await getDocs(collection(db, "roleCache"));
-        document.getElementById('admin-rolecache').innerHTML = cacheSnap.docs.map(d => `
-          <tr class="data-row">
-            <td>${d.id}</td>
-            <td>${d.data().displayName || '-'}</td>
-            <td><span class="role-badge">${d.data().role}</span></td>
-            <td><button class="btn-danger" onclick="deleteEntry('roleCache', '${d.id}')">Kaldır</button></td>
-          </tr>
-        `).join('');
-      } catch(e) {
-        console.warn("Admin verisi yuklenemedi (Yetki yetersiz olabilir)");
-      }
-    }
-
-    window.deleteEntry = async (col, id) => {
-      if(confirm(id + ' silinsin mi?')) {
-        await deleteDoc(doc(db, col, id));
-        loadAdminData();
-      }
-    };
-
-    document.getElementById('loginBtn').onclick = () => signInWithPopup(auth, googleProvider);
-    document.getElementById('loginDiscordBtn').onclick = () => {
-      signInWithPopup(auth, discordProvider).catch(err => {
-        if(err.code === 'auth/operation-not-allowed') {
-          alert("Discord girişi için Firebase Identity Platform'a yükseltme yapmanız gerekiyor. Lütfen Google ile giriş yapın.");
-        } else {
-          alert("Hata: " + err.message);
-        }
-      });
-    };
-    document.getElementById('logoutBtn').onclick = () => signOut(auth);
-
-    onAuthStateChanged(auth, async (user) => {
-      if (user) {
-        document.getElementById('loginBtn').classList.add('hidden');
-        document.getElementById('loginDiscordBtn').classList.add('hidden');
-        document.getElementById('userProfile').classList.remove('hidden');
-        document.getElementById('userName').textContent = user.displayName;
-        document.getElementById('loginState').classList.add('hidden');
-        document.getElementById('dashboardContent').classList.remove('hidden');
-        
-        let userRole = 'viewer';
-        const userDocRef = doc(db, "users", user.uid);
-        const existing = await getDoc(userDocRef);
-        
-        if (existing.exists()) {
-          userRole = existing.data().role;
-        } else if (user.email) {
-          const allowDoc = await getDoc(doc(db, "googleAllowlist", user.email.toLowerCase()));
-          if (allowDoc.exists() && allowDoc.data().allowed) {
-             userRole = allowDoc.data().role;
-          }
-        }
-
-        await setDoc(userDocRef, {
-           uid: user.uid,
-           displayName: user.displayName,
-           email: user.email,
-           photoURL: user.photoURL,
-           role: userRole,
-           lastLogin: serverTimestamp(),
-           updatedAt: serverTimestamp()
-        }, { merge: true });
-
-        if(['kurucu', 'admin', 'yonetici'].includes(userRole)) {
-          document.getElementById('adminTab').classList.remove('hidden');
-        }
-
-        loadStats();
-        loadAdminData();
-      } else {
-        document.getElementById('loginBtn').classList.remove('hidden');
-        document.getElementById('loginDiscordBtn').classList.remove('hidden');
-        document.getElementById('userProfile').classList.add('hidden');
-        document.getElementById('loginState').classList.remove('hidden');
-        document.getElementById('dashboardContent').classList.add('hidden');
-      }
-    });
-
-    document.querySelectorAll('.tab-btn').forEach(btn => {
-      btn.onclick = () => {
-        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        const target = btn.dataset.tab;
-        document.getElementById('overview-section').classList.toggle('hidden', target !== 'overview');
-        document.getElementById('management-section').classList.toggle('hidden', target !== 'management');
-      }
-    });
-  </script>
+<script type="module" src="src/dashboard/admin.js"></script>
 </body>
 </html>

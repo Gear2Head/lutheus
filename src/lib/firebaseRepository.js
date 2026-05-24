@@ -24,7 +24,7 @@ export const FirebaseRepository = {
         const uid = profile.uid;
         if (!uid) throw new Error('USER_UID_REQUIRED');
         const previous = await this.getUser(uid).catch(() => null);
-        const role = normalizeRole(profile.role || previous?.role || ROLES.MODERATOR);
+        const role = normalizeRole(profile.role || previous?.role || ROLES.PENDING);
         const status = profile.status || previous?.status || 'active';
         return FirestoreRest.setDocument(`users/${safeDocId(uid)}`, {
             ...(previous || {}),

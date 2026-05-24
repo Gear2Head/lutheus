@@ -79,7 +79,7 @@ async function resolveRole(profile, token = null) {
         const cached = await FirebaseRepository.getRoleCache(key, token).catch(() => null);
         if (cached?.role) return normalizeRole(cached.role);
     }
-    return ROLES.MODERATOR;
+    return ROLES.PENDING;
 }
 
 async function signInWithCustomToken(customToken, oauthProfile = {}) {
@@ -106,7 +106,7 @@ async function signInWithCustomToken(customToken, oauthProfile = {}) {
     };
     const role = await resolveRole(profile, payload.idToken).catch((error) => {
         if (error.message === 'GOOGLE_EMAIL_NOT_ALLOWLISTED') throw error;
-        return ROLES.MODERATOR;
+        return ROLES.PENDING;
     });
 
     const session = {

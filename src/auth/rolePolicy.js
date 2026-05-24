@@ -154,7 +154,7 @@ export function getDefaultRolePolicy() {
 }
 
 export function normalizeRole(role) {
-    const normalized = String(role || ROLES.MODERATOR).trim().toLowerCase();
+    const normalized = String(role || ROLES.PENDING).trim().toLowerCase();
     const ascii = asciiRole(role);
     const aliases = {
         yönetici: ROLES.YONETICI,
@@ -177,11 +177,11 @@ export function normalizeRole(role) {
     if (aliases[ascii]) return aliases[ascii];
     if (ROLE_LEVELS[normalized] !== undefined) return normalized;
     if (ROLE_LEVELS[ascii] !== undefined) return ascii;
-    return ROLES.DISCORD_MODERATORU;
+    return ROLES.PENDING;
 }
 
 export function getRoleLevel(role) {
-    return ROLE_LEVELS[normalizeRole(role)] ?? ROLE_LEVELS[ROLES.DISCORD_MODERATORU];
+    return ROLE_LEVELS[normalizeRole(role)] ?? ROLE_LEVELS[ROLES.PENDING];
 }
 
 export function getRoleLabel(role) {

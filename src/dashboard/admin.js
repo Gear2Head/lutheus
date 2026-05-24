@@ -428,7 +428,7 @@ function bindStaffCopyHandlers(root = document) {
                 return;
             }
             await copyText(id);
-            Toast.success('Yetkili ID kopyalandÃƒÆ’Ã¢â‚¬ÂÃƒâ€šÃ‚Â±', id);
+            Toast.success('Yetkili ID kopyalandı', id);
         });
     });
 }
@@ -561,7 +561,7 @@ function renderAuthTables({ allowlist = [], roleCache = [], policy = {}, audit =
                 <small>${escapeHtml(formatTurkishDateTime(entry.createdAt))} - ${escapeHtml(entry.actorUid || 'system')}</small>
             </article>
         `).join('')
-        : '<div class="audit-item"><strong>Audit log yok</strong><small>Henüz kayÃƒÆ’Ã¢â‚¬ÂÃƒâ€šÃ‚Â±t oluşmadÃƒÆ’Ã¢â‚¬ÂÃƒâ€šÃ‚Â±</small></div>';
+        : '<div class="audit-item"><strong>Audit log yok</strong><small>Henüz kayıt oluşmadı</small></div>';
 }
 
 async function loadAuthAdminData() {
@@ -933,7 +933,7 @@ function renderManagement() {
             </button>
         </div>
     `;
-    }).join('') : '<div class="empty-cell">Yetkili kaydÃƒÆ’Ã¢â‚¬ÂÃƒâ€šÃ‚Â± yok</div>';
+    }).join('') : '<div class="empty-cell">Yetkili kaydı yok</div>';
 
     const search = (DOM.caseSearch?.value || '').trim().toLowerCase();
     const period = DOM.casePeriodFilter?.value || 'all';
@@ -966,7 +966,7 @@ function renderManagement() {
                 <td><span class="status-badge ${escapeHtml(validation.status || 'unknown')}">${escapeHtml(validation.status || 'unknown')}</span></td>
             </tr>
         `;
-    }).join('') : '<tr><td colspan="4" class="empty-cell">Ceza kaydÃƒÆ’Ã¢â‚¬ÂÃƒâ€šÃ‚Â± yok</td></tr>';
+    }).join('') : '<tr><td colspan="4" class="empty-cell">Ceza kaydı yok</td></tr>';
 
     DOM.mgmtCaseList.innerHTML = unresolvedRow + caseRows;
 
@@ -1047,7 +1047,7 @@ function openModal(moderator) {
                 </div>
                 <div class="case-history-body">
                     <div>
-                        <span class="field-label">KullanÃƒÆ’Ã¢â‚¬ÂÃƒâ€šÃ‚Â±cÃƒÆ’Ã¢â‚¬ÂÃƒâ€šÃ‚Â±</span>
+                        <span class="field-label">Kullanıcı</span>
                         <strong>${escapeHtml(entry.user || 'Bilinmiyor')}</strong>
                         <small>${escapeHtml(entry.userId || '-')}</small>
                     </div>
@@ -1065,7 +1065,7 @@ function openModal(moderator) {
                     </div>
                 </div>
                 <div class="case-history-reason">${escapeHtml(entry.reason || 'Sebep yok')}</div>
-                <div class="case-history-validation">${escapeHtml(validation.reason || 'CUK deÃƒÆ’Ã¢â‚¬ÂÃƒâ€¦Ã‚Â¸erlendirmesi yok')}</div>
+                <div class="case-history-validation">${escapeHtml(validation.reason || 'CUK değerlendirmesi yok')}</div>
                 <div class="case-history-actions">
                         <select data-status-for="${escapeHtml(String(entry.id || ''))}">
                             <option value="">Otomatik</option>
@@ -1079,7 +1079,7 @@ function openModal(moderator) {
                 <div class="pointtrain-breakdown hidden" data-ai-for="${escapeHtml(String(entry.id || ''))}"></div>
             </article>
         `;
-    }).join('') : '<div class="empty-state">Bu yetkili için ceza kaydÃƒÆ’Ã¢â‚¬ÂÃƒâ€šÃ‚Â± yok.</div>';
+    }).join('') : '<div class="empty-state">Bu yetkili için ceza kaydı yok.</div>';
     DOM.detailModal?.classList.remove('hidden');
     bindStaffCopyHandlers(DOM.modalContent);
     bindAvatarFallbacks(DOM.modalContent);
@@ -1096,7 +1096,7 @@ function openRoleModal(userId = '') {
     if (DOM.roleDisplayName) DOM.roleDisplayName.value = entry.name || '';
     if (DOM.roleSelect) DOM.roleSelect.value = normalizeRole(entry.role || 'discord_moderatoru');
     if (DOM.manualAccuracy) DOM.manualAccuracy.value = entry.manualAccuracy ?? '';
-    if (DOM.roleUserNameHint) DOM.roleUserNameHint.textContent = entry.name ? `${entry.name} bulundu` : 'KullanÃƒÆ’Ã¢â‚¬ÂÃƒâ€šÃ‚Â±cÃƒÆ’Ã¢â‚¬ÂÃƒâ€šÃ‚Â± seçin';
+    if (DOM.roleUserNameHint) DOM.roleUserNameHint.textContent = entry.name ? `${entry.name} bulundu` : 'Kullanıcı seçin';
 
     if (userId) {
         const profile = resolveStaffProfile({ id: userId });
@@ -1148,10 +1148,10 @@ async function lookupUserIdentity() {
 
     if (resolvedName) {
         DOM.roleDisplayName.value = resolvedName;
-        DOM.roleUserNameHint.textContent = 'KullanÃƒÆ’Ã¢â‚¬ÂÃƒâ€šÃ‚Â±cÃƒÆ’Ã¢â‚¬ÂÃƒâ€šÃ‚Â± sistemden saptandÃƒÆ’Ã¢â‚¬ÂÃƒâ€šÃ‚Â±!';
+        DOM.roleUserNameHint.textContent = 'Kullanıcı sistemden saptandı!';
         DOM.roleUserNameHint.style.color = 'var(--emerald)';
     } else {
-        DOM.roleUserNameHint.textContent = 'KullanÃƒÆ’Ã¢â‚¬ÂÃƒâ€šÃ‚Â±cÃƒÆ’Ã¢â‚¬ÂÃƒâ€šÃ‚Â± kaydÃƒÆ’Ã¢â‚¬ÂÃƒâ€šÃ‚Â± bulunamadÃƒÆ’Ã¢â‚¬ÂÃƒâ€šÃ‚Â±, yeni olarak kaydedilecek.';
+        DOM.roleUserNameHint.textContent = 'Kullanıcı kaydı bulunamadı, yeni olarak kaydedilecek.';
         DOM.roleUserNameHint.style.color = 'var(--text-3)';
     }
 
@@ -1203,15 +1203,15 @@ function runSimulation() {
 
     const accuracyVal = DOM.simResultAccuracy;
     if (accuracyVal) {
-        accuracyVal.textContent = result.status === 'valid' ? 'BaşarÃƒÆ’Ã¢â‚¬ÂÃƒâ€šÃ‚Â±lÃƒÆ’Ã¢â‚¬ÂÃƒâ€šÃ‚Â± (%100)' : result.status === 'invalid' ? 'HatalÃƒÆ’Ã¢â‚¬ÂÃƒâ€šÃ‚Â± (%0)' : 'ÃƒÆ’Ã¢â‚¬ÂÃƒâ€šÃ‚Â°ncelenmeli';
+        accuracyVal.textContent = result.status === 'valid' ? 'Başarılı (%100)' : result.status === 'invalid' ? 'Hatalı (%0)' : 'İncelenmeli';
         accuracyVal.style.color = result.status === 'valid' ? 'var(--emerald)' : result.status === 'invalid' ? 'var(--red)' : 'var(--amber)';
     }
 
     const detailsVal = DOM.simResultDetails;
     if (detailsVal) {
-        let detailsHtml = `<strong>Kural Saptama DetaylarÃƒÆ’Ã¢â‚¬ÂÃƒâ€šÃ‚Â±:</strong><br>`;
+        let detailsHtml = `<strong>Kural Saptama Detayları:</strong><br>`;
         detailsHtml += `• Girdi Sebebi: <em>"${escapeHtml(reasonText)}"</em><br>`;
-        detailsHtml += `• DeÃƒÆ’Ã¢â‚¬ÂÃƒâ€¦Ã‚Â¸erlendirme Gerekçesi: <strong>${escapeHtml(result.reason || 'SaptanamadÃƒÆ’Ã¢â‚¬ÂÃƒâ€šÃ‚Â±')}</strong><br>`;
+        detailsHtml += `• Değerlendirme Gerekçesi: <strong>${escapeHtml(result.reason || 'Saptanamadı')}</strong><br>`;
         if (result.details?.rule) {
             detailsHtml += `• Tetiklenen Kural: <code>${escapeHtml(result.details.rule)}</code><br>`;
         }
@@ -1237,11 +1237,11 @@ async function saveBotConfig() {
     };
 
     await FirebaseRepository.saveRolePolicy(policy, state.session?.profile);
-    Toast.success('Kaydedildi', 'Discord bot log kanalÃƒÆ’Ã¢â‚¬ÂÃƒâ€šÃ‚Â± güncellendi');
+    Toast.success('Kaydedildi', 'Discord bot log kanalı güncellendi');
 }
 
 async function syncModeratorProfiles() {
-    Toast.info('Senkronizasyon', 'Eşitleme başlatÃƒÆ’Ã¢â‚¬ÂÃƒâ€šÃ‚Â±lÃƒÆ’Ã¢â‚¬ÂÃƒâ€šÃ‚Â±yor...');
+    Toast.info('Senkronizasyon', 'Eşitleme başlatılıyor...');
     const policy = await FirebaseRepository.getRolePolicy().catch(() => ({}));
     policy.syncTrigger = {
         timestamp: Date.now(),
@@ -1269,7 +1269,7 @@ async function testDiscordBotLog() {
     };
 
     await FirebaseRepository.saveCases([mockTestCase], APP_CONFIG.guildId, state.session?.profile);
-    Toast.success('BaşarÃƒÆ’Ã¢â‚¬ÂÃƒâ€šÃ‚Â±lÃƒÆ’Ã¢â‚¬ÂÃƒâ€šÃ‚Â±', 'Test kaydÃƒÆ’Ã¢â‚¬ÂÃƒâ€šÃ‚Â± Firestore\'a yazÃƒÆ’Ã¢â‚¬ÂÃƒâ€šÃ‚Â±ldÃƒÆ’Ã¢â‚¬ÂÃƒâ€šÃ‚Â±, log gönderilecektir.');
+    Toast.success('Başarılı', 'Test kaydı Firestore\'a yazıldı, log gönderilecektir.');
 }
 
 async function saveRoleAssignment() {
@@ -1407,7 +1407,7 @@ function commitRuleEditor() {
 
     const nextName = DOM.editCategoryName?.value.trim() || category;
     if (nextName !== category && state.dynamicRules.categories[nextName]) {
-        Toast.warning('Ãƒâ€Ã‚Â°sim ÇakÃƒâ€Ã‚Â±Ãƒâ€¦Ã…Â¸masÃƒâ€Ã‚Â±', `"${nextName}" isimli kategori zaten mevcut.`);
+        Toast.warning('İsim Çakışması', `"${nextName}" isimli kategori zaten mevcut.`);
         return;
     }
 
@@ -1724,7 +1724,7 @@ function bindEvents() {
         state.selectedRuleCategory = dupName;
         renderRuleCategories();
         renderRuleEditor();
-        Toast.info('Kategori kopyalandÃƒÆ’Ã¢â‚¬ÂÃƒâ€šÃ‚Â±');
+        Toast.info('Kategori kopyalandı');
     });
     DOM.btnSaveCategoryInline?.addEventListener('click', () => {
         const cat = state.dynamicRules.categories[state.selectedRuleCategory];
@@ -1732,7 +1732,7 @@ function bindEvents() {
         const nextName = DOM.editCategoryName.value.trim();
         if (nextName && nextName !== state.selectedRuleCategory) {
             if (state.dynamicRules.categories[nextName]) {
-                Toast.warning('Ãƒâ€Ã‚Â°sim ÇakÃƒâ€Ã‚Â±Ãƒâ€¦Ã…Â¸masÃƒâ€Ã‚Â±', `"${nextName}" isimli kategori zaten mevcut.`);
+                Toast.warning('İsim Çakışması', `"${nextName}" isimli kategori zaten mevcut.`);
                 return;
             }
             state.dynamicRules.categories[nextName] = cat;
@@ -1885,7 +1885,7 @@ function renderProfilePage() {
                 </div>
             </div>
             `;
-        }).join('') : '<div class="empty-cell">Yetkili bulunamadÃƒÆ’Ã¢â‚¬ÂÃƒâ€šÃ‚Â±</div>';
+        }).join('') : '<div class="empty-cell">Yetkili bulunamadı</div>';
 
         // Bind card clicks
         DOM.profileStaffList.querySelectorAll('.mod-card').forEach(card => {
@@ -1958,22 +1958,22 @@ async function loadProfileDetails(userId) {
         // Moderatör is limit 2, Support is limit 3, others fallback to 2
         const isSupport = ['support', 'discord_destek_ekibi'].includes(role);
         const warnLimit = isSupport ? 3 : 2;
-        DOM.profWarnLimitLabel.textContent = `${warnLimit} UyarÃƒÆ’Ã¢â‚¬ÂÃƒâ€šÃ‚Â± SÃƒÆ’Ã¢â‚¬ÂÃƒâ€šÃ‚Â±nÃƒÆ’Ã¢â‚¬ÂÃƒâ€šÃ‚Â±rÃƒÆ’Ã¢â‚¬ÂÃƒâ€šÃ‚Â± (UlaÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€¦Ã‚Â¸ÃƒÆ’Ã¢â‚¬ÂÃƒâ€šÃ‚Â±nca Yetki Düşer)`;
+        DOM.profWarnLimitLabel.textContent = `${warnLimit} Uyarı Sınırı (Ulaşınca Yetki Düşer)`;
 
         const currentWarns = Number(cachedRoleEntry.warnPoints || 0);
         let warnDotsHtml = '';
         for (let i = 1; i <= warnLimit; i++) {
             const isActive = i <= currentWarns;
-            warnDotsHtml += `<div class="point-dot ${isActive ? 'active-warn' : 'inactive'}" title="${i}. UyarÃƒÆ’Ã¢â‚¬ÂÃƒâ€šÃ‚Â± PuanÃƒÆ’Ã¢â‚¬ÂÃƒâ€šÃ‚Â±"></div>`;
+            warnDotsHtml += `<div class="point-dot ${isActive ? 'active-warn' : 'inactive'}" title="${i}. Uyarı Puanı"></div>`;
         }
         DOM.profWarnDots.innerHTML = warnDotsHtml;
 
-        // ÃƒÆ’Ã¢â‚¬ÂÃƒâ€šÃ‚Â°kaz Points & Dots (always 2)
+        // İkaz Points & Dots (always 2)
         const currentIkaz = Number(cachedRoleEntry.ikazPoints || 0);
         let ikazDotsHtml = '';
         for (let i = 1; i <= 2; i++) {
             const isActive = i <= currentIkaz;
-            ikazDotsHtml += `<div class="point-dot ${isActive ? 'active-ikaz' : 'inactive'}" title="${i}. ÃƒÆ’Ã¢â‚¬ÂÃƒâ€šÃ‚Â°kaz PuanÃƒÆ’Ã¢â‚¬ÂÃƒâ€šÃ‚Â±"></div>`;
+            ikazDotsHtml += `<div class="point-dot ${isActive ? 'active-ikaz' : 'inactive'}" title="${i}. İkaz Puanı"></div>`;
         }
         DOM.profIkazDots.innerHTML = ikazDotsHtml;
 
@@ -2013,7 +2013,7 @@ async function saveProfileDetails() {
     // Check permission
     const isEditable = canAccessAdmin(state.session?.role) && (getRoleLevel(state.session?.role) >= 65);
     if (!isEditable) {
-        Toast.error('Yetki Reddedildi', 'Profil düzenleme yetkiniz bulunmamaktadÃƒÆ’Ã¢â‚¬ÂÃƒâ€šÃ‚Â±r.');
+        Toast.error('Yetki Reddedildi', 'Profil düzenleme yetkiniz bulunmamaktadır.');
         return;
     }
 
@@ -2051,7 +2051,7 @@ async function saveProfileDetails() {
         // Refresh local cache lists and reload page views
         await loadAuthAdminData();
         await loadProfileDetails(userId);
-        Toast.success('Profil Güncellendi', `${displayName} adlÃƒÆ’Ã¢â‚¬ÂÃƒâ€šÃ‚Â± yetkilinin profili başarÃƒÆ’Ã¢â‚¬ÂÃƒâ€šÃ‚Â±yla kaydedildi.`);
+        Toast.success('Profil Güncellendi', `${displayName} adlı yetkilinin profili başarıyla kaydedildi.`);
 
     } catch (error) {
         console.error("saveProfileDetails error:", error);

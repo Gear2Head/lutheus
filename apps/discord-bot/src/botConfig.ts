@@ -1,13 +1,22 @@
 import admin from 'firebase-admin';
-import dotenv from 'dotenv';
+import fs from 'node:fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Load .env from root
-dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
+// SECTION: BOT_ENV
+// PURPOSE: Railway uses real env vars; local development may read a root .env without bundling secrets.
+const envPath = path.resolve(__dirname, '../../../.env');
+if (fs.existsSync(envPath)) {
+    for (const line of fs.readFileSync(envPath, 'utf8').split(/\r?\n/)) {
+        const match = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/);
+        if (match && process.env[match[1]] === undefined) {
+            process.env[match[1]] = match[2].replace(/^['"]|['"]$/g, '');
+        }
+    }
+}
 
 const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
 

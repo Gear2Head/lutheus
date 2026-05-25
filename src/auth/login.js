@@ -20,13 +20,23 @@ function setBusy(busy) {
 
 function postLogin(session) {
     const params = new URLSearchParams(window.location.search);
-    const returnTo = params.get('returnTo');
+    const returnTo = sanitizeReturnTo(params.get('returnTo'));
     const targetUrl = returnTo || AuthService.getPostLoginUrl(session);
 
     if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.getURL) {
         window.location.href = chrome.runtime.getURL('src/sidepanel/sidepanel.html');
     } else {
         window.location.href = targetUrl || '/';
+    }
+}
+
+function sanitizeReturnTo(value) {
+    if (!value) return '';
+    try {
+        const parsed = new URL(value, window.location.origin);
+        return parsed.origin === window.location.origin ? parsed.pathname + parsed.search + parsed.hash : '';
+    } catch (_error) {
+        return '';
     }
 }
 
@@ -84,7 +94,6 @@ async function init() {
     if (reason === 'forbidden') setStatus('Bu sayfa için yetkiniz yok.', 'error');
     if (reason === 'blocked') setStatus('Hesabınız engellenmiş durumda.', 'error');
 
-    const code = params.get('code');
     const firebaseToken = params.get('firebaseToken');
     const profileEncoded = params.get('profile');
     const googleAccessToken = params.get('access_token'); // Google redirects with hash access_token
@@ -94,26 +103,6 @@ async function init() {
         setBusy(true);
         try {
             const profile = JSON.parse(decodeURIComponent(atob(profileEncoded)));
-            const session = await AuthService.signInWithCustomToken(firebaseToken, profile);
-            setStatus(`Giriş başarılı: ${escapeHtml(session.profile?.displayName || session.uid)}`, 'success');
-            postLogin(session);
-            return;
-        } catch (error) {
-            setStatus('Giriş tamamlanırken hata oluştu: ' + error.message, 'error');
-            setBusy(false);
-        }
-    } else if (code) {
-        setStatus('Discord ile giriş tamamlanıyor...');
-        setBusy(true);
-        try {
-            const redirectUri = window.location.origin + '/src/auth/login.html';
-            const callbackUrl = `/api/auth/discord/callback?json=true&code=${code}&redirect_uri=${encodeURIComponent(redirectUri)}`;
-            const response = await fetch(callbackUrl);
-            if (!response.ok) {
-                const errJson = await response.json().catch(() => ({}));
-                throw new Error(errJson.error || 'Discord exchange failed');
-            }
-            const { firebaseToken, profile } = await response.json();
             const session = await AuthService.signInWithCustomToken(firebaseToken, profile);
             setStatus(`Giriş başarılı: ${escapeHtml(session.profile?.displayName || session.uid)}`, 'success');
             postLogin(session);

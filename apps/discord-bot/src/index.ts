@@ -6,6 +6,7 @@ import {
     EmbedBuilder,
     ActivityType
 } from 'discord.js';
+import { createServer } from 'node:http';
 import { db, botToken, logChannelId, guildId } from './botConfig.js';
 import { EmergencyLockdownCommand } from './commands/critical/EmergencyLockdown.js';
 import { QueryCaseCommand } from './commands/queryCase.js';
@@ -32,6 +33,42 @@ const client = new Client({
         GatewayIntentBits.MessageContent
     ]
 });
+
+// SECTION: HEALTH_SERVER
+// PURPOSE: Railway health endpoint and classified startup status for bot deploys.
+let readyAt: string | null = null;
+let lastError = botToken ? '' : 'MISSING_DISCORD_BOT_TOKEN';
+
+function classifyDiscordError(error: any) {
+    const code = String(error?.code || error?.status || '');
+    const message = String(error?.message || '');
+    if (code === '429' || message.includes('rate limit')) return 'DISCORD_RATE_LIMITED';
+    if (code === '50001' || code === '50013') return 'DISCORD_MISSING_PERMISSION';
+    if (message.includes('Used disallowed intents')) return 'DISCORD_INTENT_REQUIRED';
+    return 'DISCORD_API_UNAVAILABLE';
+}
+
+function startHealthServer() {
+    const port = Number(process.env.PORT || 3000);
+    createServer((req, res) => {
+        if (req.url !== '/health') {
+            res.writeHead(404, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ ok: false, error: 'NOT_FOUND' }));
+            return;
+        }
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+            ok: Boolean(client.isReady()),
+            service: 'lutheus-discord-bot',
+            guildId,
+            readyAt,
+            uptime: process.uptime(),
+            lastError
+        }));
+    }).listen(port, () => {
+        console.log(`Discord Bot: Health endpoint listening on ${port}`);
+    });
+}
 
 const commands = [
     EmergencyLockdownCommand,
@@ -129,7 +166,7 @@ async function syncModeratorProfiles(actor = 'system') {
                         { name: '👤 Tetikleyen Aktör', value: `\`${actor}\``, inline: true }
                     )
                     .setTimestamp();
-                await channel.send({ embeds: [embed] }).catch(() => null);
+                await (channel as any).send({ embeds: [embed] }).catch(() => null);
             }
         }
     } catch (err: any) {
@@ -212,7 +249,7 @@ async function sendCaseEmbedLog(data: any) {
             .setFooter({ text: 'Lutheus CezaRapor Otomasyonu' })
             .setTimestamp(data.scrapedAt ? new Date(data.scrapedAt) : new Date());
 
-        await channel.send({ embeds: [embed] }).catch(() => null);
+        await (channel as any).send({ embeds: [embed] }).catch(() => null);
         console.log(`Discord Bot: Dispatched ceza embed log for case #${data.caseId}`);
     } catch (err: any) {
         console.error(`Discord Bot: Failed to dispatch embed log for case #${data.caseId}:`, err.message);
@@ -240,7 +277,7 @@ async function sendTestCaseLog(data: any) {
             .setFooter({ text: 'Lutheus CezaRapor SRE Otomasyonu' })
             .setTimestamp();
 
-        await channel.send({ embeds: [embed] }).catch(() => null);
+        await (channel as any).send({ embeds: [embed] }).catch(() => null);
         console.log(`Discord Bot: Dispatched Test embed log successfully!`);
     } catch (err: any) {
         console.error('Discord Bot: Failed to dispatch test embed log:', err.message);
@@ -249,6 +286,8 @@ async function sendTestCaseLog(data: any) {
 
 client.once('ready', async () => {
     console.log(`Discord Bot: Logged in successfully as ${client.user?.tag}!`);
+    readyAt = new Date().toISOString();
+    lastError = '';
     client.user?.setActivity('Lutheus SRE Audit', { type: ActivityType.Watching });
 
     await registerSlashCommands();
@@ -420,9 +459,22 @@ client.on('interactionCreate', async (interaction) => {
 });
 
 if (botToken) {
+    startHealthServer();
     client.login(botToken).catch((err) => {
+        lastError = classifyDiscordError(err);
         console.error('Discord Bot: Client login failed:', err.message);
     });
 } else {
-    console.error('Discord Bot: DISCORD_BOT_TOKEN environment variable is not defined!');
+    startHealthServer();
+    console.error('Discord Bot: MISSING_DISCORD_BOT_TOKEN');
 }
+
+process.on('unhandledRejection', (reason: any) => {
+    lastError = classifyDiscordError(reason);
+    console.error('Discord Bot: Unhandled rejection:', reason?.message || reason);
+});
+
+process.on('uncaughtException', (error: any) => {
+    lastError = classifyDiscordError(error);
+    console.error('Discord Bot: Uncaught exception:', error?.message || error);
+});

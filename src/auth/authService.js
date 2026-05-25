@@ -10,11 +10,27 @@ import { FirebaseRepository } from '../lib/firebaseRepository.js';
 
 const IDENTITY_TOOLKIT_BASE = 'https://identitytoolkit.googleapis.com/v1';
 
+const isExtensionRuntime = () =>
+    typeof chrome !== 'undefined'
+    && chrome.identity
+    && typeof chrome.identity.getRedirectURL === 'function';
+
 function getURL(path) {
     if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.getURL) {
         return chrome.runtime.getURL(path);
     }
     return `${window.location.origin}/${path.replace(/^\/+/, '')}`;
+}
+
+function getSafeReturnTo() {
+    const params = new URLSearchParams(window.location.search);
+    const raw = params.get('returnTo') || '/';
+    try {
+        const parsed = new URL(raw, window.location.origin);
+        return parsed.origin === window.location.origin ? parsed.pathname + parsed.search + parsed.hash : '/';
+    } catch (_error) {
+        return '/';
+    }
 }
 
 function authEndpoint(path) {
@@ -247,19 +263,11 @@ export const AuthService = {
     },
 
     async loginWithDiscord() {
-        if (typeof chrome === 'undefined' || !chrome.identity || !chrome.identity.getRedirectURL) {
-            const clientId = APP_CONFIG.discordClientId || '1500551629768888542';
-            const scopes = (APP_CONFIG.discordOAuthScopes || ['identify', 'guilds']).join(' ');
-            const redirectUri = window.location.origin + '/src/auth/login.html';
-
-            const authUrl = new URL('https://discord.com/oauth2/authorize');
-            authUrl.searchParams.set('response_type', 'code');
-            authUrl.searchParams.set('client_id', clientId);
-            authUrl.searchParams.set('redirect_uri', redirectUri);
-            authUrl.searchParams.set('scope', scopes);
-            authUrl.searchParams.set('prompt', 'consent');
-
-            window.location.href = authUrl.toString();
+        if (!isExtensionRuntime()) {
+            const startUrl = new URL('/api/auth/discord/start', window.location.origin);
+            startUrl.searchParams.set('source', 'web');
+            startUrl.searchParams.set('returnTo', getSafeReturnTo());
+            window.location.href = startUrl.toString();
             return new Promise(() => {});
         }
         const redirectUri = chrome.identity.getRedirectURL();
@@ -342,16 +350,10 @@ export const AuthService = {
         if (!APP_CONFIG.googleClientId) {
             throw new Error('GOOGLE_CLIENT_ID_NOT_CONFIGURED');
         }
-        if (typeof chrome === 'undefined' || !chrome.identity || !chrome.identity.launchWebAuthFlow) {
-            // WEB FLOW Google Login
-            const redirectUri = window.location.origin + '/src/auth/login.html';
-            const url = new URL('https://accounts.google.com/o/oauth2/v2/auth');
-            url.searchParams.set('client_id', APP_CONFIG.googleClientId);
-            url.searchParams.set('response_type', 'token');
-            url.searchParams.set('redirect_uri', redirectUri);
-            url.searchParams.set('scope', 'openid email profile');
-            url.searchParams.set('prompt', 'select_account');
-            window.location.href = url.toString();
+        if (!isExtensionRuntime()) {
+            const startUrl = new URL('/api/auth/google/start', window.location.origin);
+            startUrl.searchParams.set('returnTo', getSafeReturnTo());
+            window.location.href = startUrl.toString();
             return new Promise(() => {});
         }
         const redirectUri = extensionRedirectUrl('google');

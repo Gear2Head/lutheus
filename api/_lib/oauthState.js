@@ -9,7 +9,10 @@ function base64UrlDecode(value) {
 }
 
 function sign(payload) {
-    const secret = process.env.OAUTH_STATE_SECRET || process.env.DISCORD_CLIENT_SECRET || 'lutheus-dev-state';
+    const secret = process.env.OAUTH_STATE_SECRET
+        || process.env.DISCORD_CLIENT_SECRET
+        || process.env.GOOGLE_CLIENT_SECRET
+        || 'lutheus-dev-state';
     return crypto.createHmac('sha256', secret).update(payload).digest('base64url');
 }
 

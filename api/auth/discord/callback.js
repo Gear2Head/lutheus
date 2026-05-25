@@ -80,13 +80,17 @@ async function resolveRole(db, discordId) {
 
 module.exports = async function handler(req, res) {
     let redirectUri = '';
+    let oauthRedirectUri = '';
     const wantsJson = req.query.json === 'true' || !req.query.state;
     try {
+        const fallbackCallbackUrl = `https://${req.headers.host}/api/auth/discord/callback`;
         if (!wantsJson) {
             const state = readState(req.query.state);
             redirectUri = state.redirectUri;
+            oauthRedirectUri = state.oauthRedirectUri || fallbackCallbackUrl;
         } else {
             redirectUri = req.query.redirect_uri || '';
+            oauthRedirectUri = redirectUri || fallbackCallbackUrl;
         }
 
         if (req.query.error) {
@@ -100,7 +104,7 @@ module.exports = async function handler(req, res) {
 
         const code = String(req.query.code || '');
         if (!code) throw new Error('DISCORD_CODE_MISSING');
-        const accessToken = await exchangeCode(code, redirectUri, req.headers.host);
+        const accessToken = await exchangeCode(code, oauthRedirectUri, req.headers.host);
         const discordUser = await fetchDiscordUser(accessToken);
 
         let db, auth;

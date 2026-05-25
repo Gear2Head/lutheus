@@ -39,6 +39,8 @@
         if (!rawData || typeof rawData !== 'object') return [];
 
         const candidatePaths = [
+            'data.records',
+            'data.results',
             'data.cases',
             'data.items',
             'data.punishments',
@@ -82,8 +84,8 @@
             .map((item) => {
                 const caseObj = item.case && typeof item.case === 'object' ? item.case : item;
                 const punishment = item.punishment && typeof item.punishment === 'object' ? item.punishment : {};
-                const target = firstValue(item.target, item.targetUser, item.member, item.user, punishment.target, punishment.user);
-                const moderator = firstValue(item.moderator, item.executor, item.author, item.staff, punishment.moderator, punishment.executor);
+                const target = firstValue(item.target, item.targetUser, item.target_user, item.member, item.user, item.userObj, punishment.target, punishment.targetUser, punishment.member, punishment.user);
+                const moderator = firstValue(item.moderator, item.executor, item.author, item.staff, item.mod, punishment.moderator, punishment.executor, punishment.author, punishment.staff);
                 const targetObj = (target && typeof target === 'object') ? target : {};
                 const moderatorObj = (moderator && typeof moderator === 'object') ? moderator : {};
                 const id = firstValue(
@@ -92,9 +94,15 @@
                     caseObj.caseId,
                     caseObj.case_id,
                     caseObj.caseNumber,
+                    caseObj.case_number,
                     punishment.id,
+                    punishment.caseId,
+                    punishment.case_id,
                     item.id,
-                    item.case_id
+                    item.caseId,
+                    item.case_id,
+                    item.caseNumber,
+                    item.case_number
                 );
 
                 return {
@@ -108,10 +116,14 @@
                         targetObj.id,
                         targetObj.userId,
                         targetObj.user_id,
+                        targetObj.discordId,
+                        targetObj.discord_id,
                         punishment.userId,
-                        punishment.targetId
+                        punishment.user_id,
+                        punishment.targetId,
+                        punishment.target_id
                     ),
-                    username: firstValue(item.username, item.userName, item.user_name, item.tag, normalizeUserName(targetObj)),
+                    username: firstValue(item.username, item.userName, item.user_name, item.targetName, item.target_name, item.tag, normalizeUserName(targetObj)),
                     moderatorId: firstValue(
                         item.moderatorId,
                         item.moderator_id,
@@ -122,21 +134,31 @@
                         moderatorObj.id,
                         moderatorObj.userId,
                         moderatorObj.user_id,
+                        moderatorObj.discordId,
+                        moderatorObj.discord_id,
                         punishment.moderatorId,
-                        punishment.executorId
+                        punishment.moderator_id,
+                        punishment.executorId,
+                        punishment.executor_id,
+                        punishment.authorId,
+                        punishment.author_id
                     ),
                     moderator: firstValue(
                         item.moderatorUsername,
                         item.moderatorName,
+                        item.moderator_name,
                         item.executorUsername,
+                        item.executorName,
+                        item.executor_name,
                         item.authorName,
+                        item.author_name,
                         normalizeUserName(moderatorObj)
                     ),
                     type: firstValue(item.type, item.action, item.punishmentType, item.punishment_type, punishment.type, punishment.action),
-                    reason: firstValue(item.reason, item.notes, item.note, item.description, punishment.reason, punishment.notes),
-                    duration: firstValue(item.duration, item.length, item.expiresAt, item.expires_at, punishment.duration, punishment.length),
-                    createdAt: firstValue(item.createdAt, item.created_at, item.timestamp, item.date, item.updatedAt, item.updated_at, punishment.createdAt),
-                    guildId: firstValue(item.guildId, item.guild_id, item.guild?.id, punishment.guildId, punishment.guild_id),
+                    reason: firstValue(item.reason, item.notes, item.note, item.description, item.comment, punishment.reason, punishment.notes, punishment.note, punishment.description),
+                    duration: firstValue(item.duration, item.length, item.expiresAt, item.expires_at, item.expires, punishment.duration, punishment.length, punishment.expiresAt, punishment.expires_at),
+                    createdAt: firstValue(item.createdAt, item.created_at, item.timestamp, item.date, item.updatedAt, item.updated_at, punishment.createdAt, punishment.created_at),
+                    guildId: firstValue(item.guildId, item.guild_id, item.guild?.id, caseObj.guildId, caseObj.guild_id, punishment.guildId, punishment.guild_id),
                     sourceUrl: url,
                     rawData: item
                 };

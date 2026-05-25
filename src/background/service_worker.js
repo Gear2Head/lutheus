@@ -338,7 +338,7 @@ async function updateRegistryFromCases(cases) {
             changedRegistry = true;
         }
 
-        if (entry.authorId || entry.authorName) {
+        if (entry.authorId || (entry.authorName && !isUnknownAuthorName(entry.authorName))) {
             const key = entry.authorId || `name:${entry.authorName}`;
             const aliases = [entry.authorName].filter(Boolean);
             directory[key] = {
@@ -366,6 +366,70 @@ async function updateRegistryFromCases(cases) {
     }
 }
 
+function isCaseIdLike(value) {
+    const text = String(value || '').trim();
+    if (!text) return false;
+    if (/^\d{4,24}$/.test(text)) return true;
+    if (!/^[A-Za-z0-9_-]{4,24}$/.test(text)) return false;
+    if (/^\d{17,20}$/.test(text)) return false;
+    if (/^(mute|ban|warn|kick|timeout|user|reason|author|duration|created|bilinmiyor|sunucu|discord|yetkili)$/i.test(text)) return false;
+    return /[A-Za-z]/.test(text) && /\d/.test(text);
+}
+
+function isUnknownAuthorName(value) {
+    return /^(unknown|bilinmiyor|bilinmeyen yetkili)$/i.test(String(value || '').trim());
+}
+
+function normalizeDurationMs(value) {
+    const text = String(value || '').trim().toLowerCase();
+    if (!text) return null;
+    const match = text.match(/^(\d+(?:[.,]\d+)?)\s*(ms|s|sec|secs|second|seconds|m|min|mins|minute|minutes|h|hr|hrs|hour|hours|d|day|days|gün|gun|saat|dakika)$/i);
+    if (!match) return null;
+    const amount = Number(match[1].replace(',', '.'));
+    if (!Number.isFinite(amount)) return null;
+    const multipliers = {
+        ms: 1,
+        s: 1000,
+        sec: 1000,
+        secs: 1000,
+        second: 1000,
+        seconds: 1000,
+        m: 60 * 1000,
+        min: 60 * 1000,
+        mins: 60 * 1000,
+        minute: 60 * 1000,
+        minutes: 60 * 1000,
+        dakika: 60 * 1000,
+        h: 60 * 60 * 1000,
+        hr: 60 * 60 * 1000,
+        hrs: 60 * 60 * 1000,
+        hour: 60 * 60 * 1000,
+        hours: 60 * 60 * 1000,
+        saat: 60 * 60 * 1000,
+        d: 24 * 60 * 60 * 1000,
+        day: 24 * 60 * 60 * 1000,
+        days: 24 * 60 * 60 * 1000,
+        gün: 24 * 60 * 60 * 1000,
+        gun: 24 * 60 * 60 * 1000
+    };
+    return Math.round(amount * multipliers[match[2].toLowerCase()]);
+}
+
+function validateCaseForStorage(entry = {}) {
+    if (!String(entry.id || entry.caseId || '').trim()) return { valid: false, reason: 'missing_case_id' };
+    if (!entry.userId && !entry.user && !entry.authorId && !entry.authorName) return { valid: false, reason: 'missing_identity' };
+    return { valid: true };
+}
+
+function buildSourceMismatch(previous, next) {
+    if (!previous || previous.capturedVia === next.capturedVia) return null;
+    const fields = ['userId', 'authorId', 'reason', 'type', 'duration'];
+    const mismatches = fields.filter((field) => previous[field] && next[field] && String(previous[field]) !== String(next[field]));
+    return mismatches.length
+        ? { previousSource: previous.capturedVia, nextSource: next.capturedVia, fields: mismatches, detectedAt: new Date().toISOString() }
+        : null;
+}
+
 async function storageSaveCases(newCases, append = true) {
     const existing = append
         ? await new Promise((resolve) => chrome.storage.local.get(['cases'], (result) => resolve(result.cases || [])))
@@ -373,7 +437,13 @@ async function storageSaveCases(newCases, append = true) {
 
     const caseMap = new Map(existing.map((entry) => [String(entry.id || entry.caseId || ''), entry]));
 
+    const quarantined = [];
     for (const entry of newCases) {
+        const validation = validateCaseForStorage(entry);
+        if (!validation.valid) {
+            quarantined.push({ entry, reason: validation.reason, quarantinedAt: new Date().toISOString() });
+            continue;
+        }
         const normalized = normalizeCaseForStorage(entry);
         if (!normalized.id) continue;
         const previous = caseMap.get(normalized.id);
@@ -382,6 +452,10 @@ async function storageSaveCases(newCases, append = true) {
 
     const allCases = Array.from(caseMap.values()).sort(compareStoredCases);
     await new Promise((resolve) => chrome.storage.local.set({ cases: allCases }, resolve));
+    if (quarantined.length) {
+        const current = await getLocal('caseQuarantine') || [];
+        await setLocal('caseQuarantine', [...quarantined, ...current].slice(0, 100));
+    }
     return allCases.length;
 }
 
@@ -392,6 +466,9 @@ function normalizeCaseForStorage(entry = {}) {
     const embeddedAuthorId = String(entry.authorId || entry.moderatorId || entry.authorName || entry.moderator || '').match(/\d{17,20}/)?.[0] || '';
     const authorId = String(entry.authorId || entry.moderatorId || embeddedAuthorId || '');
     const authorName = String(entry.authorName || entry.moderator || '').replace(authorId, '').trim();
+    const incomingReason = String(entry.reason || '').trim();
+    const safeReason = isCaseIdLike(incomingReason) ? '' : incomingReason;
+    const duration = entry.duration || '';
 
     return {
         ...entry,
@@ -402,9 +479,10 @@ function normalizeCaseForStorage(entry = {}) {
         userId: String(entry.userId || ''),
         authorId,
         authorName: authorName || (entry.authorMissing ? 'Bilinmeyen Yetkili' : 'Bilinmiyor'),
-        authorMissing: Boolean(entry.authorMissing || (!authorId && !authorName)),
-        reason: entry.reason || '',
-        duration: entry.duration || '',
+        authorMissing: Boolean(entry.authorMissing || (!authorId && (!authorName || isUnknownAuthorName(authorName)))),
+        reason: safeReason,
+        duration,
+        durationMs: Number.isFinite(Number(entry.durationMs)) ? Number(entry.durationMs) : normalizeDurationMs(duration),
         type: entry.type || 'unknown',
         createdRaw: entry.createdRaw || entry.createdAt || '',
         sourceUrl,
@@ -419,15 +497,16 @@ function normalizeCaseForStorage(entry = {}) {
 function mergeCaseForStorage(previous, next) {
     if (!previous) return next;
 
-    return {
+    const merged = {
         ...previous,
         ...next,
         user: next.user && next.user !== 'Bilinmiyor' ? next.user : previous.user,
-        authorName: next.authorName && next.authorName !== 'Bilinmiyor' ? next.authorName : previous.authorName,
+        authorName: next.authorName && !isUnknownAuthorName(next.authorName) ? next.authorName : previous.authorName,
         authorId: next.authorId || previous.authorId || '',
         userId: next.userId || previous.userId || '',
         reason: next.reason || previous.reason || '',
         duration: next.duration || previous.duration || '',
+        durationMs: next.durationMs ?? previous.durationMs ?? null,
         type: next.type && next.type !== 'unknown' ? next.type : previous.type,
         createdRaw: next.createdRaw || previous.createdRaw || '',
         authorAvatar: next.authorAvatar || previous.authorAvatar || null,
@@ -440,6 +519,10 @@ function mergeCaseForStorage(previous, next) {
         validationReason: previous.validationReason || next.validationReason,
         lastSeen: Date.now()
     };
+    const mismatch = buildSourceMismatch(previous, merged);
+    if (mismatch) merged.sourceMismatch = mismatch;
+    else if (previous.sourceMismatch) merged.sourceMismatch = previous.sourceMismatch;
+    return merged;
 }
 
 function parseStoredCaseTime(entry = {}) {

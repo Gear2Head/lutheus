@@ -119,7 +119,12 @@ async function signInWithCustomToken(customToken, oauthProfile = {}) {
         role
     };
     await setStoredSession(session);
-    await FirebaseRepository.upsertUser(session.profile).catch(() => null);
+    try {
+        await FirebaseRepository.upsertUser(session.profile);
+    } catch (error) {
+        console.error("upsertUser failed during custom token sign-in:", error);
+        throw error;
+    }
     return session;
 }
 
@@ -163,7 +168,12 @@ async function signInWithGoogleAccessToken(accessToken) {
         role
     };
     await setStoredSession(session);
-    await FirebaseRepository.upsertUser(session.profile).catch(() => null);
+    try {
+        await FirebaseRepository.upsertUser(session.profile);
+    } catch (error) {
+        console.error("upsertUser failed during Google sign-in:", error);
+        throw error;
+    }
     return session;
 }
 
@@ -220,19 +230,80 @@ export const AuthService = {
     },
 
     async loginWithDiscord() {
-        const redirectUri = extensionRedirectUrl('discord');
-        const startUrl = new URL('/api/auth/discord/start', APP_CONFIG.vercelAuthBaseUrl);
-        startUrl.searchParams.set('redirect_uri', redirectUri);
-        startUrl.searchParams.set('source', 'extension');
-        const redirectUrl = await authFlow(startUrl.toString());
-        const params = parseHashOrQuery(redirectUrl);
-        const token = params.get('firebaseToken') || params.get('token');
-        if (!token) throw new Error(params.get('error') || 'DISCORD_TOKEN_MISSING');
-        const profileEncoded = params.get('profile');
-        const profile = profileEncoded
-            ? JSON.parse(decodeURIComponent(atob(profileEncoded)))
-            : { provider: 'discord' };
-        return signInWithCustomToken(token, { ...profile, provider: 'discord' });
+        const redirectUri = chrome.identity.getRedirectURL();
+        const clientId = APP_CONFIG.discordClientId || '1500551629768888542';
+        const scopes = (APP_CONFIG.discordOAuthScopes || ['identify', 'guilds']).join(' ');
+
+        const authUrl = new URL('https://discord.com/oauth2/authorize');
+        authUrl.searchParams.set('response_type', 'code');
+        authUrl.searchParams.set('client_id', clientId);
+        authUrl.searchParams.set('redirect_uri', redirectUri);
+        authUrl.searchParams.set('scope', scopes);
+        authUrl.searchParams.set('prompt', 'consent');
+
+        console.log('[Lutheus Auth] Discord auth URL:', authUrl.toString());
+
+        const finalUrl = await new Promise((resolve, reject) => {
+            chrome.identity.launchWebAuthFlow({
+                url: authUrl.toString(),
+                interactive: true
+            }, (redirectUrl) => {
+                if (chrome.runtime.lastError) {
+                    reject(new Error(chrome.runtime.lastError.message));
+                    return;
+                }
+                if (!redirectUrl) {
+                    reject(new Error('AUTH_REDIRECT_MISSING'));
+                    return;
+                }
+                resolve(redirectUrl);
+            });
+        });
+
+        console.log('[Lutheus Auth] launchWebAuthFlow final URL:', finalUrl);
+
+        const params = parseHashOrQuery(finalUrl);
+        const code = params.get('code');
+        if (!code) {
+            const err = params.get('error') || 'DISCORD_CODE_MISSING';
+            throw new Error(err);
+        }
+
+        const callbackEndpoint = new URL('/api/auth/discord/exchange', APP_CONFIG.vercelAuthBaseUrl);
+
+        const response = await fetch(callbackEndpoint.toString(), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                code,
+                redirectUri
+            })
+        });
+        const responseBody = await response.text();
+
+        let payload;
+        try {
+            payload = JSON.parse(responseBody);
+        } catch (jsonErr) {
+            console.error('[Lutheus Auth] Failed to parse backend response as JSON. Raw body:', responseBody);
+            throw new Error(`BACKEND_RESPONSE_PARSE_FAILED: ${responseBody}`);
+        }
+
+        if (!response.ok) {
+            console.error('[Lutheus Auth] Backend token exchange error payload:', JSON.stringify(payload, null, 2));
+            const err = payload.error || 'DISCORD_AUTH_FAILED';
+            const stage = payload.error_stage;
+            const detail = payload.detail;
+            const errorMsg = stage ? `${err} (stage: ${stage}${detail ? `, detail: ${detail}` : ''})` : err;
+            throw new Error(errorMsg);
+        }
+
+        const { firebaseToken, profile } = payload;
+        if (!firebaseToken) {
+            throw new Error('DISCORD_TOKEN_MISSING');
+        }
+
+        return signInWithCustomToken(firebaseToken, profile);
     },
 
     async loginWithGoogle() {

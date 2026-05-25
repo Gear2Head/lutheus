@@ -11,18 +11,9 @@
     window.__LUTHEUS_INTERCEPTOR_ACTIVE = true;
 
     const TARGET_PATTERNS = [
-        /dashboard\.sapph\.xyz\/api/i,
-        /\/api\/v\d+\/guilds\/[^/?#]+/i,
-        /\/moderation\/cases/i,
-        /\/cases(?:[/?#]|$)/i,
-        /\/punishments(?:[/?#]|$)/i,
-        /\/infractions(?:[/?#]|$)/i,
-        /\/modlogs(?:[/?#]|$)/i,
-        /\/audit(?:[/?#]|$)/i,
-        /\/bans(?:[/?#]|$)/i,
-        /\/mutes(?:[/?#]|$)/i,
-        /\/kicks(?:[/?#]|$)/i,
-        /\/warns(?:[/?#]|$)/i
+        /\/api\/v\d+\/guilds\/[^/?#]+\/(?:cases|moderation\/cases|punishments|infractions|modlogs|audit|bans|mutes|kicks|warns)(?:[/?#]|$)/i,
+        /\/api\/(?:cases|moderation\/cases|punishments|infractions|modlogs|audit|bans|mutes|kicks|warns)(?:[/?#]|$)/i,
+        /dashboard\.sapph\.xyz\/api\/(?:v\d+\/guilds\/[^/?#]+\/)?(?:cases|moderation\/cases|punishments|infractions|modlogs|audit|bans|mutes|kicks|warns)(?:[/?#]|$)/i
     ];
 
     const ASSET_PATTERN = /\.(?:js|css|png|jpe?g|gif|svg|webp|ico|woff2?|ttf|map)(?:[?#]|$)/i;

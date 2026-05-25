@@ -106,32 +106,113 @@ function hasBetterAvatar(nextAvatar, previousAvatar) {
     return Boolean(nextAvatar) && (!previousAvatar || String(previousAvatar).includes('/assets/icon'));
 }
 
+function isCaseIdLike(value) {
+    const text = String(value || '').trim();
+    if (!text) return false;
+    if (/^\d{4,24}$/.test(text)) return true;
+    if (!/^[A-Za-z0-9_-]{4,24}$/.test(text)) return false;
+    if (/^\d{17,20}$/.test(text)) return false;
+    if (/^(mute|ban|warn|kick|timeout|user|reason|author|duration|created|bilinmiyor|sunucu|discord|yetkili)$/i.test(text)) return false;
+    return /[A-Za-z]/.test(text) && /\d/.test(text);
+}
+
+function normalizeDurationMs(value) {
+    const text = String(value || '').trim().toLowerCase();
+    if (!text) return null;
+
+    const compact = text.match(/^(\d+(?:[.,]\d+)?)\s*(ms|s|sec|secs|second|seconds|m|min|mins|minute|minutes|h|hr|hrs|hour|hours|d|day|days|gün|gun|saat|dakika)$/i);
+    if (!compact) return null;
+
+    const amount = Number(compact[1].replace(',', '.'));
+    if (!Number.isFinite(amount)) return null;
+
+    const unit = compact[2].toLowerCase();
+    const multipliers = {
+        ms: 1,
+        s: 1000,
+        sec: 1000,
+        secs: 1000,
+        second: 1000,
+        seconds: 1000,
+        m: 60 * 1000,
+        min: 60 * 1000,
+        mins: 60 * 1000,
+        minute: 60 * 1000,
+        minutes: 60 * 1000,
+        dakika: 60 * 1000,
+        h: 60 * 60 * 1000,
+        hr: 60 * 60 * 1000,
+        hrs: 60 * 60 * 1000,
+        hour: 60 * 60 * 1000,
+        hours: 60 * 60 * 1000,
+        saat: 60 * 60 * 1000,
+        d: 24 * 60 * 60 * 1000,
+        day: 24 * 60 * 60 * 1000,
+        days: 24 * 60 * 60 * 1000,
+        gün: 24 * 60 * 60 * 1000,
+        gun: 24 * 60 * 60 * 1000
+    };
+
+    return Math.round(amount * multipliers[unit]);
+}
+
+function validateCaseEntry(entry = {}) {
+    const id = String(entry.id || entry.caseId || '').trim();
+    if (!id) return { valid: false, reason: 'missing_case_id' };
+    if (!entry.userId && !entry.user && !entry.authorId && !entry.authorName) {
+        return { valid: false, reason: 'missing_identity' };
+    }
+    return { valid: true };
+}
+
+function buildSourceMismatch(previous, next) {
+    if (!previous || previous.capturedVia === next.capturedVia) return null;
+    const fields = ['userId', 'authorId', 'reason', 'type', 'duration'];
+    const mismatches = fields.filter((field) => previous[field] && next[field] && String(previous[field]) !== String(next[field]));
+    return mismatches.length
+        ? { previousSource: previous.capturedVia, nextSource: next.capturedVia, fields: mismatches, detectedAt: new Date().toISOString() }
+        : null;
+}
+
+// SECTION: CASE_NORMALIZATION
+// PURPOSE: Canonical case shape and metadata-preserving merge for DOM/network records.
 function normalizeCaseEntry(entry = {}, previous = null) {
     const id = String(entry.id || entry.caseId || '').trim();
     const embeddedAuthorId = String(entry.authorId || entry.moderatorId || entry.authorName || '').match(/\d{17,20}/)?.[0] || '';
     const authorId = String(entry.authorId || entry.moderatorId || previous?.authorId || embeddedAuthorId || '').trim();
     const cleanedAuthorName = String(entry.authorName || entry.moderator || '').replace(authorId, '').trim();
     const incomingReason = String(entry.reason || '').trim();
-    const safeReason = /^\d{4,20}$/.test(incomingReason) ? '' : incomingReason;
+    const safeReason = isCaseIdLike(incomingReason) ? '' : incomingReason;
+    const duration = entry.duration || previous?.duration || '';
+    const durationMs = Number.isFinite(Number(entry.durationMs))
+        ? Number(entry.durationMs)
+        : (normalizeDurationMs(duration) ?? previous?.durationMs ?? null);
     const merged = {
         ...(previous || {}),
         ...entry,
         id,
         caseId: id,
+        guildId: String(entry.guildId || previous?.guildId || LUTHEUS_GUILD_ID),
         authorId,
         userId: String(entry.userId || previous?.userId || '').trim(),
         authorName: cleanedAuthorName || previous?.authorName || (entry.authorMissing ? 'Bilinmeyen Yetkili' : 'Bilinmiyor'),
         authorMissing: Boolean(entry.authorMissing || (!authorId && (!cleanedAuthorName || cleanedAuthorName === 'Bilinmeyen Yetkili'))),
         user: entry.user || previous?.user || 'Unknown',
         reason: safeReason || previous?.reason || '',
-        duration: entry.duration || previous?.duration || '',
+        duration,
+        durationMs,
         type: entry.type || previous?.type || 'unknown',
         createdRaw: entry.createdRaw || previous?.createdRaw || '',
         sourceUrl: entry.sourceUrl || previous?.sourceUrl || '',
+        capturedVia: entry.capturedVia || previous?.capturedVia || 'dom_scraper',
+        rawData: entry.rawData || previous?.rawData || null,
         scrapedAt: entry.scrapedAt || Date.now(),
         lastSeen: Date.now(),
         source: entry.source || 'sapphire-dashboard'
     };
+    const mismatch = buildSourceMismatch(previous, merged);
+    if (mismatch) merged.sourceMismatch = mismatch;
+    else if (previous?.sourceMismatch) merged.sourceMismatch = previous.sourceMismatch;
 
     merged.authorAvatar = hasBetterAvatar(entry.authorAvatar, previous?.authorAvatar)
         ? entry.authorAvatar
@@ -183,14 +264,20 @@ export const Storage = {
         const caseMap = new Map(existing.map((item) => [String(item.id || item.caseId || ''), item]));
 
         const normalizedEntries = [];
+        const quarantinedEntries = [];
         for (const entry of newCases) {
             const id = String(entry.id || entry.caseId || '');
-            if (!id) continue;
+            const validation = validateCaseEntry(entry);
+            if (!validation.valid) {
+                quarantinedEntries.push({ entry, reason: validation.reason, quarantinedAt: new Date().toISOString() });
+                continue;
+            }
             const previous = caseMap.get(id);
             const normalized = normalizeCaseEntry(entry, previous);
             normalizedEntries.push(normalized);
             caseMap.set(id, normalized);
         }
+        if (quarantinedEntries.length) await this.addQuarantinedCases(quarantinedEntries);
 
         const allCases = Array.from(caseMap.values()).sort(compareCases);
         await this.set('cases', allCases);
@@ -211,7 +298,17 @@ export const Storage = {
         if (!Array.isArray(cases)) {
             throw new TypeError('saveCases: cases must be an array');
         }
-        const normalized = cases.map((entry) => normalizeCaseEntry(entry)).sort(compareCases);
+        const quarantinedEntries = [];
+        const normalized = cases
+            .filter((entry) => {
+                const validation = validateCaseEntry(entry);
+                if (validation.valid) return true;
+                quarantinedEntries.push({ entry, reason: validation.reason, quarantinedAt: new Date().toISOString() });
+                return false;
+            })
+            .map((entry) => normalizeCaseEntry(entry))
+            .sort(compareCases);
+        if (quarantinedEntries.length) await this.addQuarantinedCases(quarantinedEntries);
         await this.set('cases', normalized);
         await this.setSyncCases(normalized);
         await this.upsertStaffDirectoryFromCases(normalized);
@@ -513,6 +610,15 @@ export const Storage = {
 
     async getScanLogs() {
         return (await this.get('scanLogs')) || [];
+    },
+
+    async addQuarantinedCases(entries) {
+        const current = (await this.get('caseQuarantine')) || [];
+        await this.set('caseQuarantine', [...entries, ...current].slice(0, 100));
+    },
+
+    async getQuarantinedCases() {
+        return (await this.get('caseQuarantine')) || [];
     },
 
     async getWeeklySnapshots() {

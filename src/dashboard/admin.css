@@ -1671,10 +1671,175 @@ body {
   background: rgba(24, 24, 30, 0.85) !important;
   border: 1px solid rgba(255, 255, 255, 0.08) !important;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+  position: relative;
+  overflow: hidden;
 }
 
 .active-profile-card {
   background: rgba(124, 90, 245, 0.08) !important;
   border-color: rgba(124, 90, 245, 0.4) !important;
   box-shadow: 0 0 20px rgba(124, 90, 245, 0.15) !important;
+}
+
+/* SECTION: THEME_SYSTEM */
+/* PURPOSE: Dark/light mode theme variables override. */
+body {
+  transition: background-color 0.25s ease, color 0.25s ease, border-color 0.25s ease;
+}
+
+body.light-theme {
+  --bg-void:       #f1f5f9; /* slate-100 */
+  --bg-base:       #f8fafc; /* slate-50 */
+  --bg-surface:    #ffffff; /* white */
+  --bg-elevated:   #e2e8f0; /* slate-200 */
+  --bg-hover:      #cbd5e1; /* slate-300 */
+  --bg-input:      #ffffff;
+
+  --border:        rgba(0,0,0,0.08);
+  --border-mid:    rgba(0,0,0,0.12);
+  --border-hi:     rgba(0,0,0,0.18);
+
+  --text-1:        #0f172a; /* slate-900 */
+  --text-2:        #334155; /* slate-700 */
+  --text-3:        #64748b; /* slate-500 */
+
+  --purple:        #6366f1; /* indigo-500 */
+  --purple-dim:    rgba(99,102,241,0.1);
+  --purple-glow:   rgba(99,102,241,0.2);
+  --purple-hi:     #4f46e5;
+
+  --emerald:       #16a34a;
+  --emerald-dim:   rgba(22,163,74,0.1);
+  --amber:         #d97706;
+  --amber-dim:     rgba(217,119,6,0.1);
+  --red:           #dc2626;
+  --red-dim:       rgba(220,38,38,0.1);
+  --blue:          #2563eb;
+  --blue-dim:      rgba(37,99,235,0.1);
+}
+
+body.light-theme .search-field input {
+  color: #0f172a;
+}
+body.light-theme .panel {
+  background: #ffffff !important;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+}
+body.light-theme .sidebar {
+  background: #e2e8f0;
+  border-right: 1px solid rgba(0,0,0,0.06);
+}
+body.light-theme .nav-item {
+  color: #475569;
+}
+body.light-theme .nav-item.active {
+  background: #cbd5e1;
+  color: #0f172a;
+}
+body.light-theme .topbar {
+  background: #f1f5f9;
+  border-bottom: 1px solid rgba(0,0,0,0.06);
+}
+body.light-theme .mod-card {
+  background: #ffffff !important;
+  border: 1px solid rgba(0,0,0,0.08) !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+body.light-theme .mod-card:hover {
+  background: #f8fafc !important;
+  border-color: rgba(0,0,0,0.12) !important;
+}
+body.light-theme .case-history-card {
+  background: #f8fafc !important;
+  border-color: rgba(0,0,0,0.08) !important;
+}
+body.light-theme .data-table tr:hover td {
+  background: #f1f5f9;
+}
+body.light-theme .toast {
+  background: rgba(255, 255, 255, 0.92) !important;
+  border-color: rgba(0, 0, 0, 0.08) !important;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+}
+
+/* SECTION: TOAST_STYLES */
+/* PURPOSE: Premium styles for countdown progress bar inside toasts. */
+.toast-progress-bar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 2.5px;
+  background: var(--purple-hi);
+  width: 100%;
+  animation: toastProgress linear forwards;
+  opacity: 0.6;
+}
+.toast.success .toast-progress-bar { background: var(--emerald); }
+.toast.error .toast-progress-bar { background: var(--red); }
+.toast.warning .toast-progress-bar { background: var(--amber); }
+.toast.info .toast-progress-bar { background: var(--purple-hi); }
+
+@keyframes toastProgress {
+  from { width: 100%; }
+  to   { width: 0%; }
+}
+
+/* SECTION: AUDIT_TIMELINE */
+/* PURPOSE: Premium vertical timeline style for SRE Audit Logs. */
+.audit-timeline {
+  position: relative;
+  padding-left: 20px;
+  border-left: 2px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin: 8px 4px;
+}
+
+.audit-node {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-bottom: 4px;
+}
+
+.audit-node::before {
+  content: '';
+  position: absolute;
+  left: -27px;
+  top: 4px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--bg-surface);
+  border: 2px solid var(--purple);
+  box-shadow: 0 0 6px var(--purple-glow);
+  transition: all 0.22s var(--ease-spring);
+}
+
+.audit-node:hover::before {
+  transform: scale(1.25);
+  border-color: var(--emerald);
+  box-shadow: 0 0 8px rgba(45, 213, 115, 0.4);
+}
+
+.audit-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-1);
+}
+
+.audit-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--text-3);
+  font-family: var(--font-mono);
+}
+
+.audit-meta-actor {
+  color: var(--purple-hi);
+  font-weight: 600;
 }

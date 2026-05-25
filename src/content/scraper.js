@@ -295,14 +295,17 @@ window.GearTech.Scraper = {
         };
     },
 
+    // SECTION: DATA_EXTRACTION
+    // PURPOSE: Extract case identifiers without allowing IDs to leak into reason text.
     isLikelyCaseId: function (value, options = {}) {
         const text = String(value || '').trim();
-        if (!/^[A-Za-z0-9_-]{4,18}$/.test(text)) return false;
+        if (!/^[A-Za-z0-9_-]{4,24}$/.test(text)) return false;
         if (/^\d{17,20}$/.test(text)) return false;
+        if (/^\d{5,24}$/.test(text)) return true;
         if (/^(mute|ban|warn|kick|timeout|user|reason|author|duration|created|bilinmiyor|sunucu|discord|yetkili)$/i.test(text)) return false;
         if (/[ğĞüÜşŞıİöÖçÇ]/.test(text)) return false;
         if (options.tagged) return true;
-        if (/^[A-Za-z]{4,18}$/.test(text)) {
+        if (/^[A-Za-z]{4,24}$/.test(text)) {
             const uppercaseCount = (text.match(/[A-Z]/g) || []).length;
             return text.length >= 6 && uppercaseCount >= 2 && /[a-z]/.test(text);
         }
@@ -312,7 +315,7 @@ window.GearTech.Scraper = {
     isInvalidReasonCandidate: function (value) {
         const text = String(value || '').trim();
         if (!text) return true;
-        if (/^\d{4,20}$/.test(text)) return true;
+        if (/^\d{4,24}$/.test(text)) return true;
         if (/^\d{17,20}$/.test(text)) return true;
         if (this.isLikelyCaseId(text)) return true;
         return false;
@@ -325,9 +328,9 @@ window.GearTech.Scraper = {
 
     extractCaseIdFromText: function (text) {
         const raw = String(text || '');
-        const tagged = raw.match(/#([A-Za-z0-9_-]{4,18})\b/);
+        const tagged = raw.match(/#([A-Za-z0-9_-]{4,24})\b/);
         if (tagged && this.isLikelyCaseId(tagged[1], { tagged: true })) return tagged[1];
-        const candidates = raw.match(/\b[A-Za-z0-9_-]{4,18}\b/g) || [];
+        const candidates = raw.match(/\b[A-Za-z0-9_-]{4,24}\b/g) || [];
         return candidates.find((candidate) => this.isLikelyCaseId(candidate)) || '';
     },
 

@@ -26,15 +26,25 @@ export const FirebaseRepository = {
         const previous = await this.getUser(uid).catch(() => null);
         const role = normalizeRole(profile.role || previous?.role || ROLES.PENDING);
         const status = profile.status || previous?.status || 'active';
-        return FirestoreRest.setDocument(`users/${safeDocId(uid)}`, {
-            ...(previous || {}),
-            ...profile,
-            uid,
-            role,
-            status,
-            lastLogin: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
-        });
+
+        try {
+            return await FirestoreRest.setDocument(`users/${safeDocId(uid)}`, {
+                ...(previous || {}),
+                ...profile,
+                uid,
+                role,
+                status,
+                lastLogin: new Date().toISOString(),
+                updatedAt: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error("[Lutheus Auth] upsertUser failed:", error);
+            const msg = String(error.message || '').toUpperCase();
+            if (msg.includes('PERMISSION_DENIED') || msg.includes('403') || msg.includes('FORBIDDEN')) {
+                throw new Error('USER_UPSERT_FORBIDDEN');
+            }
+            throw error;
+        }
     },
 
     async getRoleCache(identityKey, token = null) {

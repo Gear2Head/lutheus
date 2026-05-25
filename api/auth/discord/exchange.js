@@ -1,33 +1,13 @@
 const { getAuth, getDb } = require('../../_lib/firebaseAdmin');
-const { readState } = require('../../_lib/oauthState');
 const { normalizeRole } = require('../../_lib/roles');
 
 // SECTION: API_ROUTES
-// PURPOSE: Discord OAuth callback endpoint with detailed diagnostic logs and error reporting.
+// PURPOSE: Dedicated Discord OAuth token exchange endpoint for Chrome Extensions.
 
-function redirectWithError(res, redirectUri, error, errorStage = '', detail = '') {
-    const url = new URL(redirectUri);
-    url.searchParams.set('error', error);
-    if (errorStage) {
-        url.searchParams.set('error_stage', errorStage);
-    }
-    if (detail) {
-        url.searchParams.set('detail', detail);
-    }
-    res.writeHead(302, { Location: url.toString() });
-    res.end();
-}
-
-function encodeProfile(profile) {
-    return Buffer.from(encodeURIComponent(JSON.stringify(profile))).toString('base64');
-}
-
-async function exchangeCode(code, redirectUri, host) {
+async function exchangeCode(code, redirectUri) {
     if (!process.env.DISCORD_CLIENT_ID || !process.env.DISCORD_CLIENT_SECRET) {
         throw new Error('DISCORD_CLIENT_SECRET_MISSING');
     }
-
-    const exchangeRedirectUri = redirectUri || `https://${host}/api/auth/discord/callback`;
 
     const response = await fetch('https://discord.com/api/oauth2/token', {
         method: 'POST',
@@ -37,18 +17,20 @@ async function exchangeCode(code, redirectUri, host) {
             client_secret: process.env.DISCORD_CLIENT_SECRET,
             grant_type: 'authorization_code',
             code,
-            redirect_uri: exchangeRedirectUri
+            redirect_uri: redirectUri
         })
     });
+
     const payload = await response.json();
     if (!response.ok) {
         const errType = payload.error || '';
         const errDesc = payload.error_description || '';
-        console.error(`Discord Code Exchange Error: error=${errType}, description=${errDesc}`);
-        if (errDesc.includes('redirect_uri_mismatch') || errType.includes('redirect_uri_mismatch')) {
-            throw new Error('DISCORD_REDIRECT_URI_MISMATCH');
-        }
-        throw new Error('DISCORD_CODE_EXCHANGE_FAILED');
+        console.error(`Discord Code Exchange Error: status=${response.status}, error=${errType}, description=${errDesc}, raw=${JSON.stringify(payload)}`);
+        
+        const error = new Error('DISCORD_CODE_EXCHANGE_FAILED');
+        error.status = response.status;
+        error.payload = payload;
+        throw error;
     }
     return payload.access_token;
 }
@@ -60,7 +42,10 @@ async function fetchDiscordUser(accessToken) {
     const payload = await response.json();
     if (!response.ok) {
         console.error('Discord User Fetch Error:', payload);
-        throw new Error('DISCORD_USER_FETCH_FAILED');
+        const error = new Error('DISCORD_USER_FETCH_FAILED');
+        error.status = response.status;
+        error.payload = payload;
+        throw error;
     }
     return payload;
 }
@@ -79,28 +64,20 @@ async function resolveRole(db, discordId) {
 }
 
 module.exports = async function handler(req, res) {
-    let redirectUri = '';
-    const wantsJson = req.query.json === 'true' || !req.query.state;
+    if (req.method !== 'POST') {
+        res.status(405).json({ error: 'METHOD_NOT_ALLOWED' });
+        return;
+    }
+
     try {
-        if (!wantsJson) {
-            const state = readState(req.query.state);
-            redirectUri = state.redirectUri;
-        } else {
-            redirectUri = req.query.redirect_uri || '';
-        }
+        const body = req.body || {};
+        const code = String(body.code || '');
+        const redirectUri = String(body.redirectUri || '');
 
-        if (req.query.error) {
-            if (wantsJson) {
-                res.status(400).json({ error: String(req.query.error) });
-                return;
-            }
-            redirectWithError(res, redirectUri, String(req.query.error));
-            return;
-        }
-
-        const code = String(req.query.code || '');
         if (!code) throw new Error('DISCORD_CODE_MISSING');
-        const accessToken = await exchangeCode(code, redirectUri, req.headers.host);
+        if (!redirectUri) throw new Error('DISCORD_REDIRECT_URI_MISSING');
+
+        const accessToken = await exchangeCode(code, redirectUri);
         const discordUser = await fetchDiscordUser(accessToken);
 
         let db, auth;
@@ -154,31 +131,21 @@ module.exports = async function handler(req, res) {
             throw new Error('FIREBASE_CUSTOM_TOKEN_FAILED');
         }
 
-        if (wantsJson) {
-            res.status(200).json({ firebaseToken, profile });
-        } else {
-            const url = new URL(redirectUri);
-            url.searchParams.set('firebaseToken', firebaseToken);
-            url.searchParams.set('profile', encodeProfile(profile));
-            res.writeHead(302, { Location: url.toString() });
-            res.end();
-        }
+        res.status(200).json({ firebaseToken, profile });
     } catch (error) {
-        console.error('Discord Callback Handler Error:', error);
-        
+        console.error('Discord Exchange Endpoint Error:', error);
+
         let errCode = 'DISCORD_AUTH_FAILED';
-        let errorStage = 'callback_handler';
+        let errorStage = 'exchange_handler';
         let detail = error.message || '';
-        
+        let discordPayload = null;
+
+        if (error.payload) {
+            discordPayload = error.payload;
+        }
+
         const msg = String(error.message || '');
-        
-        if (msg.includes('INVALID_OAUTH_STATE')) {
-            errCode = 'INVALID_OAUTH_STATE';
-            errorStage = 'state_validation';
-        } else if (msg.includes('OAUTH_STATE_EXPIRED')) {
-            errCode = 'OAUTH_STATE_EXPIRED';
-            errorStage = 'state_validation';
-        } else if (msg.includes('DISCORD_CLIENT_SECRET_MISSING')) {
+        if (msg.includes('DISCORD_CLIENT_SECRET_MISSING')) {
             errCode = 'DISCORD_CLIENT_SECRET_MISSING';
             errorStage = 'pre_exchange';
         } else if (msg.includes('DISCORD_REDIRECT_URI_MISMATCH')) {
@@ -202,14 +169,16 @@ module.exports = async function handler(req, res) {
         } else if (msg.includes('DISCORD_CODE_MISSING')) {
             errCode = 'DISCORD_CODE_MISSING';
             errorStage = 'params_validation';
+        } else if (msg.includes('DISCORD_REDIRECT_URI_MISSING')) {
+            errCode = 'DISCORD_REDIRECT_URI_MISSING';
+            errorStage = 'params_validation';
         }
-        
-        if (wantsJson) {
-            res.status(400).json({ error: errCode, error_stage: errorStage, detail });
-        } else if (redirectUri) {
-            redirectWithError(res, redirectUri, errCode, errorStage, detail);
-        } else {
-            res.status(400).json({ error: errCode, error_stage: errorStage, detail });
-        }
+
+        res.status(400).json({
+            error: errCode,
+            error_stage: errorStage,
+            detail,
+            discord: discordPayload
+        });
     }
 };

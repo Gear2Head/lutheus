@@ -89,6 +89,78 @@ describe('Storage.updateCases', () => {
         expect(cases[0].reason).toBe('');
     });
 
+    test('preserves previous real reason when incoming reason is case-like', async () => {
+        await Storage.saveCases([{ id: 'case-2', reason: 'Reklam', authorName: 'Mod1' }]);
+        await Storage.updateCases([{ id: 'case-2', reason: 'AB12CD34', authorName: 'Mod1' }], true);
+        const cases = await Storage.get('cases');
+        expect(cases[0].reason).toBe('Reklam');
+    });
+
+    test('stores canonical network fields and preserves manual metadata on merge', async () => {
+        await Storage.saveCases([{
+            id: 'case-3',
+            guildId: 'guild-1',
+            reason: 'Spam',
+            authorName: 'Mod1',
+            note: 'manual',
+            reviewStatus: 'reviewed'
+        }]);
+        await Storage.updateCases([{
+            caseId: 'case-3',
+            guildId: 'guild-2',
+            reason: 'Hakaret',
+            capturedVia: 'network_interceptor',
+            rawData: { case_id: 'case-3' },
+            authorName: 'Mod1'
+        }], true);
+        const cases = await Storage.get('cases');
+        expect(cases[0]).toMatchObject({
+            id: 'case-3',
+            caseId: 'case-3',
+            guildId: 'guild-2',
+            capturedVia: 'network_interceptor',
+            reason: 'Hakaret',
+            note: 'manual',
+            reviewStatus: 'reviewed'
+        });
+        expect(cases[0].rawData).toEqual({ case_id: 'case-3' });
+    });
+
+    test('normalizes duration text to milliseconds', async () => {
+        await Storage.saveCases([{ id: 'case-4', reason: 'Spam', duration: '3 days', authorName: 'Mod1' }]);
+        const cases = await Storage.get('cases');
+        expect(cases[0].durationMs).toBe(259200000);
+    });
+
+    test('quarantines invalid case payloads', async () => {
+        await Storage.updateCases([{ reason: 'missing id', authorName: 'Mod1' }], true);
+        const cases = await Storage.get('cases');
+        const quarantine = await Storage.getQuarantinedCases();
+        expect(cases).toHaveLength(0);
+        expect(quarantine[0].reason).toBe('missing_case_id');
+    });
+
+    test('marks source mismatch between dom and network records', async () => {
+        await Storage.saveCases([{
+            id: 'case-5',
+            userId: 'user-1',
+            reason: 'Spam',
+            type: 'mute',
+            authorName: 'Mod1',
+            capturedVia: 'dom_scraper'
+        }]);
+        await Storage.updateCases([{
+            id: 'case-5',
+            userId: 'user-1',
+            reason: 'Hakaret',
+            type: 'mute',
+            authorName: 'Mod1',
+            capturedVia: 'network_interceptor'
+        }], true);
+        const cases = await Storage.get('cases');
+        expect(cases[0].sourceMismatch.fields).toContain('reason');
+    });
+
     test('does not store case payloads in chrome sync quota', async () => {
         await Storage.updateCases([{ id: 'abc123', reason: 'Reklam', authorName: 'Mod2' }], true);
         expect(syncStore.cases_meta.count).toBe(1);

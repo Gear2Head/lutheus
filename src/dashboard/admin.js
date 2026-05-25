@@ -21,6 +21,45 @@ import {
 import { analyzeCaseWithGroq } from '../lib/aiAnalysisClient.js';
 import { bindAvatarFallbacks, resolveAvatar } from '../lib/avatar.js';
 
+// SECTION: FUZZY_SEARCH
+// PURPOSE: Typo-tolerant fuzzy matching helper for search input validation.
+function fuzzyMatch(text, query) {
+    const t = String(text || '').trim().toLowerCase();
+    const q = String(query || '').trim().toLowerCase();
+    if (!q) return true;
+    if (t.includes(q)) return true;
+
+    // Levenshtein distance helper
+    function getLevenshteinDistance(a, b) {
+        const matrix = [];
+        for (let i = 0; i <= b.length; i++) matrix[i] = [i];
+        for (let j = 0; j <= a.length; j++) matrix[0][j] = j;
+        for (let i = 1; i <= b.length; i++) {
+            for (let j = 1; j <= a.length; j++) {
+                if (b.charAt(i - 1) === a.charAt(j - 1)) {
+                    matrix[i][j] = matrix[i - 1][j - 1];
+                } else {
+                    matrix[i][j] = Math.min(
+                        matrix[i - 1][j - 1] + 1,
+                        matrix[i][j - 1] + 1,
+                        matrix[i - 1][j] + 1
+                    );
+                }
+            }
+        }
+        return matrix[b.length][a.length];
+    }
+
+    const words = t.split(/[\s_\-\/\:\.]+/);
+    for (const word of words) {
+        if (word.startsWith(q) || q.startsWith(word)) return true;
+        if (q.length > 3 && getLevenshteinDistance(word, q) <= 2) {
+            return true;
+        }
+    }
+    return false;
+}
+
 const DOM_RAW = {
     totalCases: document.getElementById('st-total'),
     validCases: document.getElementById('st-valid'),
@@ -157,7 +196,8 @@ const DOM_RAW = {
     profFormWarns: document.getElementById('profFormWarns'),
     profFormIkaz: document.getElementById('profFormIkaz'),
     btnSaveProfileDetails: document.getElementById('btnSaveProfileDetails'),
-    toastStack: document.getElementById('toastStack')
+    toastStack: document.getElementById('toastStack'),
+    btnThemeToggle: document.getElementById('btnThemeToggle')
 };
 
 const DOM = new Proxy(DOM_RAW, {
@@ -187,6 +227,64 @@ const state = {
     latestPointtrainRun: null
 };
 
+let updateBulkActionsToolbar = () => {};
+
+// SECTION: TOAST_SOUNDS
+// PURPOSE: Synthesize ambient UI sounds using Web Audio API.
+function playToastSound(type) {
+    try {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContext) return;
+        const ctx = new AudioContext();
+
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+
+        const now = ctx.currentTime;
+
+        if (type === 'success') {
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(523.25, now); // C5
+            osc.frequency.exponentialRampToValueAtTime(783.99, now + 0.1); // G5
+            osc.frequency.exponentialRampToValueAtTime(1046.50, now + 0.22); // C6
+            gain.gain.setValueAtTime(0.12, now);
+            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.35);
+            osc.start(now);
+            osc.stop(now + 0.35);
+        } else if (type === 'error') {
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(150, now);
+            osc.frequency.linearRampToValueAtTime(110, now + 0.18);
+            gain.gain.setValueAtTime(0.15, now);
+            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.25);
+            osc.start(now);
+            osc.stop(now + 0.25);
+        } else if (type === 'warning') {
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(880, now);
+            gain.gain.setValueAtTime(0.1, now);
+            gain.gain.setValueAtTime(0, now + 0.08);
+            gain.gain.setValueAtTime(0.1, now + 0.12);
+            osc.frequency.setValueAtTime(880, now + 0.12);
+            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.24);
+            osc.start(now);
+            osc.stop(now + 0.24);
+        } else {
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(600, now);
+            osc.frequency.exponentialRampToValueAtTime(800, now + 0.08);
+            gain.gain.setValueAtTime(0.08, now);
+            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+            osc.start(now);
+            osc.stop(now + 0.15);
+        }
+    } catch (e) {
+        console.debug('[Lutheus Toast] sound skipped:', e.message);
+    }
+}
+
 const Toast = {
     container: null,
 
@@ -194,9 +292,17 @@ const Toast = {
         this.container = DOM.toastStack;
     },
 
-    show(title, message, type = 'info', duration = 4000) {
+    show(title, message, type = 'info', duration = 0) {
         if (!this.container) this.init();
         if (!this.container) return;
+
+        if (duration === 0) {
+            if (type === 'success') duration = 4000;
+            else if (type === 'info') duration = 4500;
+            else if (type === 'warning') duration = 6000;
+            else if (type === 'error') duration = 8000;
+            else duration = 5000;
+        }
 
         const toast = document.createElement('div');
         toast.className = `toast ${type}`;
@@ -207,9 +313,13 @@ const Toast = {
                 <div class="toast-message">${escapeHtml(message)}</div>
             </div>
             <button class="toast-close" type="button"><i class="fa-solid fa-xmark"></i></button>
+            <div class="toast-progress-bar" style="animation-duration: ${duration}ms"></div>
         `;
         toast.querySelector('.toast-close')?.addEventListener('click', () => this.dismiss(toast));
         this.container.appendChild(toast);
+
+        playToastSound(type);
+
         if (duration > 0) setTimeout(() => this.dismiss(toast), duration);
     },
 
@@ -220,7 +330,7 @@ const Toast = {
     },
 
     success(title, message) { this.show(title, message, 'success'); },
-    error(title, message) { this.show(title, message, 'error', 6000); },
+    error(title, message) { this.show(title, message, 'error'); },
     warning(title, message) { this.show(title, message, 'warning'); },
     info(title, message) { this.show(title, message, 'info'); }
 };
@@ -555,13 +665,17 @@ function renderAuthTables({ allowlist = [], roleCache = [], policy = {}, audit =
     `).join('');
 
     DOM.auditList.innerHTML = audit.length
-        ? audit.map((entry) => `
-            <article class="audit-item">
-                <strong>${escapeHtml(entry.action || '-')}</strong>
-                <small>${escapeHtml(formatTurkishDateTime(entry.createdAt))} - ${escapeHtml(entry.actorUid || 'system')}</small>
-            </article>
-        `).join('')
-        : '<div class="audit-item"><strong>Audit log yok</strong><small>Henüz kayıt oluşmadı</small></div>';
+        ? `<div class="audit-timeline">` + audit.map((entry) => `
+            <div class="audit-node animate-in">
+                <span class="audit-title">${escapeHtml(entry.action || '-')}</span>
+                <div class="audit-meta">
+                    <span class="audit-meta-time">${escapeHtml(formatTurkishDateTime(entry.createdAt))}</span>
+                    <span>•</span>
+                    <span class="audit-meta-actor">${escapeHtml(entry.actorUid || 'system')}</span>
+                </div>
+            </div>
+        `).join('') + `</div>`
+        : '<div class="empty-cell"><strong>Audit log yok</strong><small>Henüz kayıt oluşmadı</small></div>';
 }
 
 async function loadAuthAdminData() {
@@ -663,7 +777,7 @@ function calculateStats() {
 
         reasonMap.set(reason, (reasonMap.get(reason) || 0) + 1);
 
-        if (!isValidDiscordId(profile.id)) {
+        if (!isValidDiscordId(profile.id) || String(profile.id).startsWith('unknown-author') || String(profile.id).includes('unknown')) {
             unresolved.push({
                 caseId: entry.id || entry.caseId || '',
                 reason,
@@ -788,6 +902,45 @@ function renderStats() {
     updateSidebarBadges({ staffCount: staff.length, unresolvedCount: unresolved.length });
 }
 
+// SECTION: PERFORMANCE_TREND
+// PURPOSE: Generates inline SVG sparkline micro-charts for staff performance.
+function generateSparkline(staffId) {
+    if (!state.allCases || state.allCases.length === 0) return '';
+    const modCases = state.allCases
+        .filter(c => resolveStaffProfile(c).id === staffId)
+        .sort((a, b) => caseTimestamp(a) - caseTimestamp(b))
+        .slice(-8); // last 8 cases
+
+    if (modCases.length < 2) {
+        return `<span style="font-size: 10px; color: var(--text-3); font-family: var(--font-mono);">Yeni</span>`;
+    }
+
+    const width = 60;
+    const height = 18;
+    const padding = 2;
+    const points = modCases.map((c, i) => {
+        const val = getValidation(c);
+        let yVal = height / 2; // neutral
+        if (val.status === PenaltyStatus.VALID) yVal = padding;
+        else if (val.status === PenaltyStatus.INVALID) yVal = height - padding;
+
+        const x = padding + (i / (modCases.length - 1)) * (width - 2 * padding);
+        return `${x},${yVal}`;
+    }).join(' ');
+
+    const lastVal = getValidation(modCases[modCases.length - 1]);
+    let strokeColor = 'var(--purple)';
+    if (lastVal.status === PenaltyStatus.VALID) strokeColor = 'var(--emerald)';
+    else if (lastVal.status === PenaltyStatus.INVALID) strokeColor = 'var(--red)';
+
+    return `
+        <svg width="${width}" height="${height}" style="overflow:visible;" title="Son 8 ceza doğruluk trendi">
+            <polyline fill="none" stroke="${strokeColor}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" points="${points}" />
+            <circle cx="${points.split(' ').pop().split(',')[0]}" cy="${points.split(' ').pop().split(',')[1]}" r="2.5" fill="${strokeColor}" />
+        </svg>
+    `;
+}
+
 function renderModRow(entry, index) {
     const acc = entry.performance?.validPercent || 0;
     const color = acc >= 90 ? 'var(--emerald)' : acc >= 80 ? 'var(--amber)' : 'var(--red)';
@@ -805,6 +958,7 @@ function renderModRow(entry, index) {
                     <span style="font-size:12px;color:var(--text-2);font-family:var(--font-mono);width:36px;">${acc}%</span>
                 </div>
             </td>
+            <td style="vertical-align:middle; text-align:center;">${generateSparkline(entry.id)}</td>
             <td>
                 <button class="btn btn-ghost btn-icon btn-view" type="button" data-id="${escapeHtml(entry.id)}" data-name="${escapeHtml(entry.name)}" style="width:28px;height:28px;font-size:11px;">
                     <i class="fa-solid fa-arrow-right"></i>
@@ -820,7 +974,12 @@ function renderManagementRosterRow(entry) {
             <td style="color:var(--text-3);font-family:var(--font-mono);font-size:12px;">-</td>
             <td>${staffIdentityHtml(entry)}</td>
             <td><span class="role-chip ${escapeHtml(entry.role)}">${escapeHtml(getRoleLabel(entry.role))}</span></td>
-            <td colspan="3" class="management-note">Yonetim kadrosu performans siralamasina dahil edilmez</td>
+            <td colspan="3" class="management-note">Yönetim kadrosu performans sıralamasına dahil edilmez</td>
+            <td>
+                <button class="btn btn-ghost btn-icon btn-view" type="button" data-id="${escapeHtml(entry.id)}" data-name="${escapeHtml(entry.name)}" style="width:28px;height:28px;font-size:11px;">
+                    <i class="fa-solid fa-arrow-right"></i>
+                </button>
+            </td>
         </tr>
     `;
 }
@@ -830,23 +989,23 @@ function renderTable(search = '') {
         const query = (search || '').trim().toLowerCase();
         const { staff, management } = calculateStats();
         const filter = (entry) => !query
-            || (entry?.name && String(entry.name).toLowerCase().includes(query))
-            || (entry?.role && String(entry.role).toLowerCase().includes(query));
+            || fuzzyMatch(entry?.name, query)
+            || fuzzyMatch(entry?.role, query);
         const filteredManagement = management.filter(filter);
         const filteredStaff = staff.filter(filter);
 
         if (DOM.modTableBody) {
             const rows = [];
             if (filteredManagement.length) {
-                rows.push('<tr class="table-section-row"><td colspan="6">Yonetim Kadrosu</td></tr>');
+                rows.push('<tr class="table-section-row"><td colspan="7">Yonetim Kadrosu</td></tr>');
                 rows.push(...filteredManagement.map((entry) => renderManagementRosterRow(entry)));
             }
-            rows.push('<tr class="table-section-row"><td colspan="6">Haftalik Yetkili Performansi</td></tr>');
+            rows.push('<tr class="table-section-row"><td colspan="7">Haftalik Yetkili Performansi</td></tr>');
             rows.push(...filteredStaff.map((entry, index) => renderModRow(entry, index)));
             if (!filteredStaff.length && !filteredManagement.length) {
-                rows.push('<tr><td colspan="6" style="text-align:center; padding:20px;">Kayit bulunamadi</td></tr>');
+                rows.push('<tr><td colspan="7" style="text-align:center; padding:20px;">Kayit bulunamadi</td></tr>');
             } else if (!filteredStaff.length) {
-                rows.push('<tr><td colspan="6" style="text-align:center; padding:20px;">Yetkili performans kaydi yok</td></tr>');
+                rows.push('<tr><td colspan="7" style="text-align:center; padding:20px;">Yetkili performans kaydi yok</td></tr>');
             }
             DOM.modTableBody.innerHTML = rows.join('');
         }
@@ -942,33 +1101,40 @@ function renderManagement() {
     const filteredCases = state.allCases.filter((entry) => {
         if (!search) return true;
         const profile = resolveStaffProfile(entry);
-        return String(entry.id || '').includes(search)
-            || String(entry.caseId || '').includes(search)
-            || (entry.reason || '').toLowerCase().includes(search)
-            || profile.name.toLowerCase().includes(search)
-            || profile.id.includes(search);
+        return fuzzyMatch(entry.id, search)
+            || fuzzyMatch(entry.caseId, search)
+            || fuzzyMatch(entry.reason, search)
+            || fuzzyMatch(profile.name, search)
+            || fuzzyMatch(profile.id, search);
     }).filter((entry) => isCaseInPeriod(entry, period)).sort((left, right) => compareCasesForAdmin(left, right, sort));
 
     const unresolvedRow = unresolved.length ? `
         <tr class="data-row unresolved-row">
-            <td colspan="4">Cozumlenmemis: ${unresolved.length} ceza kaydi yetkili listesine dahil edilmedi.</td>
+            <td colspan="5">Cozumlenmemis: ${unresolved.length} ceza kaydi yetkili listesine dahil edilmedi.</td>
         </tr>
     ` : '';
     const caseRows = filteredCases.length ? filteredCases.map((entry) => {
         const validation = getValidation(entry);
         const profile = resolveStaffProfile(entry);
         const reason = cleanReason(entry.reason);
+        const caseId = String(entry.id || entry.caseId || '');
         return `
             <tr class="data-row">
-                <td><button class="case-link" type="button" data-case-id="${escapeHtml(String(entry.id || entry.caseId || ''))}">#${escapeHtml(String(entry.id || entry.caseId || '-'))}</button></td>
+                <td style="text-align:center;"><input type="checkbox" class="case-checkbox" data-case-id="${escapeHtml(caseId)}" style="cursor:pointer;"></td>
+                <td><button class="case-link" type="button" data-case-id="${escapeHtml(caseId)}">#${escapeHtml(caseId)}</button></td>
                 <td>${staffIdentityHtml(profile, { compact: true })}</td>
                 <td class="reason-cell" title="${escapeHtml(reason)}">${escapeHtml(reason)}</td>
                 <td><span class="status-badge ${escapeHtml(validation.status || 'unknown')}">${escapeHtml(validation.status || 'unknown')}</span></td>
             </tr>
         `;
-    }).join('') : '<tr><td colspan="4" class="empty-cell">Ceza kaydı yok</td></tr>';
+    }).join('') : '<tr><td colspan="5" class="empty-cell">Ceza kaydı yok</td></tr>';
 
     DOM.mgmtCaseList.innerHTML = unresolvedRow + caseRows;
+
+    DOM.mgmtCaseList.querySelectorAll('.case-checkbox').forEach((cb) => {
+        cb.addEventListener('change', updateBulkActionsToolbar);
+    });
+    updateBulkActionsToolbar();
 
     document.querySelectorAll('.btn-open-role').forEach((button) => {
         button.addEventListener('click', () => openRoleModal(button.dataset.id));
@@ -1298,7 +1464,13 @@ function ensureRulesShape() {
 
 function renderRuleCategories() {
     ensureRulesShape();
-    const categories = Object.keys(state.dynamicRules.categories).sort((left, right) => left.localeCompare(right, 'tr'));
+    const searchVal = (DOM.cukSearch?.value || '').trim();
+    let categories = Object.keys(state.dynamicRules.categories).sort((left, right) => left.localeCompare(right, 'tr'));
+
+    if (searchVal) {
+        categories = categories.filter(cat => fuzzyMatch(cat, searchVal));
+    }
+
     DOM.ruleCategoriesList.innerHTML = categories.map((category, i) => {
         const catData = state.dynamicRules.categories[category];
         const stepCount = Object.keys(catData.repeats || {}).length;
@@ -1482,6 +1654,11 @@ function deleteRuleCategory() {
     renderRuleEditor();
 }
 
+// ============================================================
+// SECTION: POINTTRAIN_TAB
+// Purpose: Haftalık yetkili puan ve aktivite sıralaması (Pointtrain)
+// Search: renderPointtrainTab, pointtrainTableBody, pointtrainAdminSummary
+// ============================================================
 function renderPointtrainTab() {
     const run = state.latestPointtrainRun;
     if (!run) {
@@ -1515,21 +1692,37 @@ function renderPointtrainTab() {
         </div>
     `;
 
-    const metrics = [...staffMetrics].sort((a, b) => (b.weightedScore || 0) - (a.weightedScore || 0));
-
-    DOM.pointtrainTableBody.innerHTML = metrics.length ? metrics.map((metric, index) => `
+    const rows = [];
+    if (managementMetrics.length) {
+        rows.push('<tr class="table-section-row"><td colspan="9">Yönetim Kadrosu (Pointtrain Değerlendirme Dışı)</td></tr>');
+        rows.push(...managementMetrics.map((metric) => `
+            <tr class="data-row management-row">
+                <td style="color:var(--text-3); font-family:var(--font-mono); font-size:12px;">-</td>
+                <td>${escapeHtml(metric.displayName || 'Bilinmiyor')}</td>
+                <td><span class="role-chip ${escapeHtml(normalizeRole(metric.role))}">${escapeHtml(getRoleLabel(metric.role))}</span></td>
+                <td style="font-family:var(--font-mono);">${metric.sapphirePunishments || 0}</td>
+                <td style="font-family:var(--font-mono);">${metric.discordMessageCount || 0}</td>
+                <td style="font-family:var(--font-mono);">${metric.channelCount || 0}</td>
+                <td style="font-family:var(--font-mono);">${metric.activeDays || 0}</td>
+                <td colspan="2" class="management-note" style="text-align:center;">Değerlendirme dışı</td>
+            </tr>
+        `));
+    }
+    rows.push('<tr class="table-section-row"><td colspan="9">Yetkili Sıralaması</td></tr>');
+    rows.push(...staffMetrics.sort((a, b) => (b.weightedScore || 0) - (a.weightedScore || 0)).map((metric, index) => `
         <tr class="data-row">
-            <td>${index + 1}</td>
+            <td style="color:var(--text-3); font-family:var(--font-mono); font-size:12px;">${index + 1}</td>
             <td>${escapeHtml(metric.displayName || 'Bilinmiyor')}</td>
-            <td>${escapeHtml(metric.role || 'moderator')}</td>
-            <td>${metric.sapphirePunishments || 0}</td>
-            <td>${metric.discordMessageCount || 0}</td>
-            <td>${metric.channelCount || 0}</td>
-            <td>${metric.activeDays || 0}</td>
-            <td>${Number(metric.weightedScore || 0).toFixed(2)}</td>
+            <td><span class="role-chip ${escapeHtml(normalizeRole(metric.role))}">${escapeHtml(getRoleLabel(metric.role))}</span></td>
+            <td style="font-family:var(--font-mono);">${metric.sapphirePunishments || 0}</td>
+            <td style="font-family:var(--font-mono);">${metric.discordMessageCount || 0}</td>
+            <td style="font-family:var(--font-mono);">${metric.channelCount || 0}</td>
+            <td style="font-family:var(--font-mono);">${metric.activeDays || 0}</td>
+            <td style="font-family:var(--font-mono);">${Number(metric.weightedScore || 0).toFixed(2)}</td>
             <td>${metric.failures ? escapeHtml(String(metric.failures)) : '-'}</td>
         </tr>
-    `).join('') : '<tr><td colspan="9" class="empty-cell">Pointtrain siralamasina dahil edilecek yetkili yok</td></tr>';
+    `));
+    DOM.pointtrainTableBody.innerHTML = rows.join('');
 }
 
 async function loadData() {
@@ -1573,10 +1766,20 @@ async function loadData() {
     renderRuleCategories();
     renderRuleEditor();
     renderPointtrainTab();
-    if (state.activeTab === 'profile') renderProfilePage();
+    if (state.activeTab === 'profile') {
+        renderProfilePage();
+        if (state.selectedProfileId) {
+            loadProfileDetails(state.selectedProfileId);
+        }
+    }
     bindAvatarFallbacks();
 }
 
+// ============================================================
+// SECTION: DISCORD_REPORT_EXPORT
+// Purpose: Rapor oluşturma, excel/metin aktarımı ve Discord raporu kopyalama
+// Search: export, report, copyDiscord, copyDiscordReportPremium
+// ============================================================
 async function exportAll() {
     const { staff, management, reasons, filteredCases } = calculateStats();
     const totalCount = filteredCases.length;
@@ -1586,36 +1789,36 @@ async function exportAll() {
     const efficiency = totalCount ? Math.round((validCount / totalCount) * 100) : 0;
 
     let txt = `=========================================\n`;
-    txt += `LUTHEUS CEZARAPOR - YONETICI RAPORU\n`;
-    txt += `Olusturulma Tarihi: ${formatTurkishDateTime(new Date())}\n`;
+    txt += `LUTHEUS CEZARAPOR - YÖNETİCİ RAPORU\n`;
+    txt += `Oluşturulma Tarihi: ${formatTurkishDateTime(new Date())}\n`;
     txt += `=========================================\n\n`;
 
-    txt += `GENEL ISTATISTIKLER\n`;
+    txt += `GENEL İSTATİSTİKLER\n`;
     txt += `-----------------------------------------\n`;
     txt += `Toplam Ceza: ${totalCount}\n`;
-    txt += `Dogrulanmis (Valid): ${validCount}\n`;
-    txt += `Hatali (Invalid): ${invalidCount}\n`;
+    txt += `Doğrulanmış (Valid): ${validCount}\n`;
+    txt += `Hatalı (Invalid): ${invalidCount}\n`;
     txt += `Bekleyen (Pending): ${pendingCount}\n`;
-    txt += `Yonetim Kadrosu: ${management.length}\n`;
-    txt += `Aktif Yetkili Sayisi: ${staff.length}\n`;
-    txt += `Genel Dogruluk Orani: %${efficiency}\n\n`;
+    txt += `Yönetim Kadrosu: ${management.length}\n`;
+    txt += `Aktif Yetkili Sayısı: ${staff.length}\n`;
+    txt += `Genel Doğruluk Oranı: %${efficiency}\n\n`;
 
-    txt += `YONETIM KADROSU\n`;
+    txt += `YÖNETİM KADROSU\n`;
     txt += `-----------------------------------------\n`;
     management.forEach((entry, index) => {
         txt += `${index + 1}. ${entry.name} (${getRoleLabel(entry.role)})\n`;
     });
-    txt += management.length ? `\n` : `Yonetim kaydi yok\n\n`;
+    txt += management.length ? `\n` : `Yönetim kaydı yok\n\n`;
 
-    txt += `YETKILI PERFORMANSI\n`;
+    txt += `YETKİLİ PERFORMANSI\n`;
     txt += `-----------------------------------------\n`;
     staff.forEach((entry, index) => {
         const acc = entry.performance?.validPercent || 0;
-        txt += `${index + 1}. ${entry.name} (${getRoleLabel(entry.role)}) - ${entry.count} islem, %${acc} Dogruluk\n`;
+        txt += `${index + 1}. ${entry.name} (${getRoleLabel(entry.role)}) - ${entry.count} işlem, %${acc} Doğruluk\n`;
     });
     txt += `\n`;
 
-    txt += `EN SIK CEZA SEBEPLERI\n`;
+    txt += `EN SIK CEZA SEBEPLERİ\n`;
     txt += `-----------------------------------------\n`;
     reasons.slice(0, 15).forEach(([name, count], index) => {
         txt += `${index + 1}. ${name} - ${count} kez\n`;
@@ -1636,6 +1839,7 @@ async function exportAll() {
 async function copyDiscordReport() {
     return copyDiscordReportPremium();
 }
+
 async function copyDiscordReportPremium() {
     const { staff, management, filteredCases, reasons } = calculateStats();
     const totalCount = filteredCases.length;
@@ -1645,17 +1849,24 @@ async function copyDiscordReportPremium() {
     const efficiency = totalCount ? Math.round((validCount / totalCount) * 100) : 0;
     const distribution = getPunishmentDistribution(filteredCases).percentages;
 
-    let md = `## \u{1F4CA} Lutheus CezaRapor - Haftalik Ozet\n`;
+    const makeTextProgressBar = (percentage) => {
+        const totalBlocks = 10;
+        const filledBlocks = Math.round(percentage / 10);
+        const emptyBlocks = totalBlocks - filledBlocks;
+        return `\`[${'█'.repeat(filledBlocks)}${'░'.repeat(emptyBlocks)}]\` %${percentage}`;
+    };
+
+    let md = `## 📊 **Lutheus CezaRapor - Haftalık Özet**\n`;
     md += `*Tarih: ${formatTurkishDate(new Date())}*\n\n`;
-    md += `### \u{1F3DB}\u{FE0F} Yonetim Kadrosu\n`;
+    md += `### 🏛️ **Yönetim Kadrosu**\n`;
     md += management.length
         ? `> ${management.map((entry) => `${entry.name} (${getRoleLabel(entry.role)})`).join(', ')}\n\n`
-        : `> Kayit yok\n\n`;
-    md += `### \u{1F4C8} Genel Istatistikler\n`;
-    md += `> \u{1F528} Toplam: \`${totalCount}\` | \u{2705} Valid: \`${validCount}\` | \u{274C} Invalid: \`${invalidCount}\` | \u{23F3} Pending: \`${pendingCount}\` | \u{1F3AF} Basari: \`%${efficiency}\`\n\n`;
-    md += `### \u{1F3C6} Yetkili Performans Siralamasi\n`;
+        : `> Kayıt yok\n\n`;
+    md += `### 📈 **Genel İstatistikler**\n`;
+    md += `> 🔨 Toplam: \`${totalCount}\` | ✅ Doğrulanmış: \`${validCount}\` | ❌ Hatalı: \`${invalidCount}\` | ⏳ Bekleyen: \`${pendingCount}\` | 🎯 Genel Başarı: \`%${efficiency}\`\n\n`;
+    md += `### 🏆 **Yetkili Performans Sıralaması**\n`;
     md += `\`\`\`md\n`;
-    md += `Sira | Yetkili | Rutbe | Islem | Dogruluk\n`;
+    md += `Sıra | Yetkili         | Rütbe           | İşlem | Doğruluk\n`;
     md += `---|---|---|---|---\n`;
     staff.slice(0, 15).forEach((entry, index) => {
         const acc = entry.performance?.validPercent || 0;
@@ -1663,19 +1874,110 @@ async function copyDiscordReportPremium() {
         md += `${String(index + 1).padStart(2, '0')} | ${entry.name.padEnd(16)} | ${roleLabel.padEnd(16)} | ${String(entry.count).padEnd(5)} | %${acc}\n`;
     });
     md += `\`\`\`\n\n`;
-    md += `### \u{1F4CB} Top 5 Ceza Sebebi\n`;
+    md += `### 📋 **Top 5 Ceza Sebebi**\n`;
     reasons.slice(0, 5).forEach(([name, count], index) => {
-        md += `${index + 1}. ${name} - ${count} kez\n`;
+        md += `${index + 1}. **${name}** - ${count} kez\n`;
     });
-    if (!reasons.length) md += `Kayit yok\n`;
-    md += `\n### \u{1F4CA} Ceza Dagilimi\n`;
-    md += `> \u{1F507} Mute: %${distribution.mute} | \u{26D4} Ban: %${distribution.ban} | \u{26A0}\u{FE0F} Warn: %${distribution.warn} | \u{1F4E6} Diger: %${distribution.other}\n\n`;
-    md += `*Rapor otomatik olarak Lutheus v3 panelinden olusturulmustur.*`;
+    if (!reasons.length) md += `Kayıt yok\n`;
+    md += `\n### 📊 **Ceza Dağılımı**\n`;
+    md += `> 🔇 Mute: ${makeTextProgressBar(distribution.mute)}\n`;
+    md += `> ⛔ Ban: ${makeTextProgressBar(distribution.ban)}\n`;
+    md += `> ⚠️ Warn: ${makeTextProgressBar(distribution.warn)}\n`;
+    md += `> 📦 Diğer: ${makeTextProgressBar(distribution.other)}\n\n`;
+    md += `*Rapor otomatik olarak Lutheus v3 panelinden oluşturulmuştur.*`;
 
     await copyText(md);
-    Toast.success('Kopyalandi', 'Premium Discord raporu panoya alindi');
+    Toast.success('Kopyalandı', 'Premium Discord raporu panoya alındı');
 }
+// SECTION: BULK_REVIEW
+// PURPOSE: Handles multi-checkbox selection and toolbar actions for bulk moderation.
+updateBulkActionsToolbar = function () {
+    const checkedBoxes = DOM.mgmtCaseList.querySelectorAll('.case-checkbox:checked');
+    const toolbar = document.getElementById('bulkActionsToolbar');
+    const selectedCount = document.getElementById('bulkSelectedCount');
+
+    if (checkedBoxes.length > 0) {
+        toolbar?.classList.remove('hidden');
+        if (selectedCount) {
+            selectedCount.textContent = `${checkedBoxes.length} seçildi`;
+        }
+    } else {
+        toolbar?.classList.add('hidden');
+        const chkAll = document.getElementById('chkSelectAll');
+        if (chkAll) chkAll.checked = false;
+    }
+};
+
 function bindEvents() {
+    // Theme Toggle
+    document.getElementById('btnThemeToggle')?.addEventListener('click', () => {
+        const isLight = document.body.classList.toggle('light-theme');
+        localStorage.setItem('lutheus-theme', isLight ? 'light' : 'dark');
+        const icon = document.querySelector('#btnThemeToggle i');
+        if (icon) {
+            icon.className = isLight ? 'fa-solid fa-sun' : 'fa-solid fa-moon';
+        }
+        Toast.info('Tema Değiştirildi', `Yeni tema: ${isLight ? 'Aydınlık' : 'Karanlık'}`);
+    });
+
+    // Bulk actions checkboxes and toolbar button events
+    document.getElementById('chkSelectAll')?.addEventListener('change', (event) => {
+        const checked = event.target.checked;
+        DOM.mgmtCaseList.querySelectorAll('.case-checkbox').forEach((cb) => {
+            cb.checked = checked;
+        });
+        updateBulkActionsToolbar();
+    });
+
+    document.getElementById('btnBulkCancel')?.addEventListener('click', () => {
+        DOM.mgmtCaseList.querySelectorAll('.case-checkbox').forEach((cb) => {
+            cb.checked = false;
+        });
+        const chkAll = document.getElementById('chkSelectAll');
+        if (chkAll) chkAll.checked = false;
+        updateBulkActionsToolbar();
+    });
+
+    document.getElementById('btnBulkValid')?.addEventListener('click', async () => {
+        const checkedBoxes = DOM.mgmtCaseList.querySelectorAll('.case-checkbox:checked');
+        if (checkedBoxes.length === 0) return;
+
+        const count = checkedBoxes.length;
+        Toast.info('Toplu Onaylama', `${count} ceza kaydı geçerli olarak işaretleniyor...`);
+
+        try {
+            for (const cb of checkedBoxes) {
+                const caseId = cb.dataset.caseId;
+                await Storage.updateCaseMetadata(caseId, { reviewStatus: 'valid' });
+            }
+            Toast.success('Toplu İşlem Tamamlandı', `${count} ceza kaydı onaylandı.`);
+            await loadData();
+            updateBulkActionsToolbar();
+        } catch (err) {
+            Toast.error('Toplu İşlem Hatası', err.message || 'İşlem tamamlanamadı.');
+        }
+    });
+
+    document.getElementById('btnBulkInvalid')?.addEventListener('click', async () => {
+        const checkedBoxes = DOM.mgmtCaseList.querySelectorAll('.case-checkbox:checked');
+        if (checkedBoxes.length === 0) return;
+
+        const count = checkedBoxes.length;
+        Toast.info('Toplu Reddetme', `${count} ceza kaydı hatalı olarak işaretleniyor...`);
+
+        try {
+            for (const cb of checkedBoxes) {
+                const caseId = cb.dataset.caseId;
+                await Storage.updateCaseMetadata(caseId, { reviewStatus: 'invalid' });
+            }
+            Toast.success('Toplu İşlem Tamamlandı', `${count} ceza kaydı reddedildi.`);
+            await loadData();
+            updateBulkActionsToolbar();
+        } catch (err) {
+            Toast.error('Toplu İşlem Hatası', err.message || 'İşlem tamamlanamadı.');
+        }
+    });
+
     DOM.navBtns.forEach((button) => button.addEventListener('click', () => switchTab(button.dataset.page)));
     DOM.tableSearch?.addEventListener('input', (event) => renderTable(event.target.value));
     DOM.dateFilter?.addEventListener('change', () => {
@@ -1690,10 +1992,12 @@ function bindEvents() {
     DOM.exportBtn?.addEventListener('click', exportAll);
     DOM.copyDiscordBtn?.addEventListener('click', copyDiscordReportPremium);
     document.getElementById('topbarUser')?.addEventListener('click', () => {
-        switchTab('profile');
         const myId = state.session?.profile?.discordId;
         if (isValidDiscordId(myId)) {
             state.selectedProfileId = myId;
+        }
+        switchTab('profile');
+        if (isValidDiscordId(myId)) {
             loadProfileDetails(myId);
         }
     });
@@ -1807,6 +2111,11 @@ function bindEvents() {
 }
 
 // Yetkili Profilleri Page Logic
+// ============================================================
+// SECTION: PROFILE_PAGE
+// Purpose: Yetkili profilleri ve performans detayları sekmesi
+// Search: renderProfilePage, loadProfileDetails, saveProfileDetails
+// ============================================================
 function renderProfilePage() {
     try {
         const query = (DOM.profileSearchInput?.value || '').trim().toLowerCase();
@@ -1821,7 +2130,7 @@ function renderProfilePage() {
         statsStaff.forEach(entry => {
             const profile = resolveStaffProfile(entry);
             const id = profile.id;
-            if (isValidDiscordId(id)) {
+            if (isValidDiscordId(id) && !String(id).startsWith('unknown-author') && !String(id).includes('unknown')) {
                 merged.set(id, {
                     id,
                     name: profile.name,
@@ -1838,7 +2147,7 @@ function renderProfilePage() {
         // Add everyone from roleCache that might not have processed stats in this period
         (state.roleCache || []).forEach(entry => {
             const cacheId = entry.discordId || String(entry.identityKey || entry.id || '').replace(/^discord:/, '');
-            if (isValidDiscordId(cacheId) && !merged.has(cacheId)) {
+            if (isValidDiscordId(cacheId) && !merged.has(cacheId) && !String(cacheId).startsWith('unknown-author') && !String(cacheId).includes('unknown')) {
                 const profile = resolveStaffProfile({ id: cacheId });
                 const candidate = {
                     id: cacheId,
@@ -2060,6 +2369,16 @@ async function saveProfileDetails() {
 }
 
 async function init() {
+    // Initialize Theme
+    const savedTheme = localStorage.getItem('lutheus-theme') || 'dark';
+    if (savedTheme === 'light') {
+        document.body.classList.add('light-theme');
+        const icon = document.querySelector('#btnThemeToggle i');
+        if (icon) {
+            icon.className = 'fa-solid fa-sun';
+        }
+    }
+
     state.session = await AuthService.requireSession({
         admin: true,
         returnTo: chrome.runtime.getURL('src/dashboard/admin.html')

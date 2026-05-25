@@ -89,6 +89,9 @@
       </div>
 
       <div class="topbar-actions">
+        <button class="btn btn-ghost btn-icon" id="btnThemeToggle" title="Tema Değiştir">
+          <i class="fa-solid fa-moon"></i>
+        </button>
         <button class="btn btn-ghost btn-icon" id="btnRevalidate" title="Yeniden Doğrula">
           <i class="fa-solid fa-check-double"></i>
         </button>
@@ -177,7 +180,7 @@
             <div style="overflow:auto;">
               <table class="data-table">
                 <thead><tr>
-                  <th>#</th><th>Yetkili</th><th>Rütbe</th><th>İşlem</th><th>Doğruluk</th><th></th>
+                  <th>#</th><th>Yetkili</th><th>Rütbe</th><th>İşlem</th><th>Doğruluk</th><th>Trend</th><th></th>
                 </tr></thead>
                 <tbody id="modTableBody">
                   <tr><td colspan="6" style="text-align:center;color:var(--text-3);padding:28px;">Veri bekleniyor...</td></tr>
@@ -405,7 +408,11 @@
       </div><!-- /cuk -->
 
 
-      <!-- ??? MANAGEMENT PAGE ??????????????????????????????? -->
+      <!-- =========================================================
+      SECTION: MANAGEMENT_VIEW
+      Purpose: Yetki ve rol yönetimi panel markup yapısı
+      Search: management, mod list, case list, role management
+      ========================================================= -->
       <div class="page-section" id="page-management">
         <div class="split-2">
           <div class="panel">
@@ -422,9 +429,23 @@
             </div>
           </div>
           <div class="panel">
-            <div class="panel-header">
-              <span class="panel-title"><i class="fa-solid fa-clock-rotate-left"></i> Son Cezalar</span>
-              <div class="case-toolbar">
+            <div class="panel-header" style="display:flex; flex-direction:column; gap:10px; align-items:stretch;">
+              <div style="display:flex; justify-content:space-between; align-items:center; width:100%;">
+                <span class="panel-title"><i class="fa-solid fa-clock-rotate-left"></i> Son Cezalar</span>
+                <div id="bulkActionsToolbar" class="hidden" style="display:flex; align-items:center; gap:8px; background:rgba(124,90,245,0.1); padding:4px 10px; border-radius:6px; border:1px solid rgba(124,90,245,0.2);">
+                  <span style="font-size:11px; font-weight:700; color:var(--text-1);" id="bulkSelectedCount">0 seçildi</span>
+                  <button class="btn btn-ghost" id="btnBulkValid" style="height:26px; font-size:11px; color:var(--emerald); background:rgba(45,213,115,0.1); border:1px solid rgba(45,213,115,0.2); padding:0 8px; cursor:pointer;">
+                    <i class="fa-solid fa-circle-check"></i> Onayla
+                  </button>
+                  <button class="btn btn-ghost" id="btnBulkInvalid" style="height:26px; font-size:11px; color:var(--red); background:rgba(240,78,78,0.1); border:1px solid rgba(240,78,78,0.2); padding:0 8px; cursor:pointer;">
+                    <i class="fa-solid fa-circle-xmark"></i> Reddet
+                  </button>
+                  <button class="btn btn-ghost btn-icon" id="btnBulkCancel" title="İptal Et" style="width:26px; height:26px; font-size:11px; border:none; background:transparent; cursor:pointer;">
+                    <i class="fa-solid fa-xmark"></i>
+                  </button>
+                </div>
+              </div>
+              <div class="case-toolbar" style="width:100%; display:flex; justify-content:flex-end;">
                 <select id="casePeriodFilter" class="btn btn-ghost">
                   <option value="today">Bugün</option>
                   <option value="week" selected>Bu Hafta</option>
@@ -445,9 +466,12 @@
             </div>
             <div style="overflow:auto; max-height: 640px;">
               <table class="data-table">
-                <thead><tr><th>ID</th><th>Yetkili</th><th>Sebep</th><th>Durum</th></tr></thead>
+                <thead><tr>
+                  <th style="width:40px; text-align:center;"><input type="checkbox" id="chkSelectAll" style="cursor:pointer;"></th>
+                  <th>ID</th><th>Yetkili</th><th>Sebep</th><th>Durum</th>
+                </tr></thead>
                 <tbody id="mgmtCaseList">
-                  <tr><td colspan="4" style="text-align:center;color:var(--text-3);padding:40px;">Y?kleniyor...</td></tr>
+                  <tr><td colspan="4" style="text-align:center;color:var(--text-3);padding:40px;">Yükleniyor...</td></tr>
                 </tbody>
               </table>
             </div>
@@ -455,7 +479,11 @@
         </div>
       </div>
 
-      <!-- ??? POINTTRAIN PAGE ??????????????????????????????? -->
+      <!-- =========================================================
+      SECTION: POINTTRAIN_VIEW
+      Purpose: Pointtrain performans raporu markup yapısı
+      Search: pointtrain, summary, csv export, copy markdown
+      ========================================================= -->
       <div class="page-section" id="page-pointtrain">
         <div id="pointtrainAdminSummary" class="stats-row"></div>
         <div class="panel">
@@ -480,7 +508,11 @@
         </div>
       </div>
 
-      <!-- ??? AUTH / ACCESS PAGE ???????????????????????????? -->
+      <!-- =========================================================
+      SECTION: AUTH_VIEW
+      Purpose: Google allowlist ve Discord rol cache markup yapısı
+      Search: auth, google allowlist, role cache, groq limits, audit log
+      ========================================================= -->
       <div class="page-section" id="page-auth">
         <div class="split-2">
           <div class="panel">

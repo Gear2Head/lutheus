@@ -11,7 +11,9 @@ export const APP_CONFIG = Object.freeze({
     guildId: '1223431616081166336',
     vercelAuthBaseUrl: 'https://lutheus.vercel.app',
     googleClientId: '437884095032-v21402mq08vbj1nbkfj0ac2892bdn0un.apps.googleusercontent.com',
-    discordOAuthScopes: ['identify'],
+    discordClientId: '1500551629768888542',
+    discordOAuthScopes: ['identify', 'guilds'],
+    discordRedirectPath: '',
     defaultRole: 'moderator'
 });
 

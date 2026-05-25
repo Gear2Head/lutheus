@@ -278,7 +278,9 @@ function setupAuditLogListeners() {
                 )
                 .setFooter({ text: 'Lutheus Oto-Log' }).setTimestamp();
             await (channel as any).send({ embeds: [embed] }).catch(() => null);
-        } catch {}
+        } catch {
+            // Ignore audit log delivery failures.
+        }
     });
 
     // Member ban removed
@@ -300,7 +302,9 @@ function setupAuditLogListeners() {
                 )
                 .setFooter({ text: 'Lutheus Oto-Log' }).setTimestamp();
             await (channel as any).send({ embeds: [embed] }).catch(() => null);
-        } catch {}
+        } catch {
+            // Ignore audit log delivery failures.
+        }
     });
 
     // Member removed (kick detection via audit log)
@@ -325,7 +329,9 @@ function setupAuditLogListeners() {
                 )
                 .setFooter({ text: 'Lutheus Oto-Log' }).setTimestamp();
             await (channel as any).send({ embeds: [embed] }).catch(() => null);
-        } catch {}
+        } catch {
+            // Ignore audit log delivery failures.
+        }
     });
 
     // Member timeout (via member update)
@@ -366,7 +372,9 @@ function setupAuditLogListeners() {
                     .setFooter({ text: 'Lutheus Oto-Log' }).setTimestamp();
                 await (channel as any).send({ embeds: [embed] }).catch(() => null);
             }
-        } catch {}
+        } catch {
+            // Ignore audit log delivery failures.
+        }
     });
 
     // Bulk message delete log
@@ -384,7 +392,9 @@ function setupAuditLogListeners() {
                 )
                 .setFooter({ text: 'Lutheus Oto-Log' }).setTimestamp();
             await (logChannel as any).send({ embeds: [embed] }).catch(() => null);
-        } catch {}
+        } catch {
+            // Ignore audit log delivery failures.
+        }
     });
 
     console.log('Discord Bot: Audit log event listeners active.');

@@ -384,7 +384,9 @@ function computeModeratorStats(cases, registry, roleCache = []) {
         const roleEntry = roleCache.find((r) => {
             const cacheId = r.discordId || String(r.identityKey || r.id || '').replace(/^discord:/, '');
             return cacheId === id;
-        }) || {};
+        });
+
+        if (!roleEntry) return;
 
         const registryEntry = registry[id] || {};
         const validation = getValidation(entry);

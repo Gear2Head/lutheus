@@ -14,6 +14,12 @@ const DEFAULT_POINT_WEIGHTS = {
     activeDayBonus: 1.5,
     penaltyFlags: 0
 };
+const ROLE_ALIASES = {
+    kidemli: 'kidemli_discord_moderatoru',
+    senior_moderator: 'kidemli_discord_moderatoru',
+    moderator: 'discord_moderatoru',
+    discord_moderator: 'discord_moderatoru'
+};
 
 const ACTIONS = {
     OPEN_DASHBOARD_AND_SCAN: 'OPEN_DASHBOARD_AND_SCAN',
@@ -43,6 +49,11 @@ let pointtrainCancelled = false;
 let autonomousScanCancelled = false;
 
 console.log('Lutheus CezaRapor: Service Worker v2.2 starting...');
+
+function normalizeRole(role) {
+    const key = String(role || 'discord_moderatoru').trim().toLowerCase();
+    return ROLE_ALIASES[key] || key || 'discord_moderatoru';
+}
 
 chrome.sidePanel
     .setPanelBehavior({ openPanelOnActionClick: true })
@@ -292,14 +303,20 @@ function isInDateRange(caseData, startDate, endDate) {
 async function updateRegistryFromCases(cases) {
     const registry = (await getLocal('userRegistry')) || (await getSync('userRegistry')) || {};
     const directory = (await getLocal('staffDirectory')) || (await getSync('staffDirectory')) || {};
+    const roleCache = (await getLocal('roleCache')) || [];
     let changedRegistry = false;
     let changedDirectory = false;
+    const findRoleCacheEntry = (discordId) => (roleCache || []).find((entry) => {
+        const cacheId = entry.discordId || String(entry.identityKey || entry.id || '').replace(/^discord:/, '');
+        return cacheId === discordId;
+    });
 
     for (const entry of cases) {
         if (entry.authorId && entry.authorName) {
             const authorId = entry.authorId;
             const authorName = entry.authorName;
             const previous = registry[authorId] || {};
+            const roleEntry = findRoleCacheEntry(authorId);
             const aliases = Array.from(new Set([
                 ...(previous.aliases || []),
                 previous.name,
@@ -311,7 +328,7 @@ async function updateRegistryFromCases(cases) {
                 id: authorId,
                 name: authorName,
                 avatar: entry.authorAvatar || previous.avatar || null,
-                role: previous.role || 'moderator',
+                role: roleEntry ? normalizeRole(roleEntry.role) : (previous.role || null),
                 aliases,
                 source: previous.source || 'sapphire-intercept-listener',
                 scanCount: Number(previous.scanCount || 0) + 1,
@@ -339,6 +356,8 @@ async function updateRegistryFromCases(cases) {
         }
 
         if (entry.authorId || (entry.authorName && !isUnknownAuthorName(entry.authorName))) {
+            const roleEntry = entry.authorId ? findRoleCacheEntry(entry.authorId) : null;
+            if (!roleEntry) continue;
             const key = entry.authorId || `name:${entry.authorName}`;
             const aliases = [entry.authorName].filter(Boolean);
             directory[key] = {
@@ -347,7 +366,7 @@ async function updateRegistryFromCases(cases) {
                 discordUserId: directory[key]?.discordUserId || entry.authorId || '',
                 displayName: entry.authorName || directory[key]?.displayName || 'Bilinmiyor',
                 avatar: entry.authorAvatar || directory[key]?.avatar || null,
-                role: directory[key]?.role || 'moderator',
+                role: normalizeRole(roleEntry.role || directory[key]?.role || 'moderator'),
                 aliases: Array.from(new Set([...(directory[key]?.aliases || []), ...aliases])),
                 source: directory[key]?.source || 'sapphire-intercept-listener',
                 scanCount: Number(directory[key]?.scanCount || 0) + 1,

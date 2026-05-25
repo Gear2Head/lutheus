@@ -8,6 +8,8 @@ import { CUK_RULES } from './cukEngine.js';
 import { SEEDED_ROLE_MEMBERS, normalizeRole } from '../auth/rolePolicy.js';
 
 const LUTHEUS_GUILD_ID = '1223431616081166336';
+const hasChromeLocal = () => typeof chrome !== 'undefined' && chrome.storage?.local;
+const hasChromeSync = () => typeof chrome !== 'undefined' && chrome.storage?.sync;
 
 function cloneDefaultRules() {
     return JSON.parse(JSON.stringify(CUK_RULES));
@@ -45,26 +47,36 @@ export const DEFAULT_POINT_WEIGHTS = {
 
 function storageGet(key) {
     return new Promise((resolve) => {
+        if (!hasChromeLocal()) {
+            const raw = window.localStorage.getItem(`lutheus:${key}`);
+            resolve(raw ? JSON.parse(raw) : undefined);
+            return;
+        }
         chrome.storage.local.get([key], (result) => resolve(result[key]));
     });
 }
 
 function storageSet(key, value) {
     return new Promise((resolve) => {
+        if (!hasChromeLocal()) {
+            window.localStorage.setItem(`lutheus:${key}`, JSON.stringify(value));
+            resolve();
+            return;
+        }
         chrome.storage.local.set({ [key]: value }, resolve);
     });
 }
 
 function syncGet(key) {
     return new Promise((resolve) => {
-        if (!chrome.storage.sync) return resolve(storageGet(key));
+        if (!hasChromeSync()) return resolve(storageGet(key));
         chrome.storage.sync.get([key], (result) => resolve(result[key]));
     });
 }
 
 function syncSet(key, value) {
     return new Promise((resolve) => {
-        if (!chrome.storage.sync) return resolve(storageSet(key, value));
+        if (!hasChromeSync()) return resolve(storageSet(key, value));
         chrome.storage.sync.set({ [key]: value }, resolve);
     });
 }
@@ -368,7 +380,7 @@ export const Storage = {
     },
 
     async setSyncCases(cases) {
-        if (!chrome.storage.sync) return;
+        if (!hasChromeSync()) return;
 
         return new Promise((resolve) => {
             chrome.storage.sync.get(null, (all) => {
@@ -387,7 +399,7 @@ export const Storage = {
     },
 
     async getSyncCases() {
-        if (!chrome.storage.sync) return [];
+        if (!hasChromeSync()) return [];
 
         return new Promise((resolve) => {
             chrome.storage.sync.get(null, (allData) => {
@@ -412,7 +424,7 @@ export const Storage = {
         await this.set('cases', []);
         await this.set('scanLogs', []);
         await this.set('sessionSnapshot', { timestamp: Date.now(), caseCount: 0 });
-        if (!chrome.storage.sync) return;
+        if (!hasChromeSync()) return;
 
         return new Promise((resolve) => {
             chrome.storage.sync.get(null, (all) => {
@@ -424,6 +436,7 @@ export const Storage = {
 
     async updateUserRegistry(cases) {
         const registry = await this.getSync('userRegistry') || {};
+        const roleCache = await this.getRoleCache();
         let changed = false;
 
         for (const entry of cases) {
@@ -448,6 +461,10 @@ export const Storage = {
                     previous.name,
                     entry.authorName
                 ].filter(Boolean)));
+                const roleEntry = roleCache.find(r => {
+                    const rcId = r.discordId || String(r.identityKey || r.id || '').replace(/^discord:/, '');
+                    return rcId === authorId;
+                });
                 registry[authorId] = {
                     ...previous,
                     id: authorId,
@@ -455,7 +472,7 @@ export const Storage = {
                     avatar: hasBetterAvatar(entry.authorAvatar, previous.avatar)
                         ? entry.authorAvatar
                         : (previous.avatar || entry.authorAvatar || null),
-                    role: previous.role || 'moderator',
+                    role: roleEntry ? normalizeRole(roleEntry.role) : null,
                     aliases,
                     source: previous.source || 'sapphire-admin-scan',
                     scanCount: Number(previous.scanCount || 0) + 1,
@@ -466,6 +483,10 @@ export const Storage = {
 
             if (entry.userId && entry.user) {
                 const previous = registry[entry.userId] || {};
+                const roleEntry = roleCache.find(r => {
+                    const rcId = r.discordId || String(r.identityKey || r.id || '').replace(/^discord:/, '');
+                    return rcId === entry.userId;
+                });
                 registry[entry.userId] = {
                     ...previous,
                     id: entry.userId,
@@ -473,7 +494,7 @@ export const Storage = {
                     avatar: hasBetterAvatar(entry.userAvatar, previous.avatar)
                         ? entry.userAvatar
                         : (previous.avatar || entry.userAvatar || null),
-                    role: previous.role,
+                    role: roleEntry ? normalizeRole(roleEntry.role) : null,
                     aliases: Array.from(new Set([...(previous.aliases || []), previous.name, entry.user].filter(Boolean))),
                     source: previous.source || 'sapphire-case-target',
                     scanCount: Number(previous.scanCount || 0) + 1,
@@ -735,22 +756,38 @@ export const Storage = {
 
     async getStaffDirectory() {
         const directory = (await this.getSync('staffDirectory')) || {};
+        const roleCache = await this.getRoleCache();
         let changed = false;
-        for (const member of SEEDED_ROLE_MEMBERS) {
-            if (!directory[member.id]) {
-                directory[member.id] = {
-                    discordUserId: member.id,
-                    sapphireAuthorId: member.id,
-                    displayName: member.name,
+
+        for (const key of Object.keys(directory)) {
+            const cleanKey = key.replace(/^discord:/, '').replace(/^name:/, '');
+            const isInCache = roleCache.some(r => {
+                const rcId = r.discordId || String(r.identityKey || r.id || '').replace(/^discord:/, '');
+                return rcId === cleanKey || r.displayName === cleanKey;
+            });
+            if (!isInCache) {
+                delete directory[key];
+                changed = true;
+            }
+        }
+
+        for (const member of roleCache) {
+            const memberId = member.discordId || String(member.identityKey || member.id || '').replace(/^discord:/, '');
+            if (!memberId) continue;
+            if (!directory[memberId]) {
+                directory[memberId] = {
+                    discordUserId: memberId,
+                    sapphireAuthorId: memberId,
+                    displayName: member.displayName || member.name || 'Yetkili',
                     role: normalizeRole(member.role),
-                    aliases: [member.name],
-                    source: 'lutheus-seed',
-                    seeded: true,
+                    aliases: [member.displayName || member.name].filter(Boolean),
+                    source: 'lutheus-rolecache',
                     updatedAt: new Date().toISOString()
                 };
                 changed = true;
             }
         }
+
         if (changed) await this.saveStaffDirectory(directory);
         return directory;
     },
@@ -775,6 +812,7 @@ export const Storage = {
     async upsertStaffDirectoryFromCases(cases) {
         const directory = await this.getStaffDirectory();
         const registry = (await this.get('userRegistry')) || {};
+        const roleCache = await this.getRoleCache();
         let changed = false;
 
         for (const entry of cases) {
@@ -793,6 +831,13 @@ export const Storage = {
             }
 
             if (!authorId && !authorName) continue;
+
+            const isInRoleCache = roleCache.some(r => {
+                const rcId = r.discordId || String(r.identityKey || r.id || '').replace(/^discord:/, '');
+                return rcId === authorId;
+            });
+            if (!isInRoleCache) continue;
+
             const key = authorId || `name:${authorName}`;
             const aliases = [authorName].filter(Boolean);
             directory[key] = {
@@ -883,8 +928,15 @@ export const Storage = {
 
     async clear() {
         return new Promise((resolve) => {
+            if (!hasChromeLocal()) {
+                Object.keys(window.localStorage)
+                    .filter((key) => key.startsWith('lutheus:'))
+                    .forEach((key) => window.localStorage.removeItem(key));
+                resolve();
+                return;
+            }
             chrome.storage.local.clear(() => {
-                if (chrome.storage.sync) {
+                if (hasChromeSync()) {
                     chrome.storage.sync.clear(resolve);
                 } else {
                     resolve();

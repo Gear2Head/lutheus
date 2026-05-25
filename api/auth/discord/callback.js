@@ -74,8 +74,8 @@ async function resolveRole(db, discordId) {
 
     const docId = `discord:${discordId}`.toLowerCase().replace(/\//g, '_');
     const doc = await db.collection('roleCache').doc(docId).get();
-    if (!doc.exists) return 'moderator';
-    return normalizeRole(doc.data().role || 'moderator');
+    if (!doc.exists) return 'pending';
+    return normalizeRole(doc.data().role || 'pending');
 }
 
 module.exports = async function handler(req, res) {

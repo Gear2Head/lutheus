@@ -1,4 +1,6 @@
-const FALLBACK_AVATAR = chrome.runtime.getURL('assets/icon48.png');
+const FALLBACK_AVATAR = typeof chrome !== 'undefined' && chrome.runtime?.getURL
+    ? chrome.runtime.getURL('assets/icon48.png')
+    : '/assets/icon48.png';
 
 function isAllowedAvatarUrl(url) {
     if (!url || typeof url !== 'string' || /^javascript:/i.test(url)) return false;

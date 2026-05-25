@@ -10,6 +10,13 @@ import { FirebaseRepository } from '../lib/firebaseRepository.js';
 
 const IDENTITY_TOOLKIT_BASE = 'https://identitytoolkit.googleapis.com/v1';
 
+function getURL(path) {
+    if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.getURL) {
+        return chrome.runtime.getURL(path);
+    }
+    return `${window.location.origin}/${path.replace(/^\/+/, '')}`;
+}
+
 function authEndpoint(path) {
     return `${IDENTITY_TOOLKIT_BASE}/${path}?key=${encodeURIComponent(FIREBASE_CONFIG.apiKey)}`;
 }
@@ -136,7 +143,9 @@ async function signInWithCustomToken(customToken, oauthProfile = {}) {
 async function signInWithGoogleAccessToken(accessToken) {
     const payload = await postJson(authEndpoint('accounts:signInWithIdp'), {
         postBody: `access_token=${encodeURIComponent(accessToken)}&providerId=google.com`,
-        requestUri: extensionRedirectUrl('google'),
+        requestUri: typeof chrome !== 'undefined' && chrome.identity?.getRedirectURL
+            ? extensionRedirectUrl('google')
+            : `${window.location.origin}/src/auth/login.html`,
         returnIdpCredential: true,
         returnSecureToken: true
     });
@@ -205,6 +214,9 @@ async function refreshSession(session) {
 }
 
 export const AuthService = {
+    signInWithCustomToken,
+    signInWithGoogleAccessToken,
+
     async getSession({ refresh = true } = {}) {
         const session = await getStoredSession();
         if (!session) return null;
@@ -235,6 +247,21 @@ export const AuthService = {
     },
 
     async loginWithDiscord() {
+        if (typeof chrome === 'undefined' || !chrome.identity || !chrome.identity.getRedirectURL) {
+            const clientId = APP_CONFIG.discordClientId || '1500551629768888542';
+            const scopes = (APP_CONFIG.discordOAuthScopes || ['identify', 'guilds']).join(' ');
+            const redirectUri = window.location.origin + '/src/auth/login.html';
+
+            const authUrl = new URL('https://discord.com/oauth2/authorize');
+            authUrl.searchParams.set('response_type', 'code');
+            authUrl.searchParams.set('client_id', clientId);
+            authUrl.searchParams.set('redirect_uri', redirectUri);
+            authUrl.searchParams.set('scope', scopes);
+            authUrl.searchParams.set('prompt', 'consent');
+
+            window.location.href = authUrl.toString();
+            return new Promise(() => {});
+        }
         const redirectUri = chrome.identity.getRedirectURL();
         const clientId = APP_CONFIG.discordClientId || '1500551629768888542';
         const scopes = (APP_CONFIG.discordOAuthScopes || ['identify', 'guilds']).join(' ');
@@ -315,6 +342,18 @@ export const AuthService = {
         if (!APP_CONFIG.googleClientId) {
             throw new Error('GOOGLE_CLIENT_ID_NOT_CONFIGURED');
         }
+        if (typeof chrome === 'undefined' || !chrome.identity || !chrome.identity.launchWebAuthFlow) {
+            // WEB FLOW Google Login
+            const redirectUri = window.location.origin + '/src/auth/login.html';
+            const url = new URL('https://accounts.google.com/o/oauth2/v2/auth');
+            url.searchParams.set('client_id', APP_CONFIG.googleClientId);
+            url.searchParams.set('response_type', 'token');
+            url.searchParams.set('redirect_uri', redirectUri);
+            url.searchParams.set('scope', 'openid email profile');
+            url.searchParams.set('prompt', 'select_account');
+            window.location.href = url.toString();
+            return new Promise(() => {});
+        }
         const redirectUri = extensionRedirectUrl('google');
         const url = new URL('https://accounts.google.com/o/oauth2/v2/auth');
         url.searchParams.set('client_id', APP_CONFIG.googleClientId);
@@ -334,7 +373,7 @@ export const AuthService = {
     },
 
     redirectToLogin(returnTo = null, reason = null) {
-        const url = new URL(chrome.runtime.getURL('src/auth/login.html'));
+        const url = new URL(getURL('src/auth/login.html'));
         if (returnTo) url.searchParams.set('returnTo', returnTo);
         if (reason) url.searchParams.set('reason', reason);
         window.location.href = url.toString();
@@ -342,8 +381,10 @@ export const AuthService = {
 
     getPostLoginUrl(session) {
         if (canAccessAdmin(session?.role)) {
-            return chrome.runtime.getURL('src/dashboard/admin.html');
+            if (typeof chrome === 'undefined' || !chrome.runtime?.getURL) return `${window.location.origin}/`;
+            return getURL('src/dashboard/admin.html');
         }
-        return chrome.runtime.getURL('src/sidepanel/sidepanel.html');
+        if (typeof chrome === 'undefined' || !chrome.runtime?.getURL) return `${window.location.origin}/src/sidepanel/sidepanel.html`;
+        return getURL('src/sidepanel/sidepanel.html');
     }
 };

@@ -139,6 +139,7 @@ const DOM_RAW = {
     pointtrainExportBtn: document.getElementById('pointtrainExportBtn'),
     pointtrainAdminSummary: document.getElementById('pointtrainAdminSummary'),
     pointtrainTableBody: document.getElementById('pointtrainTableBody'),
+    btnStartSapphireScan: document.getElementById('btnStartSapphireScan'),
     allowEmail: document.getElementById('allowEmail'),
     allowRole: document.getElementById('allowRole'),
     saveAllowBtn: document.getElementById('saveAllowBtn'),
@@ -984,7 +985,12 @@ function calculateStats() {
 
         reasonMap.set(reason, (reasonMap.get(reason) || 0) + 1);
 
-        if (!isValidDiscordId(profile.id) || String(profile.id).startsWith('unknown-author') || String(profile.id).includes('unknown')) {
+        const isInRoleCache = (state.roleCache || []).some(rc => {
+            const rcId = rc.discordId || String(rc.identityKey || rc.id || '').replace(/^discord:/, '');
+            return rcId === profile.id;
+        });
+
+        if (!isInRoleCache || !isValidDiscordId(profile.id) || String(profile.id).startsWith('unknown-author') || String(profile.id).includes('unknown')) {
             unresolved.push({
                 caseId: entry.id || entry.caseId || '',
                 reason,
@@ -1227,52 +1233,51 @@ function renderTable(search = '') {
     bindAvatarFallbacks();
 }
 
+// SECTION: RENDER_MANAGEMENT
+// PURPOSE: Yetkili Listesi SADECE roleCache kaynağından render edilir.
+// GÜVENLIK: staffDirectory ve userRegistry tarama sonuçları içerebilir; yetkili kaynağı değildir.
 function renderManagement() {
+    // ONLY build from roleCache — the single source of truth for authorized staff
+    const roleCacheIds = new Set();
     const merged = new Map();
-    Object.values(state.staffDirectory || {}).forEach((entry) => {
-        const id = entry.discordUserId || entry.sapphireAuthorId || entry.id;
-        if (!id) return;
-        merged.set(id, {
-            id,
-            name: entry.displayName || entry.name || 'Bilinmiyor',
-            avatar: entry.avatar || null,
-            role: entry.role ? normalizeRole(entry.role) : null,
-            aliases: entry.aliases || [],
-            source: entry.source || 'staffDirectory'
-        });
-    });
-    Object.values(state.userRegistry || {}).forEach((entry) => {
-        if (!entry.id) return;
-        merged.set(entry.id, {
-            ...(merged.get(entry.id) || {}),
-            ...entry,
-            name: entry.name || merged.get(entry.id)?.name || 'Bilinmiyor',
-            role: entry.role ? normalizeRole(entry.role) : (merged.get(entry.id)?.role || null)
-        });
-    });
+
     (state.roleCache || []).forEach((entry) => {
         const id = entry.discordId || String(entry.identityKey || entry.id || '').replace(/^discord:/, '');
-        if (!id) return;
+        if (!isValidDiscordId(id)) return;
+        roleCacheIds.add(id);
+        const profile = resolveStaffProfile({ id, discordId: id, displayName: entry.displayName, role: entry.role });
         merged.set(id, {
-            ...(merged.get(id) || {}),
             id,
-            name: entry.displayName || merged.get(id)?.name || id,
-            role: entry.role ? normalizeRole(entry.role) : (merged.get(id)?.role || null)
+            name: entry.displayName || profile.name || id,
+            avatar: entry.avatar || profile.avatar || null,
+            role: entry.role ? normalizeRole(entry.role) : normalizeRole(profile.role),
+            aliases: entry.aliases || [],
+            source: 'roleCache'
         });
     });
 
-    const knownCaseIds = new Set(state.allCases.map((entry) => resolveStaffProfile(entry).id).filter(isValidDiscordId));
+    const knownCaseIds = new Set(
+        state.allCases
+            .map((entry) => resolveStaffProfile(entry).id)
+            .filter((id) => isValidDiscordId(id) && roleCacheIds.has(id))
+    );
+
     const moderators = Array.from(merged.values())
         .map((entry) => {
             const profile = resolveStaffProfile(entry);
             return {
                 ...entry,
                 ...profile,
-                count: knownCaseIds.has(profile.id) ? 1 : 0
+                id: entry.id,
+                name: entry.name || profile.name,
+                role: entry.role || profile.role,
+                count: knownCaseIds.has(entry.id) ? 1 : 0
             };
         })
-        .filter((entry) => isDisplayableStaffEntry(entry))
+        .filter((entry) => isValidDiscordId(entry.id))
         .sort((left, right) => getRankLevel(right.role) - getRankLevel(left.role) || String(left.name).localeCompare(String(right.name), 'tr'));
+
+
 
     DOM.mgmtModList.innerHTML = moderators.length ? moderators.map((entry) => {
         const profile = entry;
@@ -1965,10 +1970,49 @@ function renderPointtrainTab() {
     DOM.pointtrainTableBody.innerHTML = rows.join('');
 }
 
+// SECTION: SAPPHIRE_SCAN_BRIDGE
+// PURPOSE: Admin panel scan trigger for extension runtime and Vercel web API.
+async function startSapphireScanFromAdmin() {
+    DOM.btnStartSapphireScan.disabled = true;
+    try {
+        let response;
+        if (typeof chrome !== 'undefined' && chrome.runtime?.sendMessage) {
+            response = await chrome.runtime.sendMessage({
+                action: 'RUN_AUTONOMOUS_SCAN',
+                options: {
+                    guildId: APP_CONFIG.guildId,
+                    pages: [1],
+                    scanDelay: 1500,
+                    scanMode: 'fast',
+                    enrichDetails: false,
+                    retryCount: 1
+                }
+            });
+        } else {
+            const apiResponse = await fetch('/api/scan/sapphire', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${state.session?.idToken || ''}`
+                },
+                body: JSON.stringify({ guildId: APP_CONFIG.guildId, pages: [1], scanMode: 'fast' })
+            });
+            response = await apiResponse.json().catch(() => ({}));
+            if (!apiResponse.ok) throw new Error(response.error || 'SCAN_API_FAILED');
+        }
+        if (!response?.success) throw new Error(response?.error || 'SCAN_FAILED');
+        await loadData();
+        Toast.success('Sapphire', 'Tarama baslatildi');
+    } catch (error) {
+        Toast.error('Sapphire', error.message || 'Tarama baslatilamadi');
+    } finally {
+        DOM.btnStartSapphireScan.disabled = false;
+    }
+}
+
 async function loadData() {
     if (state.session?.profile) {
         await FirebaseRepository.ensureRolePolicy(state.session.profile).catch(() => null);
-        await FirebaseRepository.seedRoleCacheMembers(state.session.profile).catch(() => null);
         await FirebaseRepository.seedGoogleAllowlist(state.session.profile).catch(() => null);
     }
 
@@ -2289,6 +2333,7 @@ function bindEvents() {
     DOM.btnCukSave?.addEventListener('click', saveRules);
     DOM.btnAddStep?.addEventListener('click', addRepeatRow);
     DOM.btnBackToDashboard?.addEventListener('click', () => switchTab('dashboard'));
+    DOM.btnStartSapphireScan?.addEventListener('click', startSapphireScanFromAdmin);
     DOM.pointtrainRefreshBtn?.addEventListener('click', loadData);
     DOM.pointtrainCopyBtn?.addEventListener('click', async () => {
         if (!state.latestPointtrainRun) return;
@@ -2740,12 +2785,16 @@ async function init() {
         }
     }
 
+    const returnToUrl = typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.getURL
+        ? chrome.runtime.getURL('src/dashboard/admin.html')
+        : window.location.origin + '/';
+
     state.session = await AuthService.requireSession({
         admin: true,
-        returnTo: chrome.runtime.getURL('src/dashboard/admin.html')
+        returnTo: returnToUrl
     });
     if (!canAccessAdmin(state.session.role)) {
-        AuthService.redirectToLogin(chrome.runtime.getURL('src/dashboard/admin.html'), 'forbidden');
+        AuthService.redirectToLogin(returnToUrl, 'forbidden');
         return;
     }
     Toast.init();

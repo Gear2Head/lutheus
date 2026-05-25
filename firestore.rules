@@ -17,7 +17,7 @@ service cloud.firestore {
     }
 
     function privileged() {
-      return currentRole() in ['kurucu', 'admin', 'yonetici', 'kidemli', 'senior_moderator'];
+      return currentRole() in ['kurucu', 'admin', 'yonetici', 'genel_sorumlu', 'discord_yoneticisi', 'kidemli', 'kidemli_discord_moderatoru', 'senior_moderator'];
     }
 
     function googleAllowlistRole() {
@@ -40,7 +40,7 @@ service cloud.firestore {
     match /users/{userId} {
       allow read: if signedIn() && (userId == request.auth.uid || privileged());
       allow create: if signedIn() && userId == request.auth.uid && (
-        request.resource.data.role in ['pending', 'viewer', 'support', 'moderator']
+        request.resource.data.role in ['pending', 'viewer', 'support']
         || request.resource.data.role == request.auth.token.role
         || request.resource.data.role == googleAllowlistRole()
       );

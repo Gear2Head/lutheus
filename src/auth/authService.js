@@ -94,13 +94,18 @@ async function signInWithCustomToken(customToken, oauthProfile = {}) {
         ? rawAvatar
         : (rawAvatar && discordId ? `https://cdn.discordapp.com/avatars/${discordId}/${rawAvatar}.png?size=128` : rawAvatar);
 
+    const uid = payload.localId || oauthProfile.uid || (discordId ? `discord:${discordId}` : null);
+    if (!uid) {
+        throw new Error('USER_UID_REQUIRED');
+    }
+
     const profile = {
-        uid: payload.localId,
+        uid,
         provider: oauthProfile.provider || 'discord',
         discordId,
         username: oauthProfile.username || null,
         globalName: oauthProfile.globalName || oauthProfile.global_name || null,
-        displayName: oauthProfile.globalName || oauthProfile.global_name || oauthProfile.username || payload.localId,
+        displayName: oauthProfile.globalName || oauthProfile.global_name || oauthProfile.username || uid,
         avatar: discordAvatarUrl,
         email: oauthProfile.email || null
     };
@@ -110,7 +115,7 @@ async function signInWithCustomToken(customToken, oauthProfile = {}) {
     });
 
     const session = {
-        uid: payload.localId,
+        uid,
         provider: profile.provider,
         idToken: payload.idToken,
         refreshToken: payload.refreshToken,

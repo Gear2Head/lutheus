@@ -39,7 +39,11 @@
 
   <!-- ── Sidebar ────────────────────────────────────────── -->
   <nav class="sidebar">
-    <div class="sidebar-logo">L</div>
+    <div class="sidebar-logo" style="background: transparent; border: none; padding: 0;">
+      <svg width="34" height="34" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg" style="filter: drop-shadow(0px 0px 10px rgba(124, 90, 245, 0.65));">
+        <path d="M624.16 179.336L348.64 384.88L640.48 672.488L262.336 844.664L624.16 179.336Z" fill="#7c5af5"/>
+      </svg>
+    </div>
     <div class="sidebar-nav">
       <button class="nav-item active" data-page="dashboard" title="">
         <i class="fa-solid fa-chart-line"></i>
@@ -76,7 +80,10 @@
 
     <!-- Topbar -->
     <header class="topbar">
-      <div class="topbar-brand">
+      <div class="topbar-brand" style="display: flex; align-items: center; gap: 10px;">
+        <svg width="24" height="24" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M624.16 179.336L348.64 384.88L640.48 672.488L262.336 844.664L624.16 179.336Z" fill="#7c5af5"/>
+        </svg>
         <span class="brand-name">Lutheus <span>CezaRapor</span></span>
         <span class="brand-sub" id="pageSubtitle">admin :: dashboard</span>
       </div>
@@ -513,12 +520,14 @@
       Purpose: Google allowlist ve Discord rol cache markup yapısı
       Search: auth, google allowlist, role cache, groq limits, audit log
       ========================================================= -->
+<!-- SECTION: ACCESS_MANAGEMENT -->
+      <!-- PURPOSE: Google allowlist and Discord role cache management panel markup with advanced query controls -->
       <div class="page-section" id="page-auth">
         <div class="split-2">
           <div class="panel">
              <div class="panel-header"><span class="panel-title"><i class="fa-brands fa-google"></i> Google Allowlist</span></div>
              <div class="panel-body">
-                <div style="display:flex; gap:8px; margin-bottom:16px;">
+                <div style="display:flex; gap:8px; margin-bottom:12px;">
                    <input type="text" id="allowEmail" class="field-input" placeholder="Email..." style="flex:1;">
                    <select id="allowRole" class="field-input" style="width:110px;">
                       <option value="moderator">Mod</option>
@@ -527,10 +536,37 @@
                    </select>
                    <button class="btn btn-primary" id="saveAllowBtn">Ekle</button>
                 </div>
-                <table class="data-table">
-                   <thead><tr><th>Email</th><th>Rol</th><th>Durum</th><th>İşlem</th></tr></thead>
-                   <tbody id="allowlistTableBody"></tbody>
-                </table>
+                
+                <div class="table-toolbar" style="display:flex; gap:8px; margin-bottom:12px; align-items:center;">
+                   <div class="search-bar" style="flex:1; padding:6px 10px; height:32px; display:flex; align-items:center; gap:8px; background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius-md);">
+                      <i class="fa-solid fa-magnifying-glass" style="font-size:11px; opacity:0.5;"></i>
+                      <input type="text" id="allowlistSearch" placeholder="Allowlist'te ara..." style="background:none; border:none; color:inherit; font-size:12px; width:100%; outline:none;">
+                   </div>
+                   <select id="allowlistFilter" class="field-input" style="width:110px; height:32px; font-size:12px; padding:0 8px;">
+                      <option value="all">Tüm Roller</option>
+                      <option value="moderator">Mod</option>
+                      <option value="admin">Admin</option>
+                      <option value="viewer">İzleyici</option>
+                   </select>
+                   <button class="btn btn-danger btn-icon" id="allowlistBatchDeleteBtn" style="height:32px; width:32px; font-size:11px; border-radius:var(--radius-md);" title="Seçilenleri Toplu Sil">
+                      <i class="fa-solid fa-trash-can"></i>
+                   </button>
+                </div>
+
+                <div style="max-height: 280px; overflow-y: auto;">
+                   <table class="data-table">
+                      <thead>
+                         <tr>
+                            <th style="width:30px; text-align:center;"><input type="checkbox" id="allowlistSelectAll"></th>
+                            <th>Email</th>
+                            <th>Rol (Hızlı Değiştir)</th>
+                            <th>Durum</th>
+                            <th>İşlem</th>
+                         </tr>
+                      </thead>
+                      <tbody id="allowlistTableBody"></tbody>
+                   </table>
+                </div>
              </div>
           </div>
           <div class="panel">
@@ -540,7 +576,7 @@
                    <input type="text" id="roleCacheIdentity" class="field-input" placeholder="ID (discord:...)">
                    <input type="text" id="roleCacheName" class="field-input" placeholder="Görünen İsim">
                 </div>
-                <div style="display:flex; gap:8px; margin-bottom:16px;">
+                <div style="display:flex; gap:8px; margin-bottom:12px;">
                    <select id="roleCacheRole" class="field-input" style="flex:1;">
                       <option value="moderator">Mod</option>
                       <option value="admin">Admin</option>
@@ -548,10 +584,37 @@
                    </select>
                    <button class="btn btn-primary" id="saveRoleCacheBtn">Kaydet</button>
                 </div>
-                <table class="data-table">
-                   <thead><tr><th>Kimlik</th><th>İsim</th><th>Rol</th><th>İşlem</th></tr></thead>
-                   <tbody id="roleCacheTableBody"></tbody>
-                </table>
+                
+                <div class="table-toolbar" style="display:flex; gap:8px; margin-bottom:12px; align-items:center;">
+                   <div class="search-bar" style="flex:1; padding:6px 10px; height:32px; display:flex; align-items:center; gap:8px; background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius-md);">
+                      <i class="fa-solid fa-magnifying-glass" style="font-size:11px; opacity:0.5;"></i>
+                      <input type="text" id="roleCacheSearch" placeholder="Cache'de ara..." style="background:none; border:none; color:inherit; font-size:12px; width:100%; outline:none;">
+                   </div>
+                   <select id="roleCacheFilter" class="field-input" style="width:110px; height:32px; font-size:12px; padding:0 8px;">
+                      <option value="all">Tüm Roller</option>
+                      <option value="moderator">Mod</option>
+                      <option value="admin">Admin</option>
+                      <option value="senior_mod">Senior</option>
+                   </select>
+                   <button class="btn btn-danger btn-icon" id="roleCacheBatchDeleteBtn" style="height:32px; width:32px; font-size:11px; border-radius:var(--radius-md);" title="Seçilenleri Toplu Sil">
+                      <i class="fa-solid fa-trash-can"></i>
+                   </button>
+                </div>
+
+                <div style="max-height: 280px; overflow-y: auto;">
+                   <table class="data-table">
+                      <thead>
+                         <tr>
+                            <th style="width:30px; text-align:center;"><input type="checkbox" id="roleCacheSelectAll"></th>
+                            <th>Kimlik</th>
+                            <th>İsim</th>
+                            <th>Rol (Hızlı Değiştir)</th>
+                            <th>İşlem</th>
+                         </tr>
+                      </thead>
+                      <tbody id="roleCacheTableBody"></tbody>
+                   </table>
+                </div>
              </div>
           </div>
         </div>
@@ -604,9 +667,10 @@
                 </div>
              </div>
           </div>
-          <div class="panel">
+          <div class="panel" id="srePanel">
              <div class="panel-header">
                 <span class="panel-title"><i class="fa-solid fa-server"></i> SRE Sistem Durumu</span>
+                <span id="lockdownIndicator" class="hidden" style="color:var(--red); font-weight:bold; font-size:11px; animation: pulse-glow 1s infinite alternate;"><i class="fa-solid fa-triangle-exclamation"></i> LOCKDOWN AKTİF</span>
              </div>
              <div class="panel-body" style="display:flex; flex-direction:column; gap:12px;">
                 <div class="delta-grid" style="grid-template-columns: 1fr 1fr; gap:10px;">
@@ -623,6 +687,9 @@
                   <p><strong>Lutheus Engine v3.2.0</strong></p>
                   <p style="margin-top:4px;">Güvenlik seviyesi: <span style="color:var(--purple-hi); font-weight:700;">MAKSİMUM</span>. Tüm işlemler HMAC imzalı olarak doğrulanmaktadır.</p>
                 </div>
+                <button class="btn btn-danger" id="btnToggleLockdown" style="width:100%; margin-top:8px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; height:36px; font-size:11px;">
+                    <i class="fa-solid fa-triangle-exclamation"></i> ACİL DURUM KİLİDİ (LOCKDOWN)
+                </button>
              </div>
           </div>
         </div>

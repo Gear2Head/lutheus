@@ -1531,6 +1531,53 @@ body {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
 
+/* GOD OF LUTHEUS: BARIS YILMAZ PRESTIGE MODE */
+.profile-header-card.god-mode {
+  background: radial-gradient(circle at top right, rgba(218, 165, 32, 0.18), rgba(11, 11, 14, 0.95)) !important;
+  border: 2px solid rgba(218, 165, 32, 0.65) !important;
+  border-left: 8px solid #ffbc00 !important;
+  box-shadow: 0 0 40px rgba(218, 165, 32, 0.25), inset 0 0 20px rgba(218, 165, 32, 0.05) !important;
+  animation: godGlowPulse 4s infinite alternate ease-in-out;
+}
+
+@keyframes godGlowPulse {
+  0% { box-shadow: 0 0 30px rgba(218, 165, 32, 0.2), inset 0 0 10px rgba(218, 165, 32, 0.02); }
+  100% { box-shadow: 0 0 50px rgba(218, 165, 32, 0.45), inset 0 0 30px rgba(218, 165, 32, 0.15); }
+}
+
+.profile-avatar-glow.god-mode {
+  border-color: #ffbc00 !important;
+  box-shadow: 0 0 25px rgba(218, 165, 32, 0.8) !important;
+  animation: rotateGodGlow 10s linear infinite;
+}
+
+@keyframes rotateGodGlow {
+  0% { transform: rotate(0deg) scale(1.05); }
+  50% { transform: rotate(180deg) scale(1.1); }
+  100% { transform: rotate(360deg) scale(1.05); }
+}
+
+.god-title-sparkle {
+  font-family: var(--font-display);
+  background: linear-gradient(135deg, #ffe066 0%, #f5a623 50%, #d97706 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  text-shadow: 0 0 12px rgba(245, 166, 35, 0.4);
+  font-weight: 900 !important;
+  letter-spacing: -0.5px;
+}
+
+.god-badge {
+  background: linear-gradient(135deg, #d97706, #ffbc00) !important;
+  color: #060608 !important;
+  font-weight: 900 !important;
+  letter-spacing: 1px !important;
+  padding: 4px 12px !important;
+  border-radius: var(--radius-sm) !important;
+  box-shadow: 0 0 15px rgba(251, 146, 60, 0.5) !important;
+  text-shadow: none !important;
+}
+
 .profile-header-left {
   display: flex;
   align-items: center;
@@ -1834,6 +1881,201 @@ body.light-theme .toast {
   display: flex;
   align-items: center;
   gap: 8px;
+.mod-card {
+  backdrop-filter: blur(8px);
+  background: rgba(17, 17, 21, 0.6) !important;
+  border: 1px solid rgba(255, 255, 255, 0.04) !important;
+  border-left: 4px solid var(--role-color) !important;
+  transition: all 0.25s var(--ease-out) !important;
+}
+.mod-card:hover {
+  background: rgba(31, 31, 39, 0.8) !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+  transform: translateX(6px) !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3), 0 0 15px rgba(124, 90, 245, 0.05) !important;
+}
+
+.btn {
+  transition: all 0.2s var(--ease-spring) !important;
+}
+.btn:hover:not(:disabled) {
+  transform: scale(1.04) translateY(-1px) !important;
+}
+.btn-primary:hover:not(:disabled) {
+  box-shadow: 0 0 20px rgba(124, 90, 245, 0.4) !important;
+}
+.btn-danger:hover:not(:disabled) {
+  box-shadow: 0 0 20px rgba(240, 78, 78, 0.4) !important;
+}
+
+.toast {
+  backdrop-filter: blur(16px);
+  background: rgba(24, 24, 30, 0.85) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+  position: relative;
+  overflow: hidden;
+}
+
+.active-profile-card {
+  background: rgba(124, 90, 245, 0.08) !important;
+  border-color: rgba(124, 90, 245, 0.4) !important;
+  box-shadow: 0 0 20px rgba(124, 90, 245, 0.15) !important;
+}
+
+/* SECTION: THEME_SYSTEM */
+/* PURPOSE: Dark/light mode theme variables override. */
+body {
+  transition: background-color 0.25s ease, color 0.25s ease, border-color 0.25s ease;
+}
+
+body.light-theme {
+  --bg-void:       #f1f5f9; /* slate-100 */
+  --bg-base:       #f8fafc; /* slate-50 */
+  --bg-surface:    #ffffff; /* white */
+  --bg-elevated:   #e2e8f0; /* slate-200 */
+  --bg-hover:      #cbd5e1; /* slate-300 */
+  --bg-input:      #ffffff;
+
+  --border:        rgba(0,0,0,0.08);
+  --border-mid:    rgba(0,0,0,0.12);
+  --border-hi:     rgba(0,0,0,0.18);
+
+  --text-1:        #0f172a; /* slate-900 */
+  --text-2:        #334155; /* slate-700 */
+  --text-3:        #64748b; /* slate-500 */
+
+  --purple:        #6366f1; /* indigo-500 */
+  --purple-dim:    rgba(99,102,241,0.1);
+  --purple-glow:   rgba(99,102,241,0.2);
+  --purple-hi:     #4f46e5;
+
+  --emerald:       #16a34a;
+  --emerald-dim:   rgba(22,163,74,0.1);
+  --amber:         #d97706;
+  --amber-dim:     rgba(217,119,6,0.1);
+  --red:           #dc2626;
+  --red-dim:       rgba(220,38,38,0.1);
+  --blue:          #2563eb;
+  --blue-dim:      rgba(37,99,235,0.1);
+}
+
+body.light-theme .search-field input {
+  color: #0f172a;
+}
+body.light-theme .panel {
+  background: #ffffff !important;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+}
+body.light-theme .sidebar {
+  background: #e2e8f0;
+  border-right: 1px solid rgba(0,0,0,0.06);
+}
+body.light-theme .nav-item {
+  color: #475569;
+}
+body.light-theme .nav-item.active {
+  background: #cbd5e1;
+  color: #0f172a;
+}
+body.light-theme .topbar {
+  background: #f1f5f9;
+  border-bottom: 1px solid rgba(0,0,0,0.06);
+}
+body.light-theme .mod-card {
+  background: #ffffff !important;
+  border: 1px solid rgba(0,0,0,0.08) !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+body.light-theme .mod-card:hover {
+  background: #f8fafc !important;
+  border-color: rgba(0,0,0,0.12) !important;
+}
+body.light-theme .case-history-card {
+  background: #f8fafc !important;
+  border-color: rgba(0,0,0,0.08) !important;
+}
+body.light-theme .data-table tr:hover td {
+  background: #f1f5f9;
+}
+body.light-theme .toast {
+  background: rgba(255, 255, 255, 0.92) !important;
+  border-color: rgba(0, 0, 0, 0.08) !important;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+}
+
+/* SECTION: TOAST_STYLES */
+/* PURPOSE: Premium styles for countdown progress bar inside toasts. */
+.toast-progress-bar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 2.5px;
+  background: var(--purple-hi);
+  width: 100%;
+  animation: toastProgress linear forwards;
+  opacity: 0.6;
+}
+.toast.success .toast-progress-bar { background: var(--emerald); }
+.toast.error .toast-progress-bar { background: var(--red); }
+.toast.warning .toast-progress-bar { background: var(--amber); }
+.toast.info .toast-progress-bar { background: var(--purple-hi); }
+
+@keyframes toastProgress {
+  from { width: 100%; }
+  to   { width: 0%; }
+}
+
+/* SECTION: AUDIT_TIMELINE */
+/* PURPOSE: Premium vertical timeline style for SRE Audit Logs. */
+.audit-timeline {
+  position: relative;
+  padding-left: 20px;
+  border-left: 2px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin: 8px 4px;
+}
+
+.audit-node {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-bottom: 4px;
+}
+
+.audit-node::before {
+  content: '';
+  position: absolute;
+  left: -27px;
+  top: 4px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--bg-surface);
+  border: 2px solid var(--purple);
+  box-shadow: 0 0 6px var(--purple-glow);
+  transition: all 0.22s var(--ease-spring);
+}
+
+.audit-node:hover::before {
+  transform: scale(1.25);
+  border-color: var(--emerald);
+  box-shadow: 0 0 8px rgba(45, 213, 115, 0.4);
+}
+
+.audit-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-1);
+}
+
+.audit-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-size: 11px;
   color: var(--text-3);
   font-family: var(--font-mono);
@@ -1842,4 +2084,312 @@ body.light-theme .toast {
 .audit-meta-actor {
   color: var(--purple-hi);
   font-weight: 600;
+}
+
+/* SECTION: ACCESS_MANAGEMENT_STYLES */
+/* PURPOSE: Premium styles for access management dashboard panels, query filters, and role selection inputs */
+.quick-role-select {
+  border: 1px solid var(--border) !important;
+  transition: all 0.2s ease-in-out;
+  cursor: pointer;
+}
+.quick-role-select:hover {
+  border-color: var(--purple) !important;
+  background: rgba(138, 92, 245, 0.05) !important;
+}
+.quick-role-select:focus {
+  border-color: var(--purple) !important;
+  box-shadow: 0 0 8px var(--purple-glow) !important;
+  outline: none;
+}
+.auth-card-row {
+  transition: all 0.15s ease;
+}
+.auth-card-row:hover {
+  background: rgba(255, 255, 255, 0.01);
+}
+.auth-card-row td {
+  vertical-align: middle;
+}
+.table-toolbar .search-bar {
+  transition: all 0.2s ease;
+}
+.table-toolbar .search-bar:focus-within {
+  border-color: var(--purple) !important;
+  box-shadow: 0 0 8px var(--purple-glow) !important;
+}
+.allowlist-row-checkbox, .rolecache-row-checkbox {
+  accent-color: var(--purple);
+  cursor: pointer;
+  width: 14px;
+  height: 14px;
+}
+
+/* SECTION: GOD_MODE_STYLES */
+/* PURPOSE: Prestigious celestial styling for the owner/creator Baris Yilmaz (202889333563195402) */
+.god-mode {
+  background: linear-gradient(135deg, rgba(20, 20, 25, 0.95), rgba(255, 215, 0, 0.08)) !important;
+  border: 1px solid rgba(255, 215, 0, 0.3) !important;
+  box-shadow: 0 0 25px rgba(255, 215, 0, 0.15), inset 0 0 15px rgba(255, 215, 0, 0.05) !important;
+  position: relative;
+  overflow: hidden;
+}
+.god-mode::after {
+  content: '';
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: linear-gradient(45deg, transparent, rgba(255, 215, 0, 0.05), transparent);
+  transform: rotate(45deg);
+  animation: shine 4s infinite linear;
+  pointer-events: none;
+}
+@keyframes shine {
+  0% { transform: translate(-30%, -30%) rotate(45deg); }
+  100% { transform: translate(30%, 30%) rotate(45deg); }
+}
+.god-badge {
+  background: linear-gradient(90deg, #ffd700, #ffa500) !important;
+  color: #000 !important;
+  font-weight: 800 !important;
+  text-shadow: 0 0 4px rgba(255,255,255,0.4);
+  box-shadow: 0 0 10px rgba(255, 215, 0, 0.4) !important;
+  animation: pulse-glow 2s infinite alternate;
+}
+@keyframes pulse-glow {
+  0% { box-shadow: 0 0 5px rgba(255, 215, 0, 0.3); }
+  100% { box-shadow: 0 0 15px rgba(255, 215, 0, 0.6); }
+}
+.god-title-sparkle {
+  background: linear-gradient(90deg, #ffffff, #ffd700, #ffffff);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-size: 200% auto;
+  animation: textShine 3s linear infinite;
+  font-weight: bold;
+}
+@keyframes textShine {
+  to { background-position: 200% center; }
+}
+
+/* SECTION: GOD_DIVINE_PANEL */
+/* PURPOSE: Celestial divine banner displayed on Barış Yılmaz's profile - replaces admin edit form */
+.god-divine-banner {
+  position: relative;
+  overflow: hidden;
+  padding: 28px 24px 24px;
+  background: radial-gradient(ellipse at top left, rgba(255,215,0,0.12) 0%, rgba(10,10,15,0.98) 60%),
+              radial-gradient(ellipse at bottom right, rgba(167,139,250,0.08) 0%, transparent 60%);
+  border: 1px solid rgba(255,215,0,0.25);
+  border-radius: var(--radius-lg);
+  text-align: center;
+  box-shadow: 0 0 60px rgba(255,215,0,0.08), inset 0 0 40px rgba(255,215,0,0.03);
+  animation: divineBreath 6s ease-in-out infinite;
+}
+@keyframes divineBreath {
+  0%, 100% { box-shadow: 0 0 40px rgba(255,215,0,0.06), inset 0 0 30px rgba(255,215,0,0.02); }
+  50% { box-shadow: 0 0 80px rgba(255,215,0,0.15), inset 0 0 50px rgba(255,215,0,0.06); }
+}
+.god-divine-banner::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(45deg, transparent 30%, rgba(255,215,0,0.03) 50%, transparent 70%);
+  animation: divineShine 4s linear infinite;
+  pointer-events: none;
+}
+@keyframes divineShine {
+  0% { transform: translateX(-100%) skewX(-15deg); }
+  100% { transform: translateX(200%) skewX(-15deg); }
+}
+.god-divine-particles {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+.god-particle {
+  position: absolute;
+  color: rgba(255,215,0,0.35);
+  font-size: 14px;
+  animation: floatParticle var(--dur, 6s) var(--delay, 0s) ease-in-out infinite;
+  opacity: 0;
+}
+.god-particle:nth-child(1) { left: 8%; top: 20%; --dur: 7s; --delay: 0s; }
+.god-particle:nth-child(2) { left: 25%; top: 75%; --dur: 5s; --delay: 1s; }
+.god-particle:nth-child(3) { left: 50%; top: 10%; --dur: 8s; --delay: 2s; }
+.god-particle:nth-child(4) { left: 70%; top: 60%; --dur: 6s; --delay: 0.5s; }
+.god-particle:nth-child(5) { left: 85%; top: 30%; --dur: 7.5s; --delay: 1.5s; }
+.god-particle:nth-child(6) { left: 40%; top: 85%; --dur: 5.5s; --delay: 3s; }
+@keyframes floatParticle {
+  0%, 100% { transform: translateY(0) scale(0.8); opacity: 0; }
+  50% { transform: translateY(-20px) scale(1.2); opacity: 1; }
+}
+.god-divine-title {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  margin-bottom: 12px;
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 900;
+  letter-spacing: 4px;
+  text-transform: uppercase;
+  background: linear-gradient(135deg, #ffffff 0%, #ffd700 40%, #ffa500 70%, #ffffff 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-size: 200% auto;
+  animation: textShine 3s linear infinite;
+  filter: drop-shadow(0 0 8px rgba(255,215,0,0.3));
+}
+.god-divine-desc {
+  font-size: 13px;
+  color: var(--text-2);
+  line-height: 1.7;
+  margin: 0 0 20px;
+  max-width: 480px;
+  margin-left: auto;
+  margin-right: auto;
+}
+.god-divine-attrs {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-bottom: 20px;
+}
+.god-attr-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 12px 10px;
+  background: rgba(255,215,0,0.04);
+  border: 1px solid rgba(255,215,0,0.15);
+  border-radius: var(--radius-md);
+  transition: all 0.25s ease;
+  cursor: default;
+}
+.god-attr-card:hover {
+  background: rgba(255,215,0,0.09);
+  border-color: rgba(255,215,0,0.35);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(255,215,0,0.1);
+}
+.god-attr-card i { font-size: 18px; }
+.god-attr-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-2);
+  text-align: center;
+}
+.god-divine-decree {
+  padding: 12px 20px;
+  background: rgba(255,215,0,0.05);
+  border: 1px solid rgba(255,215,0,0.2);
+  border-radius: var(--radius-md);
+  font-size: 12px;
+  color: rgba(255,215,0,0.85);
+  font-style: italic;
+  letter-spacing: 0.3px;
+}
+
+
+/* SECTION: GROQ_LIMIT_STYLES */
+/* PURPOSE: Premium grid layouts and styled number inputs for the AI Limit Policy dashboard */
+
+#groqLimitGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)) !important;
+  gap: 12px !important;
+  margin-top: 14px;
+}
+.role-limit-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.01);
+  border: 1px solid var(--border);
+  padding: 10px 14px;
+  border-radius: var(--radius-md);
+  transition: all 0.2s ease;
+}
+.role-limit-item:hover {
+  background: rgba(255, 255, 255, 0.03);
+  border-color: rgba(138, 92, 245, 0.25);
+}
+.role-limit-item span {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-2);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+.role-limit-item input {
+  background: var(--bg-input) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: var(--radius-sm);
+  color: var(--text-1) !important;
+  font-size: 12px;
+  padding: 6px 10px;
+  width: 100%;
+  outline: none;
+  transition: all 0.2s ease;
+}
+.role-limit-item input:focus {
+  border-color: var(--purple) !important;
+  box-shadow: 0 0 8px var(--purple-glow) !important;
+}
+
+/* SECTION: MODAL_PANEL_STYLES */
+/* PURPOSE: Premium glassmorphism overlay and pop-up animation for admin dashboards */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 10, 12, 0.7);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  opacity: 1;
+  transition: opacity 0.25s ease-in-out;
+}
+.modal-overlay.hidden {
+  display: none !important;
+  opacity: 0;
+  pointer-events: none;
+}
+.modal-box {
+  background: rgba(20, 20, 26, 0.85) !important;
+  backdrop-filter: blur(25px) !important;
+  -webkit-backdrop-filter: blur(25px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-radius: var(--radius-lg) !important;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5), 0 0 30px rgba(138, 92, 245, 0.1) !important;
+  animation: modalEnter 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  overflow: hidden;
+  width: 100%;
+}
+@keyframes modalEnter {
+  from { transform: scale(0.9) translateY(10px); opacity: 0; }
+  to   { transform: scale(1) translateY(0); opacity: 1; }
+}
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.01);
+}
+.modal-header span {
+  font-family: var(--font-display);
+  font-weight: 700;
+  color: var(--text-1);
 }

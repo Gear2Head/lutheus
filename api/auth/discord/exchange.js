@@ -80,6 +80,13 @@ module.exports = async function handler(req, res) {
         const accessToken = await exchangeCode(code, redirectUri);
         const discordUser = await fetchDiscordUser(accessToken);
 
+        if (!discordUser || !discordUser.id) {
+            res.status(400).json({ error: 'USER_UID_REQUIRED', detail: 'Discord user id missing' });
+            return;
+        }
+
+        const uid = `discord:${discordUser.id}`;
+
         let db, auth;
         try {
             db = getDb();
@@ -90,7 +97,6 @@ module.exports = async function handler(req, res) {
         }
 
         const role = await resolveRole(db, discordUser.id);
-        const uid = `discord:${discordUser.id}`;
         const avatarUrl = discordUser.avatar
             ? `https://cdn.discordapp.com/avatars/${discordUser.id}/${discordUser.avatar}.png?size=128`
             : `https://cdn.discordapp.com/embed/avatars/${Number(discordUser.id) % 5}.png`;
@@ -99,9 +105,9 @@ module.exports = async function handler(req, res) {
             uid,
             provider: 'discord',
             discordId: discordUser.id,
-            username: discordUser.username,
-            globalName: discordUser.global_name || discordUser.username,
-            displayName: discordUser.global_name || discordUser.username,
+            username: discordUser.username || null,
+            globalName: discordUser.global_name || discordUser.username || null,
+            displayName: discordUser.global_name || discordUser.username || null,
             avatar: avatarUrl,
             role,
             status: 'active'
@@ -124,14 +130,21 @@ module.exports = async function handler(req, res) {
             firebaseToken = await auth.createCustomToken(uid, {
                 provider: 'discord',
                 discordId: discordUser.id,
-                role
+                username: discordUser.username || null,
+                globalName: discordUser.global_name || null
             });
         } catch (tokenError) {
             console.error('Firebase Custom Token Generation Failed:', tokenError);
             throw new Error('FIREBASE_CUSTOM_TOKEN_FAILED');
         }
 
-        res.status(200).json({ firebaseToken, profile });
+        res.status(200).json({
+            ok: true,
+            uid,
+            customToken: firebaseToken,
+            firebaseToken,
+            profile
+        });
     } catch (error) {
         console.error('Discord Exchange Endpoint Error:', error);
 
@@ -171,6 +184,9 @@ module.exports = async function handler(req, res) {
             errorStage = 'params_validation';
         } else if (msg.includes('DISCORD_REDIRECT_URI_MISSING')) {
             errCode = 'DISCORD_REDIRECT_URI_MISSING';
+            errorStage = 'params_validation';
+        } else if (msg.includes('USER_UID_REQUIRED')) {
+            errCode = 'USER_UID_REQUIRED';
             errorStage = 'params_validation';
         }
 

@@ -143,15 +143,25 @@ const DOM_RAW = {
     allowRole: document.getElementById('allowRole'),
     saveAllowBtn: document.getElementById('saveAllowBtn'),
     allowlistTableBody: document.getElementById('allowlistTableBody'),
+    allowlistSearch: document.getElementById('allowlistSearch'),
+    allowlistFilter: document.getElementById('allowlistFilter'),
+    allowlistBatchDeleteBtn: document.getElementById('allowlistBatchDeleteBtn'),
+    allowlistSelectAll: document.getElementById('allowlistSelectAll'),
     roleCacheIdentity: document.getElementById('roleCacheIdentity'),
     roleCacheName: document.getElementById('roleCacheName'),
     roleCacheRole: document.getElementById('roleCacheRole'),
     saveRoleCacheBtn: document.getElementById('saveRoleCacheBtn'),
     roleCacheTableBody: document.getElementById('roleCacheTableBody'),
+    roleCacheSearch: document.getElementById('roleCacheSearch'),
+    roleCacheFilter: document.getElementById('roleCacheFilter'),
+    roleCacheBatchDeleteBtn: document.getElementById('roleCacheBatchDeleteBtn'),
+    roleCacheSelectAll: document.getElementById('roleCacheSelectAll'),
     groqLimitGrid: document.getElementById('groqLimitGrid'),
     saveGroqPolicyBtn: document.getElementById('saveGroqPolicyBtn'),
     refreshAuditBtn: document.getElementById('refreshAuditBtn'),
     auditList: document.getElementById('auditList'),
+    btnToggleLockdown: document.getElementById('btnToggleLockdown'),
+    lockdownIndicator: document.getElementById('lockdownIndicator'),
     roleUserPreview: document.getElementById('roleUserPreview'),
     roleUserPreviewAvatar: document.getElementById('roleUserPreviewAvatar'),
     roleUserPreviewName: document.getElementById('roleUserPreviewName'),
@@ -224,7 +234,8 @@ const state = {
     staffDirectory: {},
     roleCache: [],
     dynamicRules: { categories: {}, autoInvalid: { keywords: [] } },
-    latestPointtrainRun: null
+    latestPointtrainRun: null,
+    authData: { allowlist: [], roleCache: [], policy: {}, audit: [] }
 };
 
 let updateBulkActionsToolbar = () => {};
@@ -553,8 +564,87 @@ function sapphireCaseUrl(entry) {
 }
 
 function openCaseUrl(entry) {
-    const url = sapphireCaseUrl(entry);
-    if (url) window.open(url, '_blank', 'noopener');
+    openSingleCaseModal(entry);
+}
+
+// SECTION: SINGLE_CASE_MODAL
+// PURPOSE: Tek bir ceza kaydının detay modalını açar; Sapphire linki de içinde gösterilir.
+function openSingleCaseModal(entry) {
+    if (!entry) return;
+    const validation = getValidation(entry);
+    const profile = resolveStaffProfile(entry);
+    const caseId = String(entry.id || entry.caseId || '-');
+    const status = validation.status || 'pending';
+    const statusColor = status === 'valid' ? 'var(--emerald)' : status === 'invalid' ? 'var(--red)' : 'var(--amber)';
+    const statusLabel = status === 'valid' ? '✅ Geçerli' : status === 'invalid' ? '❌ Geçersiz' : '⏳ Beklemede';
+    const sapphireUrl = sapphireCaseUrl(entry);
+    const ts = caseTimestamp(entry);
+    const dateStr = ts ? new Date(ts).toLocaleString('tr-TR') : (entry.createdRaw || '-');
+
+    DOM.modalTitle.innerHTML = `<span style="color:var(--text-3);font-size:12px;font-weight:600;">Ceza Detayı</span>&nbsp; <span style="font-family:var(--font-mono);color:var(--purple-hi);">#${escapeHtml(caseId)}</span>`;
+    DOM.modalContent.innerHTML = `
+        <div style="display:flex;flex-direction:column;gap:16px;">
+            <!-- Status Banner -->
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:${status === 'valid' ? 'rgba(45,213,115,0.08)' : status === 'invalid' ? 'rgba(240,78,78,0.08)' : 'rgba(255,165,0,0.08)'};border:1px solid ${statusColor};border-radius:var(--radius-md);">
+                <div style="display:flex;align-items:center;gap:10px;">
+                    <span class="status-badge ${escapeHtml(status)}" style="font-size:13px;">${statusLabel}</span>
+                    <span class="penalty-type ${escapeHtml(entry.type || 'unknown')}" style="font-size:12px;">${escapeHtml(String(entry.type || 'bilinmiyor').toUpperCase())}</span>
+                </div>
+                <a href="${escapeHtml(sapphireUrl)}" target="_blank" rel="noopener" class="btn btn-ghost" style="font-size:12px;display:flex;align-items:center;gap:6px;text-decoration:none;">
+                    <i class="fa-solid fa-arrow-up-right-from-square"></i> Sapphire'da Aç
+                </a>
+            </div>
+            <!-- Detail Grid -->
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                <div style="display:flex;flex-direction:column;gap:4px;">
+                    <span class="field-label" style="font-size:10px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-3);">Cezalı Kullanıcı</span>
+                    <span style="font-weight:700;color:var(--text-1);">${escapeHtml(entry.user || 'Bilinmiyor')}</span>
+                    ${entry.userId ? `<span style="font-family:var(--font-mono);font-size:11px;color:var(--text-3);">${escapeHtml(entry.userId)}</span>` : ''}
+                </div>
+                <div style="display:flex;flex-direction:column;gap:4px;">
+                    <span class="field-label" style="font-size:10px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-3);">Yetkili</span>
+                    ${staffIdentityHtml(profile, { compact: true })}
+                </div>
+                <div style="display:flex;flex-direction:column;gap:4px;">
+                    <span class="field-label" style="font-size:10px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-3);">Süre</span>
+                    <span style="font-weight:600;color:var(--text-1);">${escapeHtml(entry.duration || 'Süresiz')}</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:4px;">
+                    <span class="field-label" style="font-size:10px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-3);">Tarih</span>
+                    <span style="font-weight:600;color:var(--text-1);">${escapeHtml(dateStr)}</span>
+                </div>
+            </div>
+            <!-- Reason -->
+            <div style="display:flex;flex-direction:column;gap:6px;">
+                <span class="field-label" style="font-size:10px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-3);">Ceza Sebebi</span>
+                <div style="padding:12px;background:var(--bg-elevated);border:1px solid var(--border);border-radius:var(--radius-md);font-size:13px;line-height:1.6;color:var(--text-1);">${escapeHtml(entry.reason || 'Sebep belirtilmemiş')}</div>
+            </div>
+            <!-- CUK Evaluation -->
+            ${validation.reason ? `
+            <div style="display:flex;flex-direction:column;gap:6px;">
+                <span class="field-label" style="font-size:10px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-3);">CUK Değerlendirmesi</span>
+                <div style="padding:12px;background:${status === 'valid' ? 'rgba(45,213,115,0.05)' : status === 'invalid' ? 'rgba(240,78,78,0.05)' : 'rgba(255,165,0,0.05)'};border:1px solid ${statusColor};border-radius:var(--radius-md);font-size:12px;line-height:1.6;color:var(--text-2);">${escapeHtml(validation.reason)}</div>
+            </div>` : ''}
+            <!-- Admin Note / Override -->
+            <div style="display:flex;flex-direction:column;gap:8px;">
+                <span class="field-label" style="font-size:10px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-3);">Yönetici Değerlendirmesi</span>
+                <div style="display:flex;gap:8px;align-items:center;">
+                    <select data-status-for="${escapeHtml(caseId)}" class="field-input" style="flex:0 0 auto;width:140px;font-size:12px;padding:6px 10px;height:34px;">
+                        <option value="">Otomatik</option>
+                        <option value="valid" ${entry.reviewStatus === 'valid' ? 'selected' : ''}>✅ Geçerli</option>
+                        <option value="invalid" ${entry.reviewStatus === 'invalid' ? 'selected' : ''}>❌ Geçersiz</option>
+                    </select>
+                    <input type="text" value="${escapeHtml(entry.note || '')}" data-note-for="${escapeHtml(caseId)}" placeholder="Yönetici notu..." class="field-input" style="flex:1;font-size:12px;height:34px;">
+                    <button class="btn btn-primary case-review-save" type="button" data-case-id="${escapeHtml(caseId)}" style="height:34px;padding:0 16px;font-size:12px;">
+                        <i class="fa-solid fa-save"></i> Kaydet
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+    DOM.detailModal?.classList.remove('hidden');
+    if (DOM.modalContent) bindModalSaveHandlers();
+    bindStaffCopyHandlers(DOM.modalContent);
 }
 
 function caseTimestamp(entry = {}) {
@@ -615,47 +705,57 @@ function switchTab(tabId) {
 }
 
 function renderAuthTables({ allowlist = [], roleCache = [], policy = {}, audit = [] } = {}) {
-    DOM.allowlistTableBody.innerHTML = allowlist.length
-        ? allowlist.map((entry) => `
-            <tr class="data-row auth-card-row">
-                <td>${escapeHtml(entry.email || entry.id || '-')}</td>
-                <td>${roleBadge(entry.role || '-')}</td>
-                <td>${entry.allowed === false ? 'Kapali' : 'Aktif'}</td>
-                <td>
-                    <button class="btn btn-ghost btn-icon btn-del-allow" data-email="${escapeHtml(entry.email || entry.id)}">
-                        <i class="fa-solid fa-trash-can"></i>
-                    </button>
-                </td>
-            </tr>
-        `).join('')
-        : '<tr><td colspan="4" class="empty-cell">Allowlist kaydi yok</td></tr>';
-
-    DOM.roleCacheTableBody.innerHTML = roleCache.length
-        ? roleCache.map((entry) => `
-            <tr class="data-row auth-card-row">
-                <td>${escapeHtml(entry.identityKey || entry.id || '-')}</td>
-                <td>${escapeHtml(entry.displayName || '-')}</td>
-                <td>${roleBadge(entry.role || '-')}</td>
-                <td>
-                    <button class="btn btn-ghost btn-icon btn-del-cache" data-key="${escapeHtml(entry.identityKey || entry.id)}">
-                        <i class="fa-solid fa-trash-can"></i>
-                    </button>
-                </td>
-            </tr>
-        `).join('')
-        : '<tr><td colspan="4" class="empty-cell">Role cache kaydi yok</td></tr>';
-
-    DOM.allowlistTableBody.querySelectorAll('.btn-del-allow').forEach(btn => {
-        btn.addEventListener('click', () => deleteAllowlist(btn.dataset.email));
-    });
-    DOM.roleCacheTableBody.querySelectorAll('.btn-del-cache').forEach(btn => {
-        btn.addEventListener('click', () => deleteRoleCache(btn.dataset.key));
-    });
-
+    state.authData = { allowlist, roleCache, policy, audit };
+    
+    // Bind search and filter events once if not already bound
+    if (!state.authEventsBound) {
+        state.authEventsBound = true;
+        
+        const triggerFilter = () => filterAndRenderAuthTables();
+        
+        DOM.allowlistSearch?.addEventListener('input', triggerFilter);
+        DOM.allowlistFilter?.addEventListener('change', triggerFilter);
+        DOM.roleCacheSearch?.addEventListener('input', triggerFilter);
+        DOM.roleCacheFilter?.addEventListener('change', triggerFilter);
+        
+        DOM.allowlistSelectAll?.addEventListener('change', (e) => {
+            DOM.allowlistTableBody.querySelectorAll('.allowlist-row-checkbox').forEach(cb => {
+                cb.checked = e.target.checked;
+            });
+        });
+        DOM.roleCacheSelectAll?.addEventListener('change', (e) => {
+            DOM.roleCacheTableBody.querySelectorAll('.rolecache-row-checkbox').forEach(cb => {
+                cb.checked = e.target.checked;
+            });
+        });
+        
+        DOM.allowlistBatchDeleteBtn?.addEventListener('click', async () => {
+            const checked = Array.from(DOM.allowlistTableBody.querySelectorAll('.allowlist-row-checkbox:checked')).map(cb => cb.dataset.email);
+            if (!checked.length) { Toast.warning('Toplu Sil', 'Seçili Google Allowlist kaydı yok'); return; }
+            if (!confirm(`${checked.length} Google erisim kaydini silmek istediginize emin misiniz?`)) return;
+            await Promise.all(checked.map(email => FirebaseRepository.deleteGoogleAllowlist(email, state.session?.profile)));
+            if (DOM.allowlistSelectAll) DOM.allowlistSelectAll.checked = false;
+            await loadAuthAdminData();
+            Toast.success('Toplu Sil', 'Seçilen erisim kayitlari silindi');
+        });
+        
+        DOM.roleCacheBatchDeleteBtn?.addEventListener('click', async () => {
+            const checked = Array.from(DOM.roleCacheTableBody.querySelectorAll('.rolecache-row-checkbox:checked')).map(cb => cb.dataset.key);
+            if (!checked.length) { Toast.warning('Toplu Sil', 'Seçili Rol Cache kaydı yok'); return; }
+            if (!confirm(`${checked.length} rol cache kaydini silmek istediginize emin misiniz?`)) return;
+            await Promise.all(checked.map(key => FirebaseRepository.deleteRoleCache(key, state.session?.profile)));
+            if (DOM.roleCacheSelectAll) DOM.roleCacheSelectAll.checked = false;
+            await loadAuthAdminData();
+            Toast.success('Toplu Sil', 'Seçilen rol kayitlari silindi');
+        });
+    }
+    
+    // Handle Policy discord bot channel
     if (DOM.botLogChannelId && policy.discordBot) {
         DOM.botLogChannelId.value = policy.discordBot.logChannelId || '';
     }
 
+    // Handle Limits
     const limits = { ...DEFAULT_GROQ_LIMITS, ...(policy.groqLimits || {}) };
     DOM.groqLimitGrid.innerHTML = Object.keys(DEFAULT_GROQ_LIMITS).map((role) => `
         <label class="role-limit-item">
@@ -664,6 +764,7 @@ function renderAuthTables({ allowlist = [], roleCache = [], policy = {}, audit =
         </label>
     `).join('');
 
+    // Handle Audit
     DOM.auditList.innerHTML = audit.length
         ? `<div class="audit-timeline">` + audit.map((entry) => `
             <div class="audit-node animate-in">
@@ -676,6 +777,112 @@ function renderAuthTables({ allowlist = [], roleCache = [], policy = {}, audit =
             </div>
         `).join('') + `</div>`
         : '<div class="empty-cell"><strong>Audit log yok</strong><small>Henüz kayıt oluşmadı</small></div>';
+        
+    filterAndRenderAuthTables();
+}
+
+function filterAndRenderAuthTables() {
+    const { allowlist = [], roleCache = [] } = state.authData || {};
+    
+    // 1. Filter Google Allowlist
+    const qAllow = (DOM.allowlistSearch?.value || '').trim().toLowerCase();
+    const fAllow = DOM.allowlistFilter?.value || 'all';
+    
+    const filteredAllow = allowlist.filter(entry => {
+        const matchesQuery = !qAllow || (entry.email || entry.id || '').toLowerCase().includes(qAllow);
+        const matchesRole = fAllow === 'all' || entry.role === fAllow;
+        return matchesQuery && matchesRole;
+    });
+    
+    DOM.allowlistTableBody.innerHTML = filteredAllow.length
+        ? filteredAllow.map((entry) => `
+            <tr class="data-row auth-card-row">
+                <td style="text-align:center;"><input type="checkbox" class="allowlist-row-checkbox" data-email="${escapeHtml(entry.email || entry.id)}"></td>
+                <td>${escapeHtml(entry.email || entry.id || '-')}</td>
+                <td>
+                    <select class="field-input quick-role-select allowlist-quick-role" data-email="${escapeHtml(entry.email || entry.id)}" style="padding: 4px 8px; font-size: 11px; height: 26px; width: auto; background: var(--bg-card); border-radius: var(--radius-sm); border:1px solid var(--border); color:inherit;">
+                        <option value="viewer" ${entry.role === 'viewer' ? 'selected' : ''}>İzleyici</option>
+                        <option value="moderator" ${entry.role === 'moderator' ? 'selected' : ''}>Mod</option>
+                        <option value="admin" ${entry.role === 'admin' ? 'selected' : ''}>Admin</option>
+                    </select>
+                </td>
+                <td>${entry.allowed === false ? 'Kapali' : 'Aktif'}</td>
+                <td>
+                    <button class="btn btn-ghost btn-icon btn-del-allow" data-email="${escapeHtml(entry.email || entry.id)}">
+                        <i class="fa-solid fa-trash-can"></i>
+                    </button>
+                </td>
+            </tr>
+        `).join('')
+        : '<tr><td colspan="5" class="empty-cell">Allowlist kaydi yok</td></tr>';
+        
+    // 2. Filter Discord Role Cache
+    const qRole = (DOM.roleCacheSearch?.value || '').trim().toLowerCase();
+    const fRole = DOM.roleCacheFilter?.value || 'all';
+    
+    const filteredRole = roleCache.filter(entry => {
+        const matchesQuery = !qRole || 
+            (entry.identityKey || entry.id || '').toLowerCase().includes(qRole) ||
+            (entry.displayName || '').toLowerCase().includes(qRole);
+        const matchesRole = fRole === 'all' || entry.role === fRole;
+        return matchesQuery && matchesRole;
+    });
+    
+    DOM.roleCacheTableBody.innerHTML = filteredRole.length
+        ? filteredRole.map((entry) => `
+            <tr class="data-row auth-card-row">
+                <td style="text-align:center;"><input type="checkbox" class="rolecache-row-checkbox" data-key="${escapeHtml(entry.identityKey || entry.id)}"></td>
+                <td>${escapeHtml(entry.identityKey || entry.id || '-')}</td>
+                <td>${escapeHtml(entry.displayName || '-')}</td>
+                <td>
+                    <select class="field-input quick-role-select rolecache-quick-role" data-key="${escapeHtml(entry.identityKey || entry.id)}" style="padding: 4px 8px; font-size: 11px; height: 26px; width: auto; background: var(--bg-card); border-radius: var(--radius-sm); border:1px solid var(--border); color:inherit;">
+                        <option value="moderator" ${entry.role === 'moderator' ? 'selected' : ''}>Mod</option>
+                        <option value="senior_mod" ${entry.role === 'senior_mod' ? 'selected' : ''}>Senior</option>
+                        <option value="admin" ${entry.role === 'admin' ? 'selected' : ''}>Admin</option>
+                    </select>
+                </td>
+                <td>
+                    <button class="btn btn-ghost btn-icon btn-del-cache" data-key="${escapeHtml(entry.identityKey || entry.id)}">
+                        <i class="fa-solid fa-trash-can"></i>
+                    </button>
+                </td>
+            </tr>
+        `).join('')
+        : '<tr><td colspan="5" class="empty-cell">Role cache kaydi yok</td></tr>';
+
+    // Bind action listeners for filtered items
+    DOM.allowlistTableBody.querySelectorAll('.btn-del-allow').forEach(btn => {
+        btn.addEventListener('click', () => deleteAllowlist(btn.dataset.email));
+    });
+    DOM.roleCacheTableBody.querySelectorAll('.btn-del-cache').forEach(btn => {
+        btn.addEventListener('click', () => deleteRoleCache(btn.dataset.key));
+    });
+    
+    // Bind quick role updates
+    DOM.allowlistTableBody.querySelectorAll('.allowlist-quick-role').forEach(select => {
+        select.addEventListener('change', async () => {
+            const email = select.dataset.email;
+            const newRole = select.value;
+            await FirebaseRepository.setGoogleAllowlist(email, { role: newRole, allowed: true }, state.session?.profile);
+            Toast.success('Allowlist', `${email} rolü ${newRole} olarak güncellendi`);
+            await loadAuthAdminData();
+        });
+    });
+    
+    DOM.roleCacheTableBody.querySelectorAll('.rolecache-quick-role').forEach(select => {
+        select.addEventListener('change', async () => {
+            const key = select.dataset.key;
+            const newRole = select.value;
+            const cached = roleCache.find(e => (e.identityKey || e.id) === key) || {};
+            await FirebaseRepository.setRoleCache(key, {
+                discordId: cached.discordId || key.replace('discord:', ''),
+                displayName: cached.displayName || key,
+                role: newRole
+            }, state.session?.profile);
+            Toast.success('Rol Cache', `${cached.displayName || key} rolü ${newRole} olarak güncellendi`);
+            await loadAuthAdminData();
+        });
+    });
 }
 
 async function loadAuthAdminData() {
@@ -1074,18 +1281,18 @@ function renderManagement() {
         const roleLabel = getRoleLabel(role);
         const id = profile.id || entry.id || '';
         return `
-        <div class="mod-card animate-in" style="--role-color: ${escapeHtml(roleColor)}">
+        <div class="mod-card animate-in" style="--role-color: ${escapeHtml(roleColor)}; cursor: pointer;" data-filter-id="${escapeHtml(id || profile.name)}" title="Bu yetkilinin attığı cezaları listele">
             <div class="mod-card-left">
-                <button class="staff-identity" type="button" data-copy-id="${escapeHtml(id)}" title="${id ? 'Yetkili ID kopyala' : 'Yetkili ID yok'}">
-                    <div class="mod-avatar-wrapper" style="border-color: ${escapeHtml(roleColor)}">
+                <div class="staff-identity-wrap" style="display: flex; align-items: center; gap: 10px;">
+                    <div class="mod-avatar-wrapper" style="border-color: ${escapeHtml(roleColor)};">
                         ${avatarImg(profile.avatar, 'staff-avatar', profile.name)}
                     </div>
                     <div class="mod-info">
-                        <span class="mod-name">${escapeHtml(profile.name)}</span>
-                        ${id ? `<span class="mod-id">Discord ID: ${escapeHtml(id)}</span>` : ''}
-                        <span class="mod-role-badge" style="color: ${escapeHtml(roleColor)}">${escapeHtml(roleLabel)}</span>
+                        <span class="mod-name copy-id-btn" data-id="${escapeHtml(id)}" style="cursor: copy; font-weight: bold; text-decoration: underline dotted rgba(255,255,255,0.3);" title="Tıkla: ID Kopyala">${escapeHtml(profile.name)}</span>
+                        ${id ? `<span class="mod-id" style="font-size:10px; opacity:0.6;">Discord ID: ${escapeHtml(id)}</span>` : ''}
+                        <span class="mod-role-badge" style="color: ${escapeHtml(roleColor)}; font-size:11px;">${escapeHtml(roleLabel)}</span>
                     </div>
-                </button>
+                </div>
             </div>
             <button class="btn btn-ghost btn-open-role" type="button" data-id="${escapeHtml(id)}">
                 <i class="fa-solid fa-user-pen"></i> Düzenle
@@ -1119,8 +1326,8 @@ function renderManagement() {
         const reason = cleanReason(entry.reason);
         const caseId = String(entry.id || entry.caseId || '');
         return `
-            <tr class="data-row">
-                <td style="text-align:center;"><input type="checkbox" class="case-checkbox" data-case-id="${escapeHtml(caseId)}" style="cursor:pointer;"></td>
+            <tr class="data-row case-row" style="cursor: pointer;">
+                <td style="text-align:center;" class="checkbox-cell"><input type="checkbox" class="case-checkbox" data-case-id="${escapeHtml(caseId)}" style="cursor:pointer;"></td>
                 <td><button class="case-link" type="button" data-case-id="${escapeHtml(caseId)}">#${escapeHtml(caseId)}</button></td>
                 <td>${staffIdentityHtml(profile, { compact: true })}</td>
                 <td class="reason-cell" title="${escapeHtml(reason)}">${escapeHtml(reason)}</td>
@@ -1139,12 +1346,45 @@ function renderManagement() {
     document.querySelectorAll('.btn-open-role').forEach((button) => {
         button.addEventListener('click', () => openRoleModal(button.dataset.id));
     });
-    DOM.mgmtCaseList.querySelectorAll('.case-link').forEach((button) => {
-        button.addEventListener('click', () => {
-            const entry = state.allCases.find((item) => String(item.id || item.caseId) === button.dataset.caseId);
+    
+    // Satır bazlı veya case-link bazlı tıklamada ceza detaylarını (Sapphire URL) aç
+    DOM.mgmtCaseList.querySelectorAll('.case-row').forEach((tr) => {
+        tr.addEventListener('click', (e) => {
+            if (e.target.closest('.checkbox-cell') || e.target.closest('input[type="checkbox"]')) return;
+            const caseLink = tr.querySelector('.case-link');
+            if (!caseLink) return;
+            const entry = state.allCases.find((item) => String(item.id || item.caseId) === caseLink.dataset.caseId);
             if (entry) openCaseUrl(entry);
         });
     });
+
+    // Yetkili adına tıklayınca ID kopyala
+    DOM.mgmtModList.querySelectorAll('.copy-id-btn').forEach((btn) => {
+        btn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            const id = btn.dataset.id;
+            if (!id) {
+                Toast.warning('Yetkili', 'Kopyalanacak ID yok');
+                return;
+            }
+            await copyText(id);
+            Toast.success('ID Kopyalandı', id);
+        });
+    });
+
+    // Kartın geri kalanına (adı hariç) tıklayınca o yetkilinin attığı tüm cezaları listele
+    DOM.mgmtModList.querySelectorAll('.mod-card').forEach((card) => {
+        card.addEventListener('click', (e) => {
+            if (e.target.closest('.btn-open-role') || e.target.closest('.copy-id-btn')) return;
+            const filterId = card.dataset.filterId || '';
+            if (DOM.caseSearch) {
+                DOM.caseSearch.value = filterId;
+                DOM.caseSearch.dispatchEvent(new Event('input'));
+                Toast.info('Filtrelendi', `Cezalar ${filterId} için listeleniyor`);
+            }
+        });
+    });
+
     bindStaffCopyHandlers(DOM.mgmtModList);
     bindStaffCopyHandlers(DOM.mgmtCaseList);
     bindAvatarFallbacks();
@@ -2239,13 +2479,28 @@ async function loadProfileDetails(userId) {
         DOM.profileEmptyState.classList.add('hidden');
         DOM.profileDetailContent.classList.remove('hidden');
 
+        const isBarisYilmaz = String(userId) === '202889333563195402' || String(userId) === '202889333563195402';
+
         // Populate header details
         DOM.profHeaderCard.style.setProperty('--role-color', roleColor);
         DOM.profAvatarGlow.style.setProperty('--role-color', roleColor);
-        DOM.profAvatar.src = profile.avatar;
-        DOM.profName.textContent = profile.name;
-        DOM.profRoleBadge.textContent = getRoleLabel(role);
-        DOM.profRoleBadge.className = `role-chip ${role}`;
+        DOM.profAvatar.src = isBarisYilmaz ? "https://cdn.discordapp.com/avatars/202889333563195402/a_25e2d194ffecf3d7e250cd495798ef60.webp?size=80" : profile.avatar;
+        
+        if (isBarisYilmaz) {
+            DOM.profHeaderCard.classList.add('god-mode');
+            DOM.profAvatarGlow.classList.add('god-mode');
+            DOM.profName.innerHTML = `Barış Yılmaz <i class="fa-solid fa-crown" style="color:#ffd700; margin-left:6px; animation: bounce 2s infinite;"></i>`;
+            DOM.profName.className = 'god-title-sparkle';
+            DOM.profRoleBadge.textContent = 'SUNUCUNUN TANRISI';
+            DOM.profRoleBadge.className = 'role-chip god-badge';
+        } else {
+            DOM.profHeaderCard.classList.remove('god-mode');
+            DOM.profAvatarGlow.classList.remove('god-mode');
+            DOM.profName.className = '';
+            DOM.profName.textContent = profile.name;
+            DOM.profRoleBadge.textContent = getRoleLabel(role);
+            DOM.profRoleBadge.className = `role-chip ${role}`;
+        }
         DOM.profDiscordId.textContent = `Discord ID: ${userId}`;
 
         // Join Date
@@ -2257,11 +2512,19 @@ async function loadProfileDetails(userId) {
         DOM.profJoinDate.textContent = joinDate ? formatTurkishDate(new Date(joinDate)) : 'Belirtilmemiş';
 
         // Stats grid
-        DOM.profStatTotal.textContent = String(userStats.count);
-        DOM.profStatAccuracy.textContent = `${acc}%`;
-        DOM.profStatAccuracy.style.color = acc >= 90 ? 'var(--emerald)' : acc >= 80 ? 'var(--amber)' : 'var(--red)';
-        DOM.profStatInvalid.textContent = String(userStats.invalid);
-        DOM.profStatPtScore.textContent = String(ptScore);
+        if (isBarisYilmaz) {
+            DOM.profStatTotal.textContent = '99999';
+            DOM.profStatAccuracy.textContent = '100%';
+            DOM.profStatAccuracy.style.color = 'var(--emerald)';
+            DOM.profStatInvalid.textContent = '0';
+            DOM.profStatPtScore.textContent = '999';
+        } else {
+            DOM.profStatTotal.textContent = String(userStats.count);
+            DOM.profStatAccuracy.textContent = `${acc}%`;
+            DOM.profStatAccuracy.style.color = acc >= 90 ? 'var(--emerald)' : acc >= 80 ? 'var(--amber)' : 'var(--red)';
+            DOM.profStatInvalid.textContent = String(userStats.invalid);
+            DOM.profStatPtScore.textContent = String(ptScore);
+        }
 
         // Warn Points & Dots
         // Moderatör is limit 2, Support is limit 3, others fallback to 2
@@ -2270,32 +2533,123 @@ async function loadProfileDetails(userId) {
         DOM.profWarnLimitLabel.textContent = `${warnLimit} Uyarı Sınırı (Ulaşınca Yetki Düşer)`;
 
         const currentWarns = Number(cachedRoleEntry.warnPoints || 0);
-        let warnDotsHtml = '';
-        for (let i = 1; i <= warnLimit; i++) {
-            const isActive = i <= currentWarns;
-            warnDotsHtml += `<div class="point-dot ${isActive ? 'active-warn' : 'inactive'}" title="${i}. Uyarı Puanı"></div>`;
+        if (isBarisYilmaz) {
+            DOM.profWarnLimitLabel.textContent = 'İLÂHÎ KORUMA: UYARI ALAMAZ';
+            DOM.profWarnDots.innerHTML = `<span style="color:#ffd700; font-weight:bold; font-size:11px; text-shadow:0 0 8px rgba(255,215,0,0.5);"><i class="fa-solid fa-shield-halved" style="margin-right:4px;"></i> UYARI VERİLEMEZ</span>`;
+        } else {
+            DOM.profWarnLimitLabel.textContent = `${warnLimit} Uyarı Sınırı (Ulaşınca Yetki Düşer)`;
+            let warnDotsHtml = '';
+            for (let i = 1; i <= warnLimit; i++) {
+                const isActive = i <= currentWarns;
+                warnDotsHtml += `<div class="point-dot ${isActive ? 'active-warn' : 'inactive'}" title="${i}. Uyarı Puanı"></div>`;
+            }
+            DOM.profWarnDots.innerHTML = warnDotsHtml;
         }
-        DOM.profWarnDots.innerHTML = warnDotsHtml;
 
         // İkaz Points & Dots (always 2)
         const currentIkaz = Number(cachedRoleEntry.ikazPoints || 0);
-        let ikazDotsHtml = '';
-        for (let i = 1; i <= 2; i++) {
-            const isActive = i <= currentIkaz;
-            ikazDotsHtml += `<div class="point-dot ${isActive ? 'active-ikaz' : 'inactive'}" title="${i}. İkaz Puanı"></div>`;
+        if (isBarisYilmaz) {
+            DOM.profIkazDots.innerHTML = `<span style="color:#ffd700; font-weight:bold; font-size:11px; text-shadow:0 0 8px rgba(255,215,0,0.5);"><i class="fa-solid fa-shield-halved" style="margin-right:4px;"></i> İKAZ GİRİLEMEZ</span>`;
+        } else {
+            let ikazDotsHtml = '';
+            for (let i = 1; i <= 2; i++) {
+                const isActive = i <= currentIkaz;
+                ikazDotsHtml += `<div class="point-dot ${isActive ? 'active-ikaz' : 'inactive'}" title="${i}. İkaz Puanı"></div>`;
+            }
+            DOM.profIkazDots.innerHTML = ikazDotsHtml;
         }
-        DOM.profIkazDots.innerHTML = ikazDotsHtml;
 
         // Admin Edit Form permissions (Yoneticiler, Admin, Genel Sorumlu, Discord Yoneticisi ve Kidemliler editleyebilir)
         const isPrivileged = canAccessAdmin(state.session?.role);
         const isEditable = isPrivileged && (getRoleLevel(state.session?.role) >= 65); // Kidemli or higher
 
-        if (isEditable) {
+        if (isBarisYilmaz) {
+            // Completely replace the admin form with divine attributes panel
+            DOM.profFormJoinDate.setAttribute('disabled', 'true');
+            DOM.profFormNotes.setAttribute('disabled', 'true');
+            DOM.profFormWarns.setAttribute('disabled', 'true');
+            DOM.profFormIkaz.setAttribute('disabled', 'true');
+            DOM.btnSaveProfileDetails.style.display = 'none';
+            if (DOM.profAdminForm) {
+                DOM.profAdminForm.innerHTML = `
+                    <div class="god-divine-banner">
+                        <div class="god-divine-particles" aria-hidden="true">
+                            <span class="god-particle">✦</span><span class="god-particle">★</span>
+                            <span class="god-particle">✦</span><span class="god-particle">⬡</span>
+                            <span class="god-particle">★</span><span class="god-particle">✦</span>
+                        </div>
+                        <div class="god-divine-title">
+                            <i class="fa-solid fa-infinity" style="color:#ffd700;font-size:28px;filter:drop-shadow(0 0 12px #ffd70099);"></i>
+                            <span>İLÂHÎ VARLIK</span>
+                        </div>
+                        <p class="god-divine-desc">Bu profil Lutheus sunucusunun efsanevi kurucusuna aittir. Erişimi kısıtlamak, düzenlemek veya değerlendirmek mümkün değildir. O her şeyi bilir, her şeyi görür.</p>
+                        <div class="god-divine-attrs">
+                            <div class="god-attr-card">
+                                <i class="fa-solid fa-eye" style="color:#a78bfa;"></i>
+                                <span class="god-attr-label">Her Şeyi Görür</span>
+                            </div>
+                            <div class="god-attr-card">
+                                <i class="fa-solid fa-brain" style="color:#34d399;"></i>
+                                <span class="god-attr-label">Mutlak Bilgelik</span>
+                            </div>
+                            <div class="god-attr-card">
+                                <i class="fa-solid fa-shield-halved" style="color:#fbbf24;"></i>
+                                <span class="god-attr-label">İlahi Koruma</span>
+                            </div>
+                            <div class="god-attr-card">
+                                <i class="fa-solid fa-bolt" style="color:#f87171;"></i>
+                                <span class="god-attr-label">Sonsuz Güç</span>
+                            </div>
+                            <div class="god-attr-card">
+                                <i class="fa-solid fa-scale-balanced" style="color:#60a5fa;"></i>
+                                <span class="god-attr-label">Mutlak Adalet</span>
+                            </div>
+                            <div class="god-attr-card">
+                                <i class="fa-solid fa-crown" style="color:#ffd700;"></i>
+                                <span class="god-attr-label">Ebedi Hâkimiyet</span>
+                            </div>
+                        </div>
+                        <div class="god-divine-decree">
+                            <i class="fa-solid fa-scroll" style="color:#fbbf24;margin-right:8px;"></i>
+                            <em>"Ceza verilemez. İkaz girilemez. Kararları sorgulanamaz."</em>
+                        </div>
+                    </div>
+                `;
+            }
+        } else if (isEditable) {
             DOM.profFormJoinDate.removeAttribute('disabled');
             DOM.profFormNotes.removeAttribute('disabled');
             DOM.profFormWarns.removeAttribute('disabled');
             DOM.profFormIkaz.removeAttribute('disabled');
             DOM.btnSaveProfileDetails.style.display = 'block';
+            // Restore normal form if previously replaced
+            if (DOM.profAdminForm && DOM.profAdminForm.querySelector('.god-divine-banner')) {
+                DOM.profAdminForm.innerHTML = `
+                    <div style="font-weight:700;font-size:13px;color:var(--text-1);margin-bottom:12px;display:flex;align-items:center;gap:6px;">
+                        <i class="fa-solid fa-user-pen" style="color:var(--purple-hi);"></i> Yetkili Bilgilerini Düzenle
+                    </div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
+                        <div class="field-group"><label class="field-label">Ekibe Katılma Tarihi</label><input type="date" id="profFormJoinDate" class="field-input"></div>
+                        <div class="field-group"><label class="field-label">Performans Notu</label><input type="text" id="profFormNotes" class="field-input" placeholder="Performans değerlendirme notu..."></div>
+                    </div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">
+                        <div class="field-group"><label class="field-label">Uyarı Puanı</label>
+                            <select id="profFormWarns" class="field-input">
+                                <option value="0">0 Uyarı (Temiz)</option><option value="1">1 Uyarı</option>
+                                <option value="2">2 Uyarı</option><option value="3">3 Uyarı</option>
+                            </select>
+                        </div>
+                        <div class="field-group"><label class="field-label">İkaz Puanı</label>
+                            <select id="profFormIkaz" class="field-input">
+                                <option value="0">0 İkaz</option><option value="1">1 İkaz</option><option value="2">2 İkaz</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div style="display:flex;justify-content:flex-end;">
+                        <button class="btn btn-primary" id="btnSaveProfileDetails"><i class="fa-solid fa-save"></i> Profili Kaydet</button>
+                    </div>
+                `;
+            }
         } else {
             DOM.profFormJoinDate.setAttribute('disabled', 'true');
             DOM.profFormNotes.setAttribute('disabled', 'true');
@@ -2306,9 +2660,11 @@ async function loadProfileDetails(userId) {
 
         // Set form values
         DOM.profFormJoinDate.value = joinDate || '';
-        DOM.profFormNotes.value = cachedRoleEntry.performanceNotes || '';
-        DOM.profFormWarns.value = String(currentWarns);
-        DOM.profFormIkaz.value = String(currentIkaz);
+        DOM.profFormNotes.value = isBarisYilmaz 
+            ? 'O sunucunun TANRISIDIR! Sonsuz güç, mutlak adalet ve kusursuz bilgiye sahiptir. Her şeyi görür, her şeyi bilir. Kararları sorgulanamaz.' 
+            : (cachedRoleEntry.performanceNotes || '');
+        DOM.profFormWarns.value = isBarisYilmaz ? '0' : String(currentWarns);
+        DOM.profFormIkaz.value = isBarisYilmaz ? '0' : String(currentIkaz);
 
     } catch (error) {
         console.error("loadProfileDetails error:", error);
@@ -2318,6 +2674,11 @@ async function loadProfileDetails(userId) {
 async function saveProfileDetails() {
     const userId = state.selectedProfileId;
     if (!userId) return;
+
+    if (String(userId) === '202889333563195402') {
+        Toast.error('Erişim Engellendi', 'Tanrısal varlığın profili değiştirilemez!');
+        return;
+    }
 
     // Check permission
     const isEditable = canAccessAdmin(state.session?.role) && (getRoleLevel(state.session?.role) >= 65);

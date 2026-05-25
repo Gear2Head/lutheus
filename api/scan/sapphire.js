@@ -44,21 +44,23 @@ module.exports = async function handler(req, res) {
         const db = getDb();
         const body = req.body || {};
         const jobId = `sapphire_${Date.now()}`;
+        const hasWebhook = Boolean(process.env.SAPPHIRE_SCAN_WEBHOOK_URL);
         const job = {
             id: jobId,
             type: 'sapphire_scan',
-            status: process.env.SAPPHIRE_SCAN_WEBHOOK_URL ? 'queued' : 'failed',
+            status: 'queued',
             guildId: String(body.guildId || process.env.LUTHEUS_GUILD_ID || '1223431616081166336'),
             pages: Array.isArray(body.pages) ? body.pages.slice(0, 10) : [1],
             scanMode: body.scanMode || 'fast',
             requestedBy: `discord:${actor.discordId}`,
             createdAt: new Date().toISOString(),
-            error: process.env.SAPPHIRE_SCAN_WEBHOOK_URL ? null : 'SAPPHIRE_WEB_WORKER_NOT_CONFIGURED'
+            delivery: hasWebhook ? 'webhook' : 'firestore_queue',
+            error: null
         };
 
         await db.collection('scanRuns').doc(jobId).set(job);
 
-        if (process.env.SAPPHIRE_SCAN_WEBHOOK_URL) {
+        if (hasWebhook) {
             await fetch(process.env.SAPPHIRE_SCAN_WEBHOOK_URL, {
                 method: 'POST',
                 headers: {
@@ -72,7 +74,7 @@ module.exports = async function handler(req, res) {
         }
 
         return res.status(200).json({
-            success: job.status === 'queued',
+            success: true,
             jobId,
             status: job.status,
             error: job.error

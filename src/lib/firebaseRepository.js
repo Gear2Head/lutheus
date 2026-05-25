@@ -92,6 +92,10 @@ export const FirebaseRepository = {
         return FirestoreRest.listDocuments('users', { pageSize: 200 });
     },
 
+    async listUserRegistry() {
+        return FirestoreRest.listDocuments('userRegistry', { pageSize: 500 });
+    },
+
     async listRoleCache() {
         return FirestoreRest.listDocuments('roleCache', { pageSize: 200 });
     },
@@ -112,8 +116,66 @@ export const FirebaseRepository = {
         }
         if (saved.length) {
             await this.addAuditLog('cases_upserted', { guildId, count: saved.length }, actor);
+            await this.saveUserProfilesFromCases(cases, actor).catch((error) => {
+                console.warn('Lutheus: Failed to persist scan profile avatars:', error.message);
+            });
         }
         return saved;
+    },
+
+    // SECTION: FIRESTORE_SYNC
+    // PURPOSE: Sapphire taramasında görülen Discord avatar linklerini DB'ye kalıcı yazar.
+    async saveUserProfilesFromCases(cases, actor = null) {
+        const profiles = new Map();
+        const collect = (id, name, avatar, source) => {
+            const discordId = String(id || '').trim();
+            if (!/^\d{17,20}$/.test(discordId)) return;
+            const previous = profiles.get(discordId) || {};
+            profiles.set(discordId, {
+                ...previous,
+                id: discordId,
+                discordId,
+                identityKey: `discord:${discordId}`,
+                name: name || previous.name || 'Bilinmiyor',
+                displayName: name || previous.displayName || previous.name || 'Bilinmiyor',
+                avatar: avatar || previous.avatar || null,
+                source: previous.source || source,
+                updatedAt: new Date().toISOString(),
+                lastSeen: Date.now()
+            });
+        };
+
+        for (const entry of cases || []) {
+            collect(entry.authorId, entry.authorName, entry.authorAvatar, 'sapphire-issuer');
+            collect(entry.userId, entry.user, entry.userAvatar, 'sapphire-target');
+        }
+
+        if (!profiles.size) return [];
+
+        const roleCache = await this.listRoleCache().catch(() => []);
+        const roleByDiscordId = new Map(roleCache.map((entry) => [
+            entry.discordId || String(entry.identityKey || entry.id || '').replace(/^discord:/, ''),
+            entry
+        ]));
+
+        const writes = [];
+        for (const profile of profiles.values()) {
+            writes.push(FirestoreRest.setDocument(`userRegistry/${safeDocId(profile.discordId)}`, profile));
+            const roleEntry = roleByDiscordId.get(profile.discordId);
+            if (roleEntry?.identityKey && profile.avatar) {
+                writes.push(FirestoreRest.setDocument(`roleCache/${safeDocId(roleEntry.identityKey)}`, {
+                    ...roleEntry,
+                    avatar: profile.avatar,
+                    displayName: roleEntry.displayName || profile.displayName,
+                    avatarUpdatedAt: new Date().toISOString(),
+                    updatedAt: new Date().toISOString()
+                }));
+            }
+        }
+
+        const result = await Promise.all(writes);
+        await this.addAuditLog('profile_avatars_synced', { count: profiles.size }, actor);
+        return result;
     },
 
     async listCases() {

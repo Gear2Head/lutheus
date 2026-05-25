@@ -2016,9 +2016,10 @@ async function loadData() {
         await FirebaseRepository.seedGoogleAllowlist(state.session.profile).catch(() => null);
     }
 
-    const [cases, registry, staffDirectory, rules, pointtrainRun, userInfo] = await Promise.all([
+    const [cases, registry, remoteRegistry, staffDirectory, rules, pointtrainRun, userInfo] = await Promise.all([
         Storage.getCases(),
         Storage.getUserRegistry(),
+        FirebaseRepository.listUserRegistry().catch(() => []),
         Storage.getStaffDirectory(),
         Storage.getDynamicRules(),
         Storage.getLatestPointtrainRun(),
@@ -2026,7 +2027,12 @@ async function loadData() {
     ]);
 
     state.allCases = cases;
-    state.userRegistry = registry;
+    state.userRegistry = {
+        ...registry,
+        ...Object.fromEntries((remoteRegistry || [])
+            .filter((entry) => entry.discordId || entry.id)
+            .map((entry) => [entry.discordId || entry.id, entry]))
+    };
     state.staffDirectory = staffDirectory;
     state.dynamicRules = rules;
     CUKEngine.setRules(state.dynamicRules);

@@ -126,19 +126,32 @@ async function syncModeratorProfiles(actor = 'system') {
                 await doc.ref.update({
                     displayName,
                     avatar: avatarUrl,
+                    avatarUpdatedAt: new Date().toISOString(),
                     updatedAt: new Date().toISOString(),
                     updatedBy: 'discord-bot-sync'
                 });
 
                 const regRef = db.collection('userRegistry').doc(discordId);
-                const regSnap = await regRef.get();
-                if (regSnap.exists) {
-                    await regRef.update({
-                        name: displayName,
-                        avatar: avatarUrl,
-                        lastSeen: Date.now()
-                    });
-                }
+                await regRef.set({
+                    id: discordId,
+                    discordId,
+                    identityKey: `discord:${discordId}`,
+                    name: displayName,
+                    displayName,
+                    avatar: avatarUrl,
+                    source: 'discord-bot-sync',
+                    lastSeen: Date.now(),
+                    updatedAt: new Date().toISOString()
+                }, { merge: true });
+
+                await db.collection('users').doc(`discord:${discordId}`).set({
+                    uid: `discord:${discordId}`,
+                    provider: 'discord',
+                    discordId,
+                    displayName,
+                    avatar: avatarUrl,
+                    updatedAt: new Date().toISOString()
+                }, { merge: true });
                 syncCount++;
             } catch (userErr: any) {
                 console.warn(`Discord Bot: Failed to fetch user ${discordId}:`, userErr.message);

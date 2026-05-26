@@ -93,8 +93,8 @@ async function registerSlashCommands() {
     }
     const rest = new REST({ version: '10' }).setToken(botToken);
     try {
-        const clientAppId = process.env.DISCORD_CLIENT_ID || '1500551629768888542';
-        console.log('Discord Bot: Registering slash commands...');
+        const clientAppId = process.env.DISCORD_CLIENT_ID || client.user?.id || '1500551629768888542';
+        console.log(`Discord Bot: Registering slash commands for App ID ${clientAppId}...`);
         await rest.put(
             Routes.applicationGuildCommands(clientAppId, guildId),
             { body: commands.map(cmd => cmd.data.toJSON()) }

@@ -521,7 +521,7 @@ function resolveStaffProfile(source = {}) {
         id: id || profile.discordId || profile.discordUserId || profile.sapphireAuthorId || '',
         name: displayName,
         avatar: resolveAvatar(profile.avatar || caseAvatar || source.authorAvatar || source.avatar),
-        role: normalizeRole(profile.role || source.role || 'moderator'),
+        role: normalizeRole(profile.role || source.role || 'pending'),
         missing: !id && !displayName
     };
 }
@@ -1281,7 +1281,7 @@ function renderManagement() {
 
     DOM.mgmtModList.innerHTML = moderators.length ? moderators.map((entry) => {
         const profile = entry;
-        const role = profile.role || entry.role || 'moderator';
+        const role = profile.role || entry.role || 'pending';
         const roleColor = getRoleColor(role);
         const roleLabel = getRoleLabel(role);
         const id = profile.id || entry.id || '';

@@ -375,8 +375,10 @@ export const Storage = {
                 caseMap.set(id, normalizeCaseEntry({ ...entry, id }));
             }
         }
-
-        return Array.from(caseMap.values()).sort(compareCases);
+        const allCases = Array.from(caseMap.values()).sort(compareCases);
+        await this.updateUserRegistry(allCases);
+        await this.upsertStaffDirectoryFromCases(allCases);
+        return allCases;
     },
 
     async setSyncCases(cases) {
@@ -774,16 +776,19 @@ export const Storage = {
         for (const member of roleCache) {
             const memberId = member.discordId || String(member.identityKey || member.id || '').replace(/^discord:/, '');
             if (!memberId) continue;
-            if (!directory[memberId]) {
-                directory[memberId] = {
-                    discordUserId: memberId,
-                    sapphireAuthorId: memberId,
-                    displayName: member.displayName || member.name || 'Yetkili',
-                    role: normalizeRole(member.role),
-                    aliases: [member.displayName || member.name].filter(Boolean),
-                    source: 'lutheus-rolecache',
-                    updatedAt: new Date().toISOString()
-                };
+            const current = directory[memberId];
+            const next = {
+                discordUserId: memberId,
+                sapphireAuthorId: memberId,
+                displayName: member.displayName || member.name || current?.displayName || 'Yetkili',
+                avatar: member.avatar || current?.avatar || null,
+                role: normalizeRole(member.role),
+                aliases: Array.from(new Set([...(current?.aliases || []), member.displayName || member.name].filter(Boolean))),
+                source: current?.source || 'lutheus-rolecache',
+                updatedAt: new Date().toISOString()
+            };
+            if (!current || JSON.stringify(current) !== JSON.stringify(next)) {
+                directory[memberId] = next;
                 changed = true;
             }
         }

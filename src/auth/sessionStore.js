@@ -1,37 +1,37 @@
 const SESSION_KEY = 'lutheusAuthSession';
-const hasChromeStorage = () => typeof chrome !== 'undefined' && chrome.storage?.local;
+const isExtension = typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local;
 
 function storageGet(key) {
-    return new Promise((resolve) => {
-        if (!hasChromeStorage()) {
-            const raw = window.localStorage.getItem(key);
-            resolve(raw ? JSON.parse(raw) : null);
-            return;
+    if (isExtension) {
+        return new Promise((resolve) => {
+            chrome.storage.local.get([key], (result) => resolve(result[key] || null));
+        });
+    } else {
+        const item = localStorage.getItem(key);
+        try {
+            return Promise.resolve(item ? JSON.parse(item) : null);
+        } catch (_) {
+            return Promise.resolve(item);
         }
-        chrome.storage.local.get([key], (result) => resolve(result[key] || null));
-    });
+    }
 }
 
 function storageSet(key, value) {
-    return new Promise((resolve) => {
-        if (!hasChromeStorage()) {
-            window.localStorage.setItem(key, JSON.stringify(value));
-            resolve();
-            return;
-        }
-        chrome.storage.local.set({ [key]: value }, resolve);
-    });
+    if (isExtension) {
+        return new Promise((resolve) => chrome.storage.local.set({ [key]: value }, resolve));
+    } else {
+        localStorage.setItem(key, typeof value === 'object' ? JSON.stringify(value) : value);
+        return Promise.resolve();
+    }
 }
 
 function storageRemove(key) {
-    return new Promise((resolve) => {
-        if (!hasChromeStorage()) {
-            window.localStorage.removeItem(key);
-            resolve();
-            return;
-        }
-        chrome.storage.local.remove([key], resolve);
-    });
+    if (isExtension) {
+        return new Promise((resolve) => chrome.storage.local.remove([key], resolve));
+    } else {
+        localStorage.removeItem(key);
+        return Promise.resolve();
+    }
 }
 
 export async function getStoredSession() {

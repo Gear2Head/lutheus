@@ -93,7 +93,7 @@ export const FirebaseRepository = {
     },
 
     async listUserRegistry() {
-        return FirestoreRest.listDocuments('userRegistry', { pageSize: 500 });
+        return FirestoreRest.listDocuments('users', { pageSize: 500 });
     },
 
     async listRoleCache() {
@@ -160,7 +160,6 @@ export const FirebaseRepository = {
 
         const writes = [];
         for (const profile of profiles.values()) {
-            writes.push(FirestoreRest.setDocument(`userRegistry/${safeDocId(profile.discordId)}`, profile));
             const roleEntry = roleByDiscordId.get(profile.discordId);
             if (roleEntry?.identityKey && profile.avatar) {
                 writes.push(FirestoreRest.setDocument(`roleCache/${safeDocId(roleEntry.identityKey)}`, {

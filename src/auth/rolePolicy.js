@@ -205,7 +205,8 @@ export function canEditCuk(role) {
 }
 
 export function canAccessAdmin(role) {
-    return isPrivilegedRole(role);
+    const normalized = normalizeRole(role);
+    return !['viewer', 'pending', 'blocked'].includes(normalized);
 }
 
 export function canRunAi(role) {

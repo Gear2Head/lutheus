@@ -21,7 +21,7 @@
     "dev:api": "npm run dev --workspace=apps/backend",
     "dev:bot": "npm run dev --workspace=apps/discord-bot",
     "build:bot": "npm run build --workspace=apps/discord-bot",
-    "start:bot": "npm run start --workspace=apps/discord-bot"
+    "start:bot": "npm run build --workspace=apps/discord-bot && npm run start --workspace=apps/discord-bot"
   },
   "dependencies": {
     "@google-cloud/firestore": "^8.6.0",

@@ -60,6 +60,18 @@ function parseHashOrQuery(url) {
     return params;
 }
 
+function parseJwtPayload(token) {
+    try {
+        const payload = String(token || '').split('.')[1];
+        if (!payload) return {};
+        const normalized = payload.replace(/-/g, '+').replace(/_/g, '/');
+        const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=');
+        return JSON.parse(atob(padded));
+    } catch (_error) {
+        return {};
+    }
+}
+
 function extensionRedirectUrl(path) {
     return chrome.identity.getRedirectURL(path);
 }
@@ -110,6 +122,7 @@ async function signInWithCustomToken(customToken, oauthProfile = {}) {
         token: customToken,
         returnSecureToken: true
     });
+    const tokenClaims = parseJwtPayload(payload.idToken);
 
     const rawAvatar = oauthProfile.avatar || null;
     const discordId = oauthProfile.discordId || oauthProfile.id || null;
@@ -131,10 +144,11 @@ async function signInWithCustomToken(customToken, oauthProfile = {}) {
         displayName: oauthProfile.globalName || oauthProfile.global_name || oauthProfile.username || uid,
         avatar: discordAvatarUrl,
         email: oauthProfile.email || null,
-        status: oauthProfile.status || 'active'
+        status: tokenClaims.status || oauthProfile.status || 'active'
     };
-    const role = oauthProfile.role
-        ? normalizeRole(oauthProfile.role)
+    const serverRole = tokenClaims.role || oauthProfile.role || null;
+    const role = serverRole
+        ? normalizeRole(serverRole)
         : await resolveRole(profile, payload.idToken).catch((error) => {
             if (error.message === 'GOOGLE_EMAIL_NOT_ALLOWLISTED') throw error;
             return ROLES.PENDING;
@@ -153,7 +167,7 @@ async function signInWithCustomToken(customToken, oauthProfile = {}) {
     try {
         await FirebaseRepository.upsertUser(session.profile);
     } catch (error) {
-        if (profile.provider === 'google' && !oauthProfile.role) {
+        if (profile.provider === 'google' && !serverRole) {
             console.error("upsertUser failed during Google sign-in:", error);
             throw error;
         }

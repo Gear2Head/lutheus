@@ -105,7 +105,8 @@ module.exports = async function handler(req, res) {
         const firebaseToken = await auth.createCustomToken(uid, {
             provider: 'google',
             email,
-            role
+            role,
+            status: profile.status
         });
 
         const url = new URL(redirectUri);

@@ -41,9 +41,7 @@
     "node_modules",
     "dist",
     "**/*.spec.ts",
-    "**/*.test.ts",
-    "apps",
-    "packages"
+    "**/*.test.ts"
   ],
   "include": [
     "next-env.d.ts",

@@ -4,7 +4,7 @@
 // PURPOSE: Sidebar navigation mimicking Sapphire's side-bar style but using Lutheus themes.
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { useBotDashboardStore } from "@/store/bot-dashboard-store";
 import {
   Home,
@@ -25,39 +25,41 @@ import {
 } from "lucide-react";
 
 export function GuildSidebar() {
-  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const activeTab = searchParams.get("tab") || "home";
   const { selectedGuild, sidebarCollapsed, setSidebarCollapsed } = useBotDashboardStore();
 
   const guildId = selectedGuild?.id || "default";
 
   // Menu lists
   const primaryMenu = [
-    { name: "Home", href: `/bot/${guildId}/home`, icon: Home },
-    { name: "General Settings", href: `/bot/${guildId}/general-settings`, icon: Settings },
-    { name: "Commands", href: `/bot/${guildId}/commands`, icon: Terminal },
-    { name: "Messages", href: `/bot/${guildId}/messages`, icon: MessageSquare },
-    { name: "Custom Branding", href: `/bot/${guildId}/custom-branding`, icon: Sparkles },
+    { name: "Home", tab: "home", icon: Home },
+    { name: "General Settings", tab: "general-settings", icon: Settings },
+    { name: "Commands", tab: "commands", icon: Terminal },
+    { name: "Messages", tab: "messages", icon: MessageSquare },
+    { name: "Custom Branding", tab: "custom-branding", icon: Sparkles },
   ];
 
   const modulesMenu = [
-    { name: "Auto Moderation", href: `/bot/${guildId}/auto-moderation`, icon: ShieldAlert },
-    { name: "Moderation", href: `/bot/${guildId}/moderation`, icon: Hammer },
-    { name: "Social Notifications", href: `/bot/${guildId}/social-notifications`, icon: Bell },
-    { name: "Join Roles", href: `/bot/${guildId}/join-roles`, icon: UserPlus },
-    { name: "Reaction Roles", href: `/bot/${guildId}/reaction-roles`, icon: Smile },
-    { name: "Welcome Messages", href: `/bot/${guildId}/welcome-messages`, icon: MessageSquare },
-    { name: "Role Connections", href: `/bot/${guildId}/role-connections`, icon: FolderLock },
-    { name: "Logging", href: `/bot/${guildId}/logging`, icon: ClipboardList },
+    { name: "Auto Moderation", tab: "auto-moderation", icon: ShieldAlert },
+    { name: "Moderation", tab: "moderation", icon: Hammer },
+    { name: "Social Notifications", tab: "social-notifications", icon: Bell },
+    { name: "Join Roles", tab: "join-roles", icon: UserPlus },
+    { name: "Reaction Roles", tab: "reaction-roles", icon: Smile },
+    { name: "Welcome Messages", tab: "welcome-messages", icon: MessageSquare },
+    { name: "Role Connections", tab: "role-connections", icon: FolderLock },
+    { name: "Logging", tab: "logging", icon: ClipboardList },
   ];
 
-  const renderLink = (item: { name: string; href: string; icon: any }) => {
+  const renderLink = (item: { name: string; tab: string; icon: any }) => {
     const Icon = item.icon;
-    const isActive = pathname === item.href;
+    const isActive = activeTab === item.tab;
+    const href = `/bot/${guildId}?tab=${item.tab}`;
 
     return (
       <Link
         key={item.name}
-        href={item.href}
+        href={href}
         className={`group flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ${
           isActive
             ? "bg-[#66fcf1]/10 text-[#66fcf1] border-l-2 border-l-[#66fcf1] shadow-[inset_4px_0_10px_rgba(102,252,241,0.05)]"

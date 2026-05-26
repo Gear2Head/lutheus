@@ -93,15 +93,47 @@ async function registerSlashCommands() {
     }
     const rest = new REST({ version: '10' }).setToken(botToken);
     try {
-        const clientAppId = client.user?.id || process.env.DISCORD_CLIENT_ID || '1500551629768888542';
-        console.log(`Discord Bot: Registering slash commands for App ID ${clientAppId}...`);
-        await rest.put(
-            Routes.applicationGuildCommands(clientAppId, guildId),
-            { body: commands.map(cmd => cmd.data.toJSON()) }
-        );
-        console.log('Discord Bot: Slash commands registered successfully!');
+        const clientAppId = client.application?.id || client.user?.id || process.env.DISCORD_CLIENT_ID;
+        if (!clientAppId) {
+            console.warn('Discord Bot: DISCORD_CLIENT_ID could not be resolved. Skipping command registration.');
+            return;
+        }
+
+        let targetGuildIds = guildId
+            ? [guildId]
+            : [...client.guilds.cache.keys()];
+
+        if (guildId && !client.guilds.cache.has(guildId)) {
+            console.warn(`Discord Bot: DISCORD_GUILD_ID ${guildId} is not in joined guild cache. Falling back to joined guilds.`);
+            targetGuildIds = [...client.guilds.cache.keys()];
+        }
+
+        if (targetGuildIds.length === 0) {
+            console.warn('Discord Bot: No joined guilds found. Skipping command registration.');
+            return;
+        }
+
+        const commandBody = commands.map(cmd => cmd.data.toJSON());
+        console.log(`Discord Bot: Registering slash commands for App ID ${clientAppId} in guilds: ${targetGuildIds.join(', ')}`);
+
+        for (const targetGuildId of targetGuildIds) {
+            try {
+                await rest.put(
+                    Routes.applicationGuildCommands(clientAppId, targetGuildId),
+                    { body: commandBody }
+                );
+                console.log(`Discord Bot: Slash commands registered for guild ${targetGuildId}.`);
+            } catch (error: unknown) {
+                const discordError = error as { code?: string | number; status?: string | number };
+                if (String(discordError.code) === '50001' || String(discordError.status) === '403') {
+                    console.error(`Discord Bot: Slash command registration missing access for guild ${targetGuildId}. Reinvite bot with applications.commands scope and verify DISCORD_GUILD_ID.`);
+                } else {
+                    console.error(`Discord Bot: Slash command registration failed for guild ${targetGuildId}:`, error);
+                }
+            }
+        }
     } catch (error) {
-        console.error('Discord Bot: Slash command registration failed:', error);
+        console.error('Discord Bot: Slash command registration setup failed:', error);
     }
 }
 

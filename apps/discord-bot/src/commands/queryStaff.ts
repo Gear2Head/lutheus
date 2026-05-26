@@ -44,7 +44,7 @@ export const QueryStaffCommand = {
             let roleLabel = 'Moderatör';
             let customName = '';
             if (targetId) {
-                const cacheSnap = await db.collection('roleCache').doc(`discord_${targetId}`).get();
+                const cacheSnap = await db.collection('roleCache').doc(`discord:${targetId}`).get();
                 if (cacheSnap.exists) {
                     const cache = cacheSnap.data();
                     if (cache) {

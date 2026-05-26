@@ -18,7 +18,16 @@ if (fs.existsSync(envPath)) {
     }
 }
 
-const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
+let serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
+if (serviceAccountJson) {
+    serviceAccountJson = serviceAccountJson.trim();
+    if (serviceAccountJson.startsWith("'") && serviceAccountJson.endsWith("'")) {
+        serviceAccountJson = serviceAccountJson.slice(1, -1);
+    }
+    if (serviceAccountJson.startsWith('"') && serviceAccountJson.endsWith('"')) {
+        serviceAccountJson = serviceAccountJson.slice(1, -1);
+    }
+}
 const firebaseProjectId = process.env.FIREBASE_PROJECT_ID || process.env.GOOGLE_CLOUD_PROJECT || process.env.GCLOUD_PROJECT;
 const firebaseClientEmail = process.env.FIREBASE_CLIENT_EMAIL;
 const firebasePrivateKey = process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n');
@@ -42,7 +51,8 @@ if (admin.apps.length === 0) {
             const cleanedJson = serviceAccountJson.replace(/\\n/g, '\n');
             const serviceAccount = JSON.parse(cleanedJson);
             admin.initializeApp({
-                credential: admin.credential.cert(serviceAccount)
+                credential: admin.credential.cert(serviceAccount),
+                projectId: serviceAccount.project_id || firebaseProjectId
             });
             console.log('Discord Bot: Initialized Firebase Admin cert successfully');
         } catch (e: unknown) {
@@ -54,7 +64,8 @@ if (admin.apps.length === 0) {
                         projectId: firebaseProjectId,
                         clientEmail: firebaseClientEmail,
                         privateKey: firebasePrivateKey
-                    })
+                    }),
+                    projectId: firebaseProjectId
                 });
                 console.log('Discord Bot: Initialized Firebase Admin split credentials successfully');
             } else {
@@ -67,7 +78,8 @@ if (admin.apps.length === 0) {
                 projectId: firebaseProjectId,
                 clientEmail: firebaseClientEmail,
                 privateKey: firebasePrivateKey
-            })
+            }),
+            projectId: firebaseProjectId
         });
         console.log('Discord Bot: Initialized Firebase Admin split credentials successfully');
     } else {

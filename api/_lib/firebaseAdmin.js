@@ -3,7 +3,14 @@ const admin = require('firebase-admin');
 function parseServiceAccount() {
     try {
         if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
-            const parsed = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
+            let jsonStr = process.env.FIREBASE_SERVICE_ACCOUNT_JSON.trim();
+            if (jsonStr.startsWith("'") && jsonStr.endsWith("'")) {
+                jsonStr = jsonStr.slice(1, -1);
+            }
+            if (jsonStr.startsWith('"') && jsonStr.endsWith('"')) {
+                jsonStr = jsonStr.slice(1, -1);
+            }
+            const parsed = JSON.parse(jsonStr);
             if (parsed.private_key) {
                 parsed.private_key = parsed.private_key.replace(/\\n/g, '\n');
             }

@@ -50,6 +50,22 @@ async function fetchDiscordUser(accessToken) {
     return payload;
 }
 
+const SEEDED_ROLE_MEMBERS = [
+    { id: '770612318689165313', role: 'yonetici', name: 'Yönetici' },
+    { id: '202889333563195402', role: 'yonetici', name: 'Yönetici' },
+    { id: '344121374320754709', role: 'yonetici', name: 'Yönetici' },
+    { id: '1109657614968692840', role: 'genel_sorumlu', name: 'Genel Sorumlu' },
+    { id: '962062500189331506', role: 'genel_sorumlu', name: 'Genel Sorumlu' },
+    { id: '860192567177773076', role: 'discord_yoneticisi', name: 'Discord Yöneticisi' },
+    { id: '758769576778661989', role: 'kidemli_discord_moderatoru', name: 'Gear_Head' },
+    { id: '529357404882599966', role: 'discord_moderatoru', name: 'Discord Moderatör' },
+    { id: '1360069068794626139', role: 'discord_destek_ekibi', name: 'Discord Destek Ekibi' },
+    { id: '707582959766732872', role: 'discord_destek_ekibi', name: 'Discord Destek Ekibi' },
+    { id: '1135248585802403901', role: 'discord_destek_ekibi', name: 'Discord Destek Ekibi' },
+    { id: '760895784153251841', role: 'discord_destek_ekibi', name: 'Discord Destek Ekibi' },
+    { id: '1375772029982085184', role: 'discord_destek_ekibi', name: 'Discord Destek Ekibi' }
+];
+
 async function resolveRole(db, discordId) {
     const bootstrapIds = String(process.env.BOOTSTRAP_DISCORD_IDS || '')
         .split(',')
@@ -59,8 +75,25 @@ async function resolveRole(db, discordId) {
 
     const docId = `discord:${discordId}`.toLowerCase().replace(/\//g, '_');
     const doc = await db.collection('roleCache').doc(docId).get();
-    if (!doc.exists) return 'pending';
-    return normalizeRole(doc.data().role || 'pending');
+    if (doc.exists) {
+        return normalizeRole(doc.data().role || 'pending');
+    }
+
+    const seeded = SEEDED_ROLE_MEMBERS.find(m => m.id === String(discordId));
+    if (seeded) {
+        await db.collection('roleCache').doc(docId).set({
+            identityKey: `discord:${discordId}`,
+            discordId: String(discordId),
+            displayName: seeded.name,
+            role: normalizeRole(seeded.role),
+            source: 'lutheus-autoseed',
+            updatedAt: new Date().toISOString()
+        }, { merge: true }).catch(() => null);
+
+        return normalizeRole(seeded.role);
+    }
+
+    return 'pending';
 }
 
 module.exports = async function handler(req, res) {

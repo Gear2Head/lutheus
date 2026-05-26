@@ -1,5 +1,5 @@
 const { getAuth, getDb, admin } = require('../_lib/firebaseAdmin');
-const { DEFAULT_GROQ_LIMITS, normalizeRole } = require('../_lib/roles');
+const { DEFAULT_GROQ_LIMITS, PERMISSIONS, hasPermission, normalizeRole } = require('../_lib/roles');
 
 function getBearer(req) {
     const header = req.headers.authorization || '';
@@ -35,6 +35,20 @@ async function consumeQuota(db, uid, role) {
         }, { merge: true });
     });
     return limit;
+}
+
+async function logUnauthorized(db, uid, role, permission, req) {
+    await db.collection('auditLogs').add({
+        userId: uid,
+        role,
+        action: 'unauthorized_access_attempt',
+        resource: 'api/ai/analyze',
+        permission,
+        method: req.method,
+        path: req.url || '/api/ai/analyze',
+        userAgent: req.headers['user-agent'] || null,
+        createdAt: new Date().toISOString()
+    }).catch(() => null);
 }
 
 async function callGroq(payload) {
@@ -84,6 +98,10 @@ module.exports = async function handler(req, res) {
         const db = getDb();
         const userDoc = await db.collection('users').doc(decoded.uid).get();
         const role = normalizeRole(userDoc.exists ? userDoc.data().role : decoded.role);
+        if (!hasPermission(role, PERMISSIONS.REPORTS_REVIEW)) {
+            await logUnauthorized(db, decoded.uid, role, PERMISSIONS.REPORTS_REVIEW, req);
+            return res.status(403).json({ ok: false, success: false, error: 'FORBIDDEN', message: 'Bu islem icin yetkiniz yok.' });
+        }
         await consumeQuota(db, decoded.uid, role);
         const analysis = await callGroq(req.body || {});
         res.status(200).json({ success: true, role, analysis });

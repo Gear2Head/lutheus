@@ -34,6 +34,94 @@ export const ROLE_LEVELS = Object.freeze({
     [ROLES.BLOCKED]: -1
 });
 
+export const PERMISSIONS = Object.freeze({
+    DASHBOARD_VIEW: 'dashboard:view',
+    REPORTS_VIEW: 'reports:view',
+    REPORTS_CREATE: 'reports:create',
+    REPORTS_REVIEW: 'reports:review',
+    PENALTIES_VIEW: 'penalties:view',
+    PENALTIES_CREATE: 'penalties:create',
+    PENALTIES_UPDATE: 'penalties:update',
+    PENALTIES_DELETE: 'penalties:delete',
+    PENALTY_ACCURACY_VIEW: 'penalty_accuracy:view',
+    PENALTY_ACCURACY_UPDATE: 'penalty_accuracy:update',
+    BLACKLIST_VIEW: 'blacklist:view',
+    BLACKLIST_CREATE: 'blacklist:create',
+    BLACKLIST_UPDATE: 'blacklist:update',
+    BLACKLIST_DELETE: 'blacklist:delete',
+    STAFF_VIEW: 'staff:view',
+    STAFF_UPDATE: 'staff:update',
+    STAFF_ASSIGN_ROLE: 'staff:assign_role',
+    GOOGLE_ALLOWLIST_VIEW: 'google_allowlist:view',
+    GOOGLE_ALLOWLIST_UPDATE: 'google_allowlist:update',
+    DISCORD_BOT_VIEW: 'discord_bot:view',
+    DISCORD_BOT_UPDATE: 'discord_bot:update',
+    SYSTEM_SETTINGS_VIEW: 'system_settings:view',
+    SYSTEM_SETTINGS_UPDATE: 'system_settings:update',
+    AUDIT_LOGS_VIEW: 'audit_logs:view',
+    SECURITY_EVENTS_VIEW: 'security_events:view',
+    AI_SETTINGS_VIEW: 'ai_settings:view',
+    AI_SETTINGS_UPDATE: 'ai_settings:update'
+});
+
+const MANAGEMENT_PERMISSIONS = [
+    PERMISSIONS.DASHBOARD_VIEW,
+    PERMISSIONS.REPORTS_VIEW,
+    PERMISSIONS.REPORTS_CREATE,
+    PERMISSIONS.REPORTS_REVIEW,
+    PERMISSIONS.PENALTIES_VIEW,
+    PERMISSIONS.PENALTIES_CREATE,
+    PERMISSIONS.PENALTIES_UPDATE,
+    PERMISSIONS.BLACKLIST_VIEW,
+    PERMISSIONS.AUDIT_LOGS_VIEW
+];
+
+export const ROLE_PERMISSIONS = Object.freeze({
+    [ROLES.KURUCU]: ['*'],
+    [ROLES.ADMIN]: ['*'],
+    [ROLES.YONETICI]: ['*'],
+    [ROLES.GENEL_SORUMLU]: MANAGEMENT_PERMISSIONS,
+    [ROLES.DISCORD_YONETICISI]: MANAGEMENT_PERMISSIONS,
+    [ROLES.KIDEMLI]: MANAGEMENT_PERMISSIONS,
+    [ROLES.KIDEMLI_DISCORD_MODERATORU]: MANAGEMENT_PERMISSIONS,
+    [ROLES.SENIOR_MODERATOR]: MANAGEMENT_PERMISSIONS,
+    [ROLES.MODERATOR]: [
+        PERMISSIONS.DASHBOARD_VIEW,
+        PERMISSIONS.REPORTS_VIEW,
+        PERMISSIONS.PENALTIES_VIEW,
+        PERMISSIONS.BLACKLIST_VIEW
+    ],
+    [ROLES.DISCORD_MODERATORU]: [
+        PERMISSIONS.DASHBOARD_VIEW,
+        PERMISSIONS.REPORTS_VIEW,
+        PERMISSIONS.PENALTIES_VIEW,
+        PERMISSIONS.BLACKLIST_VIEW
+    ],
+    [ROLES.SUPPORT]: [
+        PERMISSIONS.DASHBOARD_VIEW,
+        PERMISSIONS.REPORTS_VIEW
+    ],
+    [ROLES.DISCORD_DESTEK_EKIBI]: [
+        PERMISSIONS.DASHBOARD_VIEW,
+        PERMISSIONS.REPORTS_VIEW
+    ],
+    [ROLES.VIEWER]: [
+        PERMISSIONS.DASHBOARD_VIEW,
+        PERMISSIONS.REPORTS_VIEW
+    ],
+    [ROLES.PENDING]: [],
+    [ROLES.BLOCKED]: []
+});
+
+export const ROUTE_PERMISSIONS = Object.freeze({
+    dashboard: [PERMISSIONS.DASHBOARD_VIEW],
+    management: [PERMISSIONS.STAFF_VIEW],
+    cuk: [PERMISSIONS.PENALTY_ACCURACY_UPDATE],
+    pointtrain: [PERMISSIONS.REPORTS_VIEW],
+    auth: [PERMISSIONS.GOOGLE_ALLOWLIST_VIEW],
+    profile: [PERMISSIONS.DASHBOARD_VIEW]
+});
+
 export const DEFAULT_GROQ_LIMITS = Object.freeze({
     [ROLES.KURUCU]: 500,
     [ROLES.ADMIN]: 350,
@@ -159,7 +247,10 @@ export function normalizeRole(role) {
     const aliases = {
         yönetici: ROLES.YONETICI,
         yonetici: ROLES.YONETICI,
+        owner: ROLES.KURUCU,
+        super_admin: ROLES.ADMIN,
         admin: ROLES.ADMIN,
+        manager: ROLES.GENEL_SORUMLU,
         genel_sorumlu: ROLES.GENEL_SORUMLU,
         discord_yoneticisi: ROLES.DISCORD_YONETICISI,
         kıdemli: ROLES.KIDEMLI_DISCORD_MODERATORU,
@@ -196,17 +287,31 @@ export function isPrivilegedRole(role) {
     return ADMIN_ROLES.has(normalizeRole(role));
 }
 
+export function hasPermission(role, permission) {
+    const permissions = ROLE_PERMISSIONS[normalizeRole(role)] || [];
+    return permissions.includes('*') || permissions.includes(permission);
+}
+
+export function hasAllPermissions(role, permissions = []) {
+    return permissions.every((permission) => hasPermission(role, permission));
+}
+
+export function canAccessRoute(role, routeKey) {
+    const required = ROUTE_PERMISSIONS[routeKey];
+    if (!required) return false;
+    return hasAllPermissions(role, required);
+}
+
 export function canManageSystem(role) {
-    return isPrivilegedRole(role);
+    return hasPermission(role, PERMISSIONS.SYSTEM_SETTINGS_UPDATE);
 }
 
 export function canEditCuk(role) {
-    return isPrivilegedRole(role);
+    return hasPermission(role, PERMISSIONS.PENALTY_ACCURACY_UPDATE);
 }
 
 export function canAccessAdmin(role) {
-    const normalized = normalizeRole(role);
-    return !['viewer', 'pending', 'blocked'].includes(normalized);
+    return hasPermission(role, PERMISSIONS.DASHBOARD_VIEW);
 }
 
 export function canRunAi(role) {

@@ -1,8 +1,11 @@
 const {
     ROLE_ORDER,
     ROLES,
+    PERMISSIONS,
+    canAccessRoute,
     getDefaultRolePolicy,
     getRoleLevel,
+    hasPermission,
     normalizeRole
 } = require('../../src/auth/rolePolicy.js');
 
@@ -34,5 +37,24 @@ describe('rolePolicy', () => {
         expect(seededIds).toContain('758769576778661989');
         expect(seededIds).toContain('529357404882599966');
         expect(seededIds).toContain('1375772029982085184');
+    });
+
+    test('keeps Discord moderator out of privileged management capabilities', () => {
+        expect(hasPermission(ROLES.DISCORD_MODERATORU, PERMISSIONS.DASHBOARD_VIEW)).toBe(true);
+        expect(hasPermission(ROLES.DISCORD_MODERATORU, PERMISSIONS.REPORTS_VIEW)).toBe(true);
+        expect(hasPermission(ROLES.DISCORD_MODERATORU, PERMISSIONS.STAFF_ASSIGN_ROLE)).toBe(false);
+        expect(hasPermission(ROLES.DISCORD_MODERATORU, PERMISSIONS.GOOGLE_ALLOWLIST_VIEW)).toBe(false);
+        expect(hasPermission(ROLES.DISCORD_MODERATORU, PERMISSIONS.PENALTY_ACCURACY_UPDATE)).toBe(false);
+        expect(hasPermission(ROLES.DISCORD_MODERATORU, PERMISSIONS.REPORTS_CREATE)).toBe(false);
+    });
+
+    test('protects admin tabs through route permission map', () => {
+        expect(canAccessRoute(ROLES.DISCORD_MODERATORU, 'dashboard')).toBe(true);
+        expect(canAccessRoute(ROLES.DISCORD_MODERATORU, 'pointtrain')).toBe(true);
+        expect(canAccessRoute(ROLES.DISCORD_MODERATORU, 'management')).toBe(false);
+        expect(canAccessRoute(ROLES.DISCORD_MODERATORU, 'auth')).toBe(false);
+        expect(canAccessRoute(ROLES.DISCORD_MODERATORU, 'cuk')).toBe(false);
+        expect(canAccessRoute(ROLES.KIDEMLI_DISCORD_MODERATORU, 'management')).toBe(false);
+        expect(canAccessRoute(ROLES.YONETICI, 'management')).toBe(true);
     });
 });

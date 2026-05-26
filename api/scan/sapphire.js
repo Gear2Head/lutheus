@@ -1,19 +1,22 @@
 const { getAuth, getDb } = require('../_lib/firebaseAdmin');
-
-const STAFF_ROLES = new Set([
-    'kurucu',
-    'admin',
-    'yonetici',
-    'genel_sorumlu',
-    'discord_yoneticisi',
-    'kidemli_discord_moderatoru',
-    'senior_moderator',
-    'discord_moderatoru',
-    'moderator'
-]);
+const { PERMISSIONS, hasPermission, normalizeRole } = require('../_lib/roles');
 
 function normalizeDiscordId(value) {
     return String(value || '').replace(/^discord:/, '').trim();
+}
+
+async function logUnauthorized(db, actor, permission, req) {
+    await db.collection('auditLogs').add({
+        userId: actor?.uid || null,
+        role: actor?.role || null,
+        action: 'unauthorized_access_attempt',
+        resource: 'api/scan/sapphire',
+        permission,
+        method: req.method,
+        path: req.url || '/api/scan/sapphire',
+        userAgent: req.headers['user-agent'] || null,
+        createdAt: new Date().toISOString()
+    }).catch(() => null);
 }
 
 async function requireRoleCacheUser(req) {
@@ -27,10 +30,14 @@ async function requireRoleCacheUser(req) {
     const db = getDb();
     const doc = await db.collection('roleCache').doc(`discord:${discordId}`).get();
     if (!doc.exists) throw Object.assign(new Error('AUTH_FORBIDDEN'), { status: 403 });
-    const role = String(doc.data().role || '').toLowerCase();
-    if (!STAFF_ROLES.has(role)) throw Object.assign(new Error('AUTH_FORBIDDEN'), { status: 403 });
+    const role = normalizeRole(doc.data().role);
+    const actor = { uid: decoded.uid, discordId, role };
+    if (!hasPermission(role, PERMISSIONS.REPORTS_CREATE)) {
+        await logUnauthorized(db, actor, PERMISSIONS.REPORTS_CREATE, req);
+        throw Object.assign(new Error('AUTH_FORBIDDEN'), { status: 403 });
+    }
 
-    return { uid: decoded.uid, discordId, role };
+    return actor;
 }
 
 module.exports = async function handler(req, res) {
@@ -81,8 +88,10 @@ module.exports = async function handler(req, res) {
         });
     } catch (error) {
         return res.status(error.status || 500).json({
+            ok: false,
             success: false,
-            error: error.message || 'SAPPHIRE_SCAN_FAILED'
+            error: error.status === 403 ? 'FORBIDDEN' : (error.message || 'SAPPHIRE_SCAN_FAILED'),
+            message: error.status === 403 ? 'Bu islem icin yetkiniz yok.' : undefined
         });
     }
 };

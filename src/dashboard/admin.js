@@ -12,10 +12,13 @@ import { AuthService } from '../auth/authService.js';
 import { FirebaseRepository } from '../lib/firebaseRepository.js';
 import {
     DEFAULT_GROQ_LIMITS,
+    PERMISSIONS,
     canAccessAdmin,
+    canAccessRoute,
     getRoleColor,
     getRoleLabel,
     getRoleLevel,
+    hasPermission,
     normalizeRole
 } from '../auth/rolePolicy.js';
 import { analyzeCaseWithGroq } from '../lib/aiAnalysisClient.js';
@@ -124,6 +127,7 @@ const DOM_RAW = {
     btnAddStep: document.getElementById('btnAddStep'),
     categoryKeywords: document.getElementById('keywordInput'),
     btnDeleteCategory: document.getElementById('btnDeleteCategory'),
+    btnCukImport: document.getElementById('btnCukImport'),
     btnCukSave: document.getElementById('btnCukSave'),
     btnDuplicateCategory: document.getElementById('btnDuplicateCategory'),
     btnSaveCategoryInline: document.getElementById('btnSaveCategoryInline'),
@@ -673,7 +677,63 @@ function compareCasesForAdmin(left, right, sort) {
     return caseTimestamp(right) - caseTimestamp(left);
 }
 
-function switchTab(tabId) {
+// SECTION: RBAC_GUARDS
+// PURPOSE: Admin panel route and action checks backed by the central role policy.
+function canCurrentUser(permission) {
+    return hasPermission(state.session?.role, permission);
+}
+
+function auditUnauthorizedAccess(resource, permission) {
+    FirebaseRepository.addAuditLog('unauthorized_access_attempt', {
+        resource,
+        permission,
+        path: window.location?.pathname || 'admin.html'
+    }, state.session?.profile).catch(() => null);
+}
+
+function requireUiPermission(permission, resource) {
+    if (canCurrentUser(permission)) return true;
+    auditUnauthorizedAccess(resource, permission);
+    Toast.error('403 - Yetkisiz Erisim', 'Bu islem sadece ust yonetim tarafindan yapilabilir.');
+    return false;
+}
+
+function applyRbacVisibility() {
+    const role = state.session?.role;
+    DOM.navBtns?.forEach((button) => {
+        const routeKey = button.dataset.page;
+        button.hidden = !canAccessRoute(role, routeKey);
+    });
+    if (DOM.btnStartSapphireScan) DOM.btnStartSapphireScan.hidden = !canCurrentUser(PERMISSIONS.REPORTS_CREATE);
+    [
+        DOM.btnCukImport,
+        DOM.btnCukSave,
+        DOM.btnAddCategory,
+        DOM.btnAddStep,
+        DOM.btnDeleteCategory,
+        DOM.btnDuplicateCategory,
+        DOM.btnSaveCategoryInline
+    ].forEach((element) => {
+        if (element) element.hidden = !canCurrentUser(PERMISSIONS.PENALTY_ACCURACY_UPDATE);
+    });
+    if (DOM.roleBtn) DOM.roleBtn.hidden = !canCurrentUser(PERMISSIONS.STAFF_ASSIGN_ROLE);
+    [DOM.saveAllowBtn, DOM.allowlistBatchDeleteBtn].forEach((element) => {
+        if (element) element.hidden = !canCurrentUser(PERMISSIONS.GOOGLE_ALLOWLIST_UPDATE);
+    });
+    [DOM.saveRoleCacheBtn, DOM.roleCacheBatchDeleteBtn].forEach((element) => {
+        if (element) element.hidden = !canCurrentUser(PERMISSIONS.STAFF_ASSIGN_ROLE);
+    });
+    if (DOM.saveGroqPolicyBtn) DOM.saveGroqPolicyBtn.hidden = !canCurrentUser(PERMISSIONS.AI_SETTINGS_UPDATE);
+    [DOM.btnSaveBotConfig, DOM.btnSyncProfiles, DOM.btnTestBotLog].forEach((element) => {
+        if (element) element.hidden = !canCurrentUser(PERMISSIONS.DISCORD_BOT_UPDATE);
+    });
+}
+
+function switchTab(tabId, options = {}) {
+    if (!options.force && !canAccessRoute(state.session?.role, tabId)) {
+        auditUnauthorizedAccess(tabId, (tabId && `${tabId}:view`) || 'route:view');
+        tabId = 'dashboard';
+    }
     state.activeTab = tabId;
     DOM.navBtns?.forEach((button) => {
         button.classList.toggle('active', button.dataset.page === tabId);
@@ -731,6 +791,7 @@ function renderAuthTables({ allowlist = [], roleCache = [], policy = {}, audit =
         });
         
         DOM.allowlistBatchDeleteBtn?.addEventListener('click', async () => {
+            if (!requireUiPermission(PERMISSIONS.GOOGLE_ALLOWLIST_UPDATE, 'google_allowlist:batch_delete')) return;
             const checked = Array.from(DOM.allowlistTableBody.querySelectorAll('.allowlist-row-checkbox:checked')).map(cb => cb.dataset.email);
             if (!checked.length) { Toast.warning('Toplu Sil', 'Seçili Google Allowlist kaydı yok'); return; }
             if (!confirm(`${checked.length} Google erisim kaydini silmek istediginize emin misiniz?`)) return;
@@ -741,6 +802,7 @@ function renderAuthTables({ allowlist = [], roleCache = [], policy = {}, audit =
         });
         
         DOM.roleCacheBatchDeleteBtn?.addEventListener('click', async () => {
+            if (!requireUiPermission(PERMISSIONS.STAFF_ASSIGN_ROLE, 'role_cache:batch_delete')) return;
             const checked = Array.from(DOM.roleCacheTableBody.querySelectorAll('.rolecache-row-checkbox:checked')).map(cb => cb.dataset.key);
             if (!checked.length) { Toast.warning('Toplu Sil', 'Seçili Rol Cache kaydı yok'); return; }
             if (!confirm(`${checked.length} rol cache kaydini silmek istediginize emin misiniz?`)) return;
@@ -784,6 +846,8 @@ function renderAuthTables({ allowlist = [], roleCache = [], policy = {}, audit =
 
 function filterAndRenderAuthTables() {
     const { allowlist = [], roleCache = [] } = state.authData || {};
+    const canEditAllowlist = canCurrentUser(PERMISSIONS.GOOGLE_ALLOWLIST_UPDATE);
+    const canAssignRoles = canCurrentUser(PERMISSIONS.STAFF_ASSIGN_ROLE);
     
     // 1. Filter Google Allowlist
     const qAllow = (DOM.allowlistSearch?.value || '').trim().toLowerCase();
@@ -801,7 +865,7 @@ function filterAndRenderAuthTables() {
                 <td style="text-align:center;"><input type="checkbox" class="allowlist-row-checkbox" data-email="${escapeHtml(entry.email || entry.id)}"></td>
                 <td>${escapeHtml(entry.email || entry.id || '-')}</td>
                 <td>
-                    <select class="field-input quick-role-select allowlist-quick-role" data-email="${escapeHtml(entry.email || entry.id)}" style="padding: 4px 8px; font-size: 11px; height: 26px; width: auto; background: var(--bg-card); border-radius: var(--radius-sm); border:1px solid var(--border); color:inherit;">
+                    <select class="field-input quick-role-select allowlist-quick-role" data-email="${escapeHtml(entry.email || entry.id)}" ${canEditAllowlist ? '' : 'disabled'} style="padding: 4px 8px; font-size: 11px; height: 26px; width: auto; background: var(--bg-card); border-radius: var(--radius-sm); border:1px solid var(--border); color:inherit;">
                         <option value="viewer" ${entry.role === 'viewer' ? 'selected' : ''}>İzleyici</option>
                         <option value="moderator" ${entry.role === 'moderator' ? 'selected' : ''}>Mod</option>
                         <option value="admin" ${entry.role === 'admin' ? 'selected' : ''}>Admin</option>
@@ -809,7 +873,7 @@ function filterAndRenderAuthTables() {
                 </td>
                 <td>${entry.allowed === false ? 'Kapali' : 'Aktif'}</td>
                 <td>
-                    <button class="btn btn-ghost btn-icon btn-del-allow" data-email="${escapeHtml(entry.email || entry.id)}">
+                    <button class="btn btn-ghost btn-icon btn-del-allow" data-email="${escapeHtml(entry.email || entry.id)}" ${canEditAllowlist ? '' : 'hidden'}>
                         <i class="fa-solid fa-trash-can"></i>
                     </button>
                 </td>
@@ -836,14 +900,14 @@ function filterAndRenderAuthTables() {
                 <td>${escapeHtml(entry.identityKey || entry.id || '-')}</td>
                 <td>${escapeHtml(entry.displayName || '-')}</td>
                 <td>
-                    <select class="field-input quick-role-select rolecache-quick-role" data-key="${escapeHtml(entry.identityKey || entry.id)}" style="padding: 4px 8px; font-size: 11px; height: 26px; width: auto; background: var(--bg-card); border-radius: var(--radius-sm); border:1px solid var(--border); color:inherit;">
+                    <select class="field-input quick-role-select rolecache-quick-role" data-key="${escapeHtml(entry.identityKey || entry.id)}" ${canAssignRoles ? '' : 'disabled'} style="padding: 4px 8px; font-size: 11px; height: 26px; width: auto; background: var(--bg-card); border-radius: var(--radius-sm); border:1px solid var(--border); color:inherit;">
                         <option value="moderator" ${entry.role === 'moderator' ? 'selected' : ''}>Mod</option>
                         <option value="senior_mod" ${entry.role === 'senior_mod' ? 'selected' : ''}>Senior</option>
                         <option value="admin" ${entry.role === 'admin' ? 'selected' : ''}>Admin</option>
                     </select>
                 </td>
                 <td>
-                    <button class="btn btn-ghost btn-icon btn-del-cache" data-key="${escapeHtml(entry.identityKey || entry.id)}">
+                    <button class="btn btn-ghost btn-icon btn-del-cache" data-key="${escapeHtml(entry.identityKey || entry.id)}" ${canAssignRoles ? '' : 'hidden'}>
                         <i class="fa-solid fa-trash-can"></i>
                     </button>
                 </td>
@@ -862,6 +926,7 @@ function filterAndRenderAuthTables() {
     // Bind quick role updates
     DOM.allowlistTableBody.querySelectorAll('.allowlist-quick-role').forEach(select => {
         select.addEventListener('change', async () => {
+            if (!requireUiPermission(PERMISSIONS.GOOGLE_ALLOWLIST_UPDATE, 'google_allowlist:quick_role_update')) return;
             const email = select.dataset.email;
             const newRole = select.value;
             await FirebaseRepository.setGoogleAllowlist(email, { role: newRole, allowed: true }, state.session?.profile);
@@ -872,6 +937,7 @@ function filterAndRenderAuthTables() {
     
     DOM.roleCacheTableBody.querySelectorAll('.rolecache-quick-role').forEach(select => {
         select.addEventListener('change', async () => {
+            if (!requireUiPermission(PERMISSIONS.STAFF_ASSIGN_ROLE, 'role_cache:quick_role_update')) return;
             const key = select.dataset.key;
             const newRole = select.value;
             const cached = roleCache.find(e => (e.identityKey || e.id) === key) || {};
@@ -887,6 +953,7 @@ function filterAndRenderAuthTables() {
 }
 
 async function loadAuthAdminData() {
+    if (!requireUiPermission(PERMISSIONS.GOOGLE_ALLOWLIST_VIEW, 'auth_admin:view')) return;
     const [allowlist, roleCache, policy, audit] = await Promise.all([
         FirebaseRepository.listGoogleAllowlist().catch(() => []),
         FirebaseRepository.listRoleCache().catch(() => []),
@@ -898,6 +965,7 @@ async function loadAuthAdminData() {
 }
 
 async function saveAllowlist() {
+    if (!requireUiPermission(PERMISSIONS.GOOGLE_ALLOWLIST_UPDATE, 'google_allowlist:update')) return;
     const email = DOM.allowEmail.value.trim().toLowerCase();
     if (!email) {
         Toast.warning('Allowlist', 'Email gerekli');
@@ -913,6 +981,7 @@ async function saveAllowlist() {
 }
 
 async function saveRoleCache() {
+    if (!requireUiPermission(PERMISSIONS.STAFF_ASSIGN_ROLE, 'role_cache:update')) return;
     const raw = DOM.roleCacheIdentity.value.trim();
     if (!raw) {
         Toast.warning('Role cache', 'Discord ID veya identity key gerekli');
@@ -931,6 +1000,7 @@ async function saveRoleCache() {
 }
 
 async function saveGroqPolicy() {
+    if (!requireUiPermission(PERMISSIONS.AI_SETTINGS_UPDATE, 'role_policy:groq_limits')) return;
     const groqLimits = {};
     DOM.groqLimitGrid.querySelectorAll('input[data-role]').forEach((input) => {
         groqLimits[input.dataset.role] = Number(input.value || 0);
@@ -945,6 +1015,7 @@ async function saveGroqPolicy() {
 }
 
 async function deleteAllowlist(email) {
+    if (!requireUiPermission(PERMISSIONS.GOOGLE_ALLOWLIST_UPDATE, 'google_allowlist:delete')) return;
     if (!confirm(`${email} allowlist'ten silinecek. Emin misiniz?`)) return;
     await FirebaseRepository.deleteGoogleAllowlist(email, state.session?.profile);
     await loadAuthAdminData();
@@ -952,6 +1023,7 @@ async function deleteAllowlist(email) {
 }
 
 async function deleteRoleCache(identityKey) {
+    if (!requireUiPermission(PERMISSIONS.STAFF_ASSIGN_ROLE, 'role_cache:delete')) return;
     if (!confirm(`${identityKey} cache'den silinecek. Emin misiniz?`)) return;
     await FirebaseRepository.deleteRoleCache(identityKey, state.session?.profile);
     await loadAuthAdminData();
@@ -1399,6 +1471,7 @@ function bindModalSaveHandlers() {
     if (!DOM.modalContent) return;
     DOM.modalContent.querySelectorAll('.case-review-save').forEach((button) => {
         button.addEventListener('click', async () => {
+            if (!requireUiPermission(PERMISSIONS.PENALTIES_UPDATE, 'penalties:update_review')) return;
             const caseId = button.dataset.caseId;
             const note = DOM.modalContent.querySelector(`[data-note-for="${caseId}"]`)?.value || '';
             const reviewStatus = DOM.modalContent.querySelector(`[data-status-for="${caseId}"]`)?.value || '';
@@ -1408,6 +1481,7 @@ function bindModalSaveHandlers() {
     });
     DOM.modalContent.querySelectorAll('.case-ai-analyze').forEach((button) => {
         button.addEventListener('click', async () => {
+            if (!requireUiPermission(PERMISSIONS.REPORTS_REVIEW, 'reports:ai_analysis')) return;
             const caseId = button.dataset.caseId;
             const entry = state.allCases.find((item) => String(item.id || item.caseId) === String(caseId));
             const output = DOM.modalContent.querySelector(`[data-ai-for="${caseId}"]`);
@@ -1445,6 +1519,8 @@ function openModal(moderator) {
     DOM.modalContent.innerHTML = list.length ? list.map((entry) => {
         const validation = getValidation(entry);
         const profile = resolveStaffProfile(entry);
+        const canUpdatePenalty = canCurrentUser(PERMISSIONS.PENALTIES_UPDATE);
+        const canReviewReport = canCurrentUser(PERMISSIONS.REPORTS_REVIEW);
         return `
             <article class="case-history-card ${escapeHtml(validation.status || 'unknown')}">
                 <div class="case-history-head">
@@ -1478,14 +1554,14 @@ function openModal(moderator) {
                 <div class="case-history-reason">${escapeHtml(entry.reason || 'Sebep yok')}</div>
                 <div class="case-history-validation">${escapeHtml(validation.reason || 'CUK değerlendirmesi yok')}</div>
                 <div class="case-history-actions">
-                        <select data-status-for="${escapeHtml(String(entry.id || ''))}">
+                        <select data-status-for="${escapeHtml(String(entry.id || ''))}" ${canUpdatePenalty ? '' : 'disabled'}>
                             <option value="">Otomatik</option>
                             <option value="valid" ${entry.reviewStatus === 'valid' ? 'selected' : ''}>Valid</option>
                             <option value="invalid" ${entry.reviewStatus === 'invalid' ? 'selected' : ''}>Invalid</option>
                         </select>
-                        <input type="text" value="${escapeHtml(entry.note || '')}" data-note-for="${escapeHtml(String(entry.id || ''))}" placeholder="Not">
-                        <button class="case-review-save" type="button" data-case-id="${escapeHtml(String(entry.id || ''))}">Kaydet</button>
-                        <button class="case-ai-analyze" type="button" data-case-id="${escapeHtml(String(entry.id || ''))}">AI</button>
+                        <input type="text" value="${escapeHtml(entry.note || '')}" data-note-for="${escapeHtml(String(entry.id || ''))}" placeholder="Not" ${canUpdatePenalty ? '' : 'disabled'}>
+                        <button class="case-review-save" type="button" data-case-id="${escapeHtml(String(entry.id || ''))}" ${canUpdatePenalty ? '' : 'hidden'}>Kaydet</button>
+                        <button class="case-ai-analyze" type="button" data-case-id="${escapeHtml(String(entry.id || ''))}" ${canReviewReport ? '' : 'hidden'}>AI</button>
                 </div>
                 <div class="pointtrain-breakdown hidden" data-ai-for="${escapeHtml(String(entry.id || ''))}"></div>
             </article>
@@ -1501,6 +1577,7 @@ function closeModal() {
 }
 
 function openRoleModal(userId = '') {
+    if (!requireUiPermission(PERMISSIONS.STAFF_ASSIGN_ROLE, 'staff:assign_role')) return;
     if (!DOM.roleModal) return;
     const entry = state.userRegistry[userId] || {};
     if (DOM.roleUserId) DOM.roleUserId.value = userId || '';
@@ -1634,6 +1711,7 @@ function runSimulation() {
 }
 
 async function saveBotConfig() {
+    if (!requireUiPermission(PERMISSIONS.DISCORD_BOT_UPDATE, 'discord_bot:update')) return;
     const channelId = DOM.botLogChannelId.value.trim();
     if (!channelId) {
         Toast.warning('Discord Bot', 'Log kanal ID gerekli');
@@ -1652,6 +1730,7 @@ async function saveBotConfig() {
 }
 
 async function syncModeratorProfiles() {
+    if (!requireUiPermission(PERMISSIONS.DISCORD_BOT_UPDATE, 'discord_bot:sync_profiles')) return;
     Toast.info('Senkronizasyon', 'Eşitleme başlatılıyor...');
     const policy = await FirebaseRepository.getRolePolicy().catch(() => ({}));
     policy.syncTrigger = {
@@ -1663,6 +1742,7 @@ async function syncModeratorProfiles() {
 }
 
 async function testDiscordBotLog() {
+    if (!requireUiPermission(PERMISSIONS.DISCORD_BOT_UPDATE, 'discord_bot:test_log')) return;
     Toast.info('Test Logu', 'Test ceza embedi tetikleniyor...');
     const mockTestCase = {
         id: 'TEST-EMBED',
@@ -1684,6 +1764,7 @@ async function testDiscordBotLog() {
 }
 
 async function saveRoleAssignment() {
+    if (!requireUiPermission(PERMISSIONS.STAFF_ASSIGN_ROLE, 'staff:assign_role')) return;
     const id = DOM.roleUserId.value.trim();
     if (!id) {
         Toast.warning('Rol yonetimi', 'Kullanici ID gerekli');
@@ -1851,6 +1932,7 @@ function commitRuleEditor() {
 }
 
 async function saveRules() {
+    if (!requireUiPermission(PERMISSIONS.PENALTY_ACCURACY_UPDATE, 'cuk_rules:update')) return;
     commitRuleEditor();
     const syncResult = await Storage.saveDynamicRules(state.dynamicRules);
     CUKEngine.setRules(state.dynamicRules);
@@ -1973,6 +2055,7 @@ function renderPointtrainTab() {
 // SECTION: SAPPHIRE_SCAN_BRIDGE
 // PURPOSE: Admin panel scan trigger for extension runtime and Vercel web API.
 async function startSapphireScanFromAdmin() {
+    if (!requireUiPermission(PERMISSIONS.REPORTS_CREATE, 'sapphire_scan:create')) return;
     DOM.btnStartSapphireScan.disabled = true;
     try {
         let response;
@@ -2048,7 +2131,9 @@ async function loadData() {
         state.selectedRuleCategory = Object.keys(state.dynamicRules.categories || {})[0] || '';
     }
 
-    await loadAuthAdminData().catch(() => null);
+    if (canAccessRoute(state.session?.role, 'auth')) {
+        await loadAuthAdminData().catch(() => null);
+    }
 
     renderStats();
     renderTable(DOM.tableSearch?.value || '');
@@ -2229,6 +2314,7 @@ function bindEvents() {
     });
 
     document.getElementById('btnBulkValid')?.addEventListener('click', async () => {
+        if (!requireUiPermission(PERMISSIONS.PENALTIES_UPDATE, 'penalties:bulk_validate')) return;
         const checkedBoxes = DOM.mgmtCaseList.querySelectorAll('.case-checkbox:checked');
         if (checkedBoxes.length === 0) return;
 
@@ -2249,6 +2335,7 @@ function bindEvents() {
     });
 
     document.getElementById('btnBulkInvalid')?.addEventListener('click', async () => {
+        if (!requireUiPermission(PERMISSIONS.PENALTIES_UPDATE, 'penalties:bulk_invalidate')) return;
         const checkedBoxes = DOM.mgmtCaseList.querySelectorAll('.case-checkbox:checked');
         if (checkedBoxes.length === 0) return;
 
@@ -2308,9 +2395,14 @@ function bindEvents() {
     DOM.roleModal?.addEventListener('click', (event) => {
         if (event.target === DOM.roleModal) closeRoleModal();
     });
-    DOM.btnAddCategory?.addEventListener('click', addRuleCategory);
-    DOM.btnDeleteCategory?.addEventListener('click', deleteRuleCategory);
+    DOM.btnAddCategory?.addEventListener('click', () => {
+        if (requireUiPermission(PERMISSIONS.PENALTY_ACCURACY_UPDATE, 'cuk_rules:create_category')) addRuleCategory();
+    });
+    DOM.btnDeleteCategory?.addEventListener('click', () => {
+        if (requireUiPermission(PERMISSIONS.PENALTY_ACCURACY_UPDATE, 'cuk_rules:delete_category')) deleteRuleCategory();
+    });
     DOM.btnDuplicateCategory?.addEventListener('click', () => {
+        if (!requireUiPermission(PERMISSIONS.PENALTY_ACCURACY_UPDATE, 'cuk_rules:duplicate_category')) return;
         const cat = state.dynamicRules.categories[state.selectedRuleCategory];
         if (!cat) return;
         const dupName = `${state.selectedRuleCategory} (Kopya)`;
@@ -2321,6 +2413,7 @@ function bindEvents() {
         Toast.info('Kategori kopyalandı');
     });
     DOM.btnSaveCategoryInline?.addEventListener('click', () => {
+        if (!requireUiPermission(PERMISSIONS.PENALTY_ACCURACY_UPDATE, 'cuk_rules:rename_category')) return;
         const cat = state.dynamicRules.categories[state.selectedRuleCategory];
         if (!cat) return;
         const nextName = DOM.editCategoryName.value.trim();
@@ -2337,7 +2430,9 @@ function bindEvents() {
         Toast.success('Kategori güncellendi');
     });
     DOM.btnCukSave?.addEventListener('click', saveRules);
-    DOM.btnAddStep?.addEventListener('click', addRepeatRow);
+    DOM.btnAddStep?.addEventListener('click', () => {
+        if (requireUiPermission(PERMISSIONS.PENALTY_ACCURACY_UPDATE, 'cuk_rules:add_step')) addRepeatRow();
+    });
     DOM.btnBackToDashboard?.addEventListener('click', () => switchTab('dashboard'));
     DOM.btnStartSapphireScan?.addEventListener('click', startSapphireScanFromAdmin);
     DOM.pointtrainRefreshBtn?.addEventListener('click', loadData);
@@ -2611,7 +2706,7 @@ async function loadProfileDetails(userId) {
         }
 
         // Admin Edit Form permissions (Yoneticiler, Admin, Genel Sorumlu, Discord Yoneticisi ve Kidemliler editleyebilir)
-        const isPrivileged = canAccessAdmin(state.session?.role);
+        const isPrivileged = canCurrentUser(PERMISSIONS.STAFF_UPDATE);
         const isEditable = isPrivileged && (getRoleLevel(state.session?.role) >= 65); // Kidemli or higher
 
         if (isBarisYilmaz) {
@@ -2732,7 +2827,7 @@ async function saveProfileDetails() {
     }
 
     // Check permission
-    const isEditable = canAccessAdmin(state.session?.role) && (getRoleLevel(state.session?.role) >= 65);
+    const isEditable = canCurrentUser(PERMISSIONS.STAFF_UPDATE) && (getRoleLevel(state.session?.role) >= 65);
     if (!isEditable) {
         Toast.error('Yetki Reddedildi', 'Profil düzenleme yetkiniz bulunmamaktadır.');
         return;
@@ -2804,6 +2899,7 @@ async function init() {
         return;
     }
     Toast.init();
+    applyRbacVisibility();
     bindEvents();
     switchTab('dashboard');
     await loadData();

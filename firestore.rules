@@ -17,6 +17,10 @@ service cloud.firestore {
     }
 
     function privileged() {
+      return currentRole() in ['kurucu', 'admin', 'yonetici'];
+    }
+
+    function operations() {
       return currentRole() in ['kurucu', 'admin', 'yonetici', 'genel_sorumlu', 'discord_yoneticisi', 'kidemli', 'kidemli_discord_moderatoru', 'senior_moderator'];
     }
 
@@ -74,23 +78,23 @@ service cloud.firestore {
 
     match /cases/{caseId} {
       allow read: if activeUser();
-      allow create: if activeUser();
-      allow update, delete: if privileged();
+      allow create, update: if operations();
+      allow delete: if privileged();
     }
 
     match /scanRuns/{runId} {
       allow read: if activeUser();
-      allow create, update: if privileged();
+      allow create, update: if operations();
       allow delete: if privileged();
     }
 
     match /analysis/{caseKey} {
       allow read: if activeUser();
-      allow write: if privileged();
+      allow write: if operations();
     }
 
     match /auditLogs/{logId} {
-      allow read: if privileged();
+      allow read: if operations();
       allow create: if activeUser();
       allow update, delete: if false;
     }

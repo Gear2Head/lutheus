@@ -45,27 +45,27 @@
       </svg>
     </div>
     <div class="sidebar-nav">
-      <button class="nav-item active" data-page="dashboard" title="">
+      <button class="nav-item active" data-page="dashboard" data-permission="dashboard:view" title="">
         <i class="fa-solid fa-chart-line"></i>
         <span class="tooltip">Dashboard</span>
       </button>
-      <button class="nav-item" data-page="management" title="">
+      <button class="nav-item" data-page="management" data-permission="staff:view" title="">
         <i class="fa-solid fa-user-gear"></i>
         <span class="tooltip">Yönetim</span>
       </button>
-      <button class="nav-item" data-page="cuk" title="">
+      <button class="nav-item" data-page="cuk" data-permission="penalty_accuracy:update" title="">
         <i class="fa-solid fa-brain"></i>
         <span class="tooltip">CUK Kural Editörü</span>
       </button>
-      <button class="nav-item" data-page="pointtrain" title="">
+      <button class="nav-item" data-page="pointtrain" data-permission="reports:view" title="">
         <i class="fa-solid fa-ranking-star"></i>
         <span class="tooltip">Pointtrain</span>
       </button>
-      <button class="nav-item" data-page="auth" title="">
+      <button class="nav-item" data-page="auth" data-permission="google_allowlist:view" title="">
         <i class="fa-solid fa-id-card-clip"></i>
         <span class="tooltip">Erişim</span>
       </button>
-      <button class="nav-item" data-page="profile" title="">
+      <button class="nav-item" data-page="profile" data-permission="dashboard:view" title="">
         <i class="fa-solid fa-id-card"></i>
         <span class="tooltip">Profil</span>
       </button>
@@ -108,7 +108,7 @@
         <button class="btn btn-ghost" id="btnRefresh">
           <i class="fa-solid fa-arrows-rotate"></i> Yenile
         </button>
-        <button class="btn btn-ghost" id="btnStartSapphireScan">
+        <button class="btn btn-ghost" id="btnStartSapphireScan" data-permission="reports:create">
           <i class="fa-solid fa-bolt"></i> Sapphire Tara
         </button>
         <button class="btn btn-primary" id="btnExport">
@@ -225,10 +225,10 @@
             </p>
           </div>
           <div style="display:flex;gap:8px;">
-            <button class="btn btn-ghost" id="btnCukImport">
+            <button class="btn btn-ghost" id="btnCukImport" data-permission="penalty_accuracy:update">
               <i class="fa-solid fa-file-import"></i> İçe Aktar
             </button>
-            <button class="btn btn-primary" id="btnCukSave">
+            <button class="btn btn-primary" id="btnCukSave" data-permission="penalty_accuracy:update">
               <i class="fa-solid fa-floppy-disk"></i> Kaydet ve Uygula
             </button>
           </div>
@@ -428,7 +428,7 @@
           <div class="panel">
             <div class="panel-header">
               <span class="panel-title"><i class="fa-solid fa-user-shield"></i> Yetkili Listesi</span>
-              <button class="btn btn-ghost btn-icon" id="roleBtn" title="Yetki Ekle">
+              <button class="btn btn-ghost btn-icon" id="roleBtn" data-permission="staff:assign_role" title="Yetki Ekle">
                 <i class="fa-solid fa-user-plus"></i>
               </button>
             </div>
@@ -537,7 +537,7 @@
                       <option value="admin">Admin</option>
                       <option value="viewer">İzleyici</option>
                    </select>
-                   <button class="btn btn-primary" id="saveAllowBtn">Ekle</button>
+                   <button class="btn btn-primary" id="saveAllowBtn" data-permission="google_allowlist:update">Ekle</button>
                 </div>
                 
                 <div class="table-toolbar" style="display:flex; gap:8px; margin-bottom:12px; align-items:center;">
@@ -585,7 +585,7 @@
                       <option value="admin">Admin</option>
                       <option value="senior_mod">Senior</option>
                    </select>
-                   <button class="btn btn-primary" id="saveRoleCacheBtn">Kaydet</button>
+                   <button class="btn btn-primary" id="saveRoleCacheBtn" data-permission="staff:assign_role">Kaydet</button>
                 </div>
                 
                 <div class="table-toolbar" style="display:flex; gap:8px; margin-bottom:12px; align-items:center;">
@@ -626,7 +626,7 @@
           <div class="panel">
              <div class="panel-header">
                 <span class="panel-title"><i class="fa-solid fa-microchip"></i> AI (Groq) Limit Politikası</span>
-                <button class="btn btn-primary" id="saveGroqPolicyBtn">Limitleri Kaydet</button>
+                <button class="btn btn-primary" id="saveGroqPolicyBtn" data-permission="ai_settings:update">Limitleri Kaydet</button>
              </div>
              <div class="panel-body">
                 <div id="groqLimitGrid" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap:12px;">
@@ -657,14 +657,14 @@
                    <label class="field-label">Discord Log Kanal ID</label>
                    <div style="display:flex; gap:8px;">
                       <input type="text" id="botLogChannelId" class="field-input" placeholder="Kanal ID girin..." style="flex:1;">
-                      <button class="btn btn-primary" id="btnSaveBotConfig">Kaydet</button>
+                      <button class="btn btn-primary" id="btnSaveBotConfig" data-permission="discord_bot:update">Kaydet</button>
                    </div>
                 </div>
                 <div style="display:flex; gap:8px; margin-top:4px;">
-                   <button class="btn btn-ghost" id="btnSyncProfiles" style="flex:1; font-size:12px; height:32px;">
+                   <button class="btn btn-ghost" id="btnSyncProfiles" data-permission="discord_bot:update" style="flex:1; font-size:12px; height:32px;">
                       <i class="fa-solid fa-arrows-spin"></i> Profilleri Eşitle
                    </button>
-                   <button class="btn btn-ghost" id="btnTestBotLog" style="flex:1; font-size:12px; height:32px;">
+                   <button class="btn btn-ghost" id="btnTestBotLog" data-permission="discord_bot:update" style="flex:1; font-size:12px; height:32px;">
                       <i class="fa-solid fa-paper-plane"></i> Test Logu Yolla
                    </button>
                 </div>

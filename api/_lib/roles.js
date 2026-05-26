@@ -34,6 +34,85 @@ const DEFAULT_GROQ_LIMITS = {
     blocked: 0
 };
 
+const PERMISSIONS = {
+    DASHBOARD_VIEW: 'dashboard:view',
+    REPORTS_VIEW: 'reports:view',
+    REPORTS_CREATE: 'reports:create',
+    REPORTS_REVIEW: 'reports:review',
+    PENALTIES_VIEW: 'penalties:view',
+    PENALTIES_CREATE: 'penalties:create',
+    PENALTIES_UPDATE: 'penalties:update',
+    PENALTIES_DELETE: 'penalties:delete',
+    PENALTY_ACCURACY_VIEW: 'penalty_accuracy:view',
+    PENALTY_ACCURACY_UPDATE: 'penalty_accuracy:update',
+    BLACKLIST_VIEW: 'blacklist:view',
+    BLACKLIST_CREATE: 'blacklist:create',
+    BLACKLIST_UPDATE: 'blacklist:update',
+    BLACKLIST_DELETE: 'blacklist:delete',
+    STAFF_VIEW: 'staff:view',
+    STAFF_UPDATE: 'staff:update',
+    STAFF_ASSIGN_ROLE: 'staff:assign_role',
+    GOOGLE_ALLOWLIST_VIEW: 'google_allowlist:view',
+    GOOGLE_ALLOWLIST_UPDATE: 'google_allowlist:update',
+    DISCORD_BOT_VIEW: 'discord_bot:view',
+    DISCORD_BOT_UPDATE: 'discord_bot:update',
+    SYSTEM_SETTINGS_VIEW: 'system_settings:view',
+    SYSTEM_SETTINGS_UPDATE: 'system_settings:update',
+    AUDIT_LOGS_VIEW: 'audit_logs:view',
+    SECURITY_EVENTS_VIEW: 'security_events:view',
+    AI_SETTINGS_VIEW: 'ai_settings:view',
+    AI_SETTINGS_UPDATE: 'ai_settings:update'
+};
+
+const MANAGEMENT_PERMISSIONS = [
+    PERMISSIONS.DASHBOARD_VIEW,
+    PERMISSIONS.REPORTS_VIEW,
+    PERMISSIONS.REPORTS_CREATE,
+    PERMISSIONS.REPORTS_REVIEW,
+    PERMISSIONS.PENALTIES_VIEW,
+    PERMISSIONS.PENALTIES_CREATE,
+    PERMISSIONS.PENALTIES_UPDATE,
+    PERMISSIONS.BLACKLIST_VIEW,
+    PERMISSIONS.AUDIT_LOGS_VIEW
+];
+
+const ROLE_PERMISSIONS = {
+    kurucu: ['*'],
+    admin: ['*'],
+    yonetici: ['*'],
+    genel_sorumlu: MANAGEMENT_PERMISSIONS,
+    discord_yoneticisi: MANAGEMENT_PERMISSIONS,
+    kidemli: MANAGEMENT_PERMISSIONS,
+    kidemli_discord_moderatoru: MANAGEMENT_PERMISSIONS,
+    senior_moderator: MANAGEMENT_PERMISSIONS,
+    moderator: [
+        PERMISSIONS.DASHBOARD_VIEW,
+        PERMISSIONS.REPORTS_VIEW,
+        PERMISSIONS.PENALTIES_VIEW,
+        PERMISSIONS.BLACKLIST_VIEW
+    ],
+    discord_moderatoru: [
+        PERMISSIONS.DASHBOARD_VIEW,
+        PERMISSIONS.REPORTS_VIEW,
+        PERMISSIONS.PENALTIES_VIEW,
+        PERMISSIONS.BLACKLIST_VIEW
+    ],
+    support: [
+        PERMISSIONS.DASHBOARD_VIEW,
+        PERMISSIONS.REPORTS_VIEW
+    ],
+    discord_destek_ekibi: [
+        PERMISSIONS.DASHBOARD_VIEW,
+        PERMISSIONS.REPORTS_VIEW
+    ],
+    viewer: [
+        PERMISSIONS.DASHBOARD_VIEW,
+        PERMISSIONS.REPORTS_VIEW
+    ],
+    pending: [],
+    blocked: []
+};
+
 function asciiRole(role) {
     return String(role || '')
         .trim()
@@ -55,7 +134,10 @@ function normalizeRole(role) {
     const ascii = asciiRole(role);
     const aliases = {
         yonetici: 'yonetici',
+        owner: 'kurucu',
+        super_admin: 'admin',
         admin: 'admin',
+        manager: 'genel_sorumlu',
         genel_sorumlu: 'genel_sorumlu',
         discord_yoneticisi: 'discord_yoneticisi',
         kidemli: 'kidemli_discord_moderatoru',
@@ -82,4 +164,9 @@ function canUseAi(role) {
     return (DEFAULT_GROQ_LIMITS[normalizeRole(role)] || 0) > 0;
 }
 
-module.exports = { DEFAULT_GROQ_LIMITS, normalizeRole, canUseAi };
+function hasPermission(role, permission) {
+    const permissions = ROLE_PERMISSIONS[normalizeRole(role)] || [];
+    return permissions.includes('*') || permissions.includes(permission);
+}
+
+module.exports = { DEFAULT_GROQ_LIMITS, PERMISSIONS, ROLE_PERMISSIONS, normalizeRole, canUseAi, hasPermission };

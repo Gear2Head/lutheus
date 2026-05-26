@@ -296,7 +296,7 @@ async function sendTestCaseLog(data: any) {
     }
 }
 
-client.once('ready', async () => {
+client.once('clientReady', async () => {
     console.log(`Discord Bot: Logged in successfully as ${client.user?.tag}!`);
     readyAt = new Date().toISOString();
     lastError = '';

@@ -40,7 +40,9 @@ if (admin.apps.length === 0) {
     }
 }
 
+// SECTION: BOT_TOKENS
+// PURPOSE: Exports credentials and configs for logging and API calls.
 export const db = admin.firestore();
-export const botToken = process.env.DISCORD_BOT_TOKEN || process.env.DISCORD_TOKEN || process.env.BOT_TOKEN || '';
+export const botToken = process.env.DISCORD_BOT_TOKEN || process.env.Discord_Bot_Token || process.env.DISCORD_TOKEN || process.env.BOT_TOKEN || '';
 export const logChannelId = process.env.DISCORD_LOG_CHANNEL_ID || '';
 export const guildId = '1223431616081166336';

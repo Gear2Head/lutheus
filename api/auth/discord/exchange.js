@@ -131,7 +131,9 @@ module.exports = async function handler(req, res) {
                 provider: 'discord',
                 discordId: discordUser.id,
                 username: discordUser.username || null,
-                globalName: discordUser.global_name || null
+                globalName: discordUser.global_name || null,
+                role,
+                status: profile.status
             });
         } catch (tokenError) {
             console.error('Firebase Custom Token Generation Failed:', tokenError);

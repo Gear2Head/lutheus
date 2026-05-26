@@ -151,7 +151,8 @@ module.exports = async function handler(req, res) {
             firebaseToken = await auth.createCustomToken(uid, {
                 provider: 'discord',
                 discordId: discordUser.id,
-                role
+                role,
+                status: profile.status
             });
         } catch (tokenError) {
             console.error('Firebase Custom Token Generation Failed:', tokenError);

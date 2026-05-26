@@ -130,12 +130,15 @@ async function signInWithCustomToken(customToken, oauthProfile = {}) {
         globalName: oauthProfile.globalName || oauthProfile.global_name || null,
         displayName: oauthProfile.globalName || oauthProfile.global_name || oauthProfile.username || uid,
         avatar: discordAvatarUrl,
-        email: oauthProfile.email || null
+        email: oauthProfile.email || null,
+        status: oauthProfile.status || 'active'
     };
-    const role = await resolveRole(profile, payload.idToken).catch((error) => {
-        if (error.message === 'GOOGLE_EMAIL_NOT_ALLOWLISTED') throw error;
-        return ROLES.PENDING;
-    });
+    const role = oauthProfile.role
+        ? normalizeRole(oauthProfile.role)
+        : await resolveRole(profile, payload.idToken).catch((error) => {
+            if (error.message === 'GOOGLE_EMAIL_NOT_ALLOWLISTED') throw error;
+            return ROLES.PENDING;
+        });
 
     const session = {
         uid,
@@ -143,15 +146,18 @@ async function signInWithCustomToken(customToken, oauthProfile = {}) {
         idToken: payload.idToken,
         refreshToken: payload.refreshToken,
         expiresAt: Date.now() + (Number(payload.expiresIn || 3600) * 1000),
-        profile: { ...profile, role, status: 'active' },
+        profile: { ...profile, role, status: profile.status },
         role
     };
     await setStoredSession(session);
     try {
         await FirebaseRepository.upsertUser(session.profile);
     } catch (error) {
-        console.error("upsertUser failed during custom token sign-in:", error);
-        throw error;
+        if (profile.provider === 'google' && !oauthProfile.role) {
+            console.error("upsertUser failed during Google sign-in:", error);
+            throw error;
+        }
+        console.warn("upsertUser skipped after server-issued custom token:", error);
     }
     return session;
 }

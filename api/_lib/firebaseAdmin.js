@@ -1,39 +1,46 @@
 const admin = require('firebase-admin');
 
 function parseServiceAccount() {
-    if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
-        const parsed = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
-        if (parsed.private_key) {
-            parsed.private_key = parsed.private_key.replace(/\\n/g, '\n');
+    try {
+        if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
+            const parsed = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
+            if (parsed.private_key) {
+                parsed.private_key = parsed.private_key.replace(/\\n/g, '\n');
+            }
+            return parsed;
         }
-        return parsed;
-    }
 
-    if (process.env.FIREBASE_CLIENT_EMAIL && process.env.FIREBASE_PRIVATE_KEY && process.env.FIREBASE_PROJECT_ID) {
-        return {
-            project_id: process.env.FIREBASE_PROJECT_ID,
-            client_email: process.env.FIREBASE_CLIENT_EMAIL,
-            private_key: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n')
-        };
-    }
+        if (
+            process.env.FIREBASE_CLIENT_EMAIL &&
+            process.env.FIREBASE_PRIVATE_KEY &&
+            process.env.FIREBASE_PROJECT_ID
+        ) {
+            return {
+                project_id: process.env.FIREBASE_PROJECT_ID,
+                client_email: process.env.FIREBASE_CLIENT_EMAIL,
+                private_key: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n')
+            };
+        }
 
-    return null;
+        throw new Error('FIREBASE_SERVICE_ACCOUNT_MISSING');
+    } catch (error) {
+        throw new Error(`FIREBASE_ADMIN_CONFIG_INVALID:${error.message}`);
+    }
 }
 
 function getAdminApp() {
     if (admin.apps.length) return admin.app();
 
     const serviceAccount = parseServiceAccount();
-    if (serviceAccount) {
+
+    try {
         return admin.initializeApp({
             credential: admin.credential.cert(serviceAccount),
-            projectId: serviceAccount.project_id || process.env.FIREBASE_PROJECT_ID || 'lutheus-project'
+            projectId: serviceAccount.project_id || process.env.FIREBASE_PROJECT_ID
         });
+    } catch (error) {
+        throw new Error(`FIREBASE_ADMIN_INIT_FAILED:${error.message}`);
     }
-
-    return admin.initializeApp({
-        projectId: process.env.FIREBASE_PROJECT_ID || 'lutheus-project'
-    });
 }
 
 function getAuth() {

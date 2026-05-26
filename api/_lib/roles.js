@@ -1,40 +1,18 @@
-const ROLE_LEVELS = {
-    kurucu: 100,
-    admin: 90,
-    yonetici: 80,
-    genel_sorumlu: 76,
-    discord_yoneticisi: 74,
-    kidemli: 70,
-    kidemli_discord_moderatoru: 68,
-    senior_moderator: 65,
-    moderator: 40,
-    discord_moderatoru: 40,
-    support: 20,
-    discord_destek_ekibi: 20,
-    viewer: 10,
-    pending: 0,
-    blocked: -1
-};
+const ROLES = Object.freeze({
+    KURUCU: 'kurucu',
+    ADMIN: 'admin',
+    YONETICI: 'yonetici',
+    GENEL_SORUMLU: 'genel_sorumlu',
+    DISCORD_YONETICISI: 'discord_yoneticisi',
+    KIDEMLI_DISCORD_MODERATORU: 'kidemli_discord_moderatoru',
+    DISCORD_MODERATORU: 'discord_moderatoru',
+    DISCORD_DESTEK_EKIBI: 'discord_destek_ekibi',
+    VIEWER: 'viewer',
+    PENDING: 'pending',
+    BLOCKED: 'blocked'
+});
 
-const DEFAULT_GROQ_LIMITS = {
-    kurucu: 500,
-    admin: 350,
-    yonetici: 250,
-    genel_sorumlu: 225,
-    discord_yoneticisi: 210,
-    kidemli: 175,
-    kidemli_discord_moderatoru: 160,
-    senior_moderator: 150,
-    moderator: 40,
-    discord_moderatoru: 40,
-    support: 10,
-    discord_destek_ekibi: 10,
-    viewer: 0,
-    pending: 0,
-    blocked: 0
-};
-
-const PERMISSIONS = {
+const PERMISSIONS = Object.freeze({
     DASHBOARD_VIEW: 'dashboard:view',
     REPORTS_VIEW: 'reports:view',
     REPORTS_CREATE: 'reports:create',
@@ -62,7 +40,7 @@ const PERMISSIONS = {
     SECURITY_EVENTS_VIEW: 'security_events:view',
     AI_SETTINGS_VIEW: 'ai_settings:view',
     AI_SETTINGS_UPDATE: 'ai_settings:update'
-};
+});
 
 const MANAGEMENT_PERMISSIONS = [
     PERMISSIONS.DASHBOARD_VIEW,
@@ -76,92 +54,75 @@ const MANAGEMENT_PERMISSIONS = [
     PERMISSIONS.AUDIT_LOGS_VIEW
 ];
 
-const ROLE_PERMISSIONS = {
-    kurucu: ['*'],
-    admin: ['*'],
-    yonetici: ['*'],
-    genel_sorumlu: MANAGEMENT_PERMISSIONS,
-    discord_yoneticisi: MANAGEMENT_PERMISSIONS,
-    kidemli: MANAGEMENT_PERMISSIONS,
-    kidemli_discord_moderatoru: MANAGEMENT_PERMISSIONS,
-    senior_moderator: MANAGEMENT_PERMISSIONS,
-    moderator: [
+const ROLE_PERMISSIONS = Object.freeze({
+    [ROLES.KURUCU]: ['*'],
+    [ROLES.ADMIN]: ['*'],
+    [ROLES.YONETICI]: ['*'],
+    [ROLES.GENEL_SORUMLU]: MANAGEMENT_PERMISSIONS,
+    [ROLES.DISCORD_YONETICISI]: MANAGEMENT_PERMISSIONS,
+    [ROLES.KIDEMLI_DISCORD_MODERATORU]: MANAGEMENT_PERMISSIONS,
+    [ROLES.DISCORD_MODERATORU]: [
         PERMISSIONS.DASHBOARD_VIEW,
         PERMISSIONS.REPORTS_VIEW,
         PERMISSIONS.PENALTIES_VIEW,
         PERMISSIONS.BLACKLIST_VIEW
     ],
-    discord_moderatoru: [
-        PERMISSIONS.DASHBOARD_VIEW,
-        PERMISSIONS.REPORTS_VIEW,
-        PERMISSIONS.PENALTIES_VIEW,
-        PERMISSIONS.BLACKLIST_VIEW
-    ],
-    support: [
+    [ROLES.DISCORD_DESTEK_EKIBI]: [
         PERMISSIONS.DASHBOARD_VIEW,
         PERMISSIONS.REPORTS_VIEW
     ],
-    discord_destek_ekibi: [
+    [ROLES.VIEWER]: [
         PERMISSIONS.DASHBOARD_VIEW,
         PERMISSIONS.REPORTS_VIEW
     ],
-    viewer: [
-        PERMISSIONS.DASHBOARD_VIEW,
-        PERMISSIONS.REPORTS_VIEW
-    ],
-    pending: [],
-    blocked: []
-};
+    [ROLES.PENDING]: [],
+    [ROLES.BLOCKED]: []
+});
 
 function asciiRole(role) {
     return String(role || '')
         .trim()
         .toLowerCase()
-        .normalize('NFD')
+        .normalize('NFKD')
         .replace(/[\u0300-\u036f]/g, '')
         .replace(/ı/g, 'i')
-        .replace(/ğ/g, 'g')
-        .replace(/ü/g, 'u')
-        .replace(/ş/g, 's')
-        .replace(/ö/g, 'o')
-        .replace(/ç/g, 'c')
-        .replace(/[^\w]+/g, '_')
-        .replace(/^_+|_+$/g, '');
+        .replace(/\s+/g, '_');
 }
 
 function normalizeRole(role) {
-    const normalized = String(role || 'pending').trim().toLowerCase();
+    const normalized = String(role || ROLES.PENDING).trim().toLowerCase();
     const ascii = asciiRole(role);
+
     const aliases = {
-        yonetici: 'yonetici',
-        owner: 'kurucu',
-        super_admin: 'admin',
-        admin: 'admin',
-        manager: 'genel_sorumlu',
-        genel_sorumlu: 'genel_sorumlu',
-        discord_yoneticisi: 'discord_yoneticisi',
-        kidemli: 'kidemli_discord_moderatoru',
-        kidemli_discord_moderatoru: 'kidemli_discord_moderatoru',
-        senior_moderator: 'kidemli_discord_moderatoru',
-        moderator: 'discord_moderatoru',
-        discord_moderator: 'discord_moderatoru',
-        discord_moderatoru: 'discord_moderatoru',
-        support: 'discord_destek_ekibi',
-        destek: 'discord_destek_ekibi',
-        discord_destek_ekibi: 'discord_destek_ekibi',
-        viewer: 'viewer',
-        pending: 'pending',
-        blocked: 'blocked'
+        owner: ROLES.KURUCU,
+        kurucu: ROLES.KURUCU,
+        super_admin: ROLES.ADMIN,
+        admin: ROLES.ADMIN,
+        yonetici: ROLES.YONETICI,
+        yönetici: ROLES.YONETICI,
+        manager: ROLES.GENEL_SORUMLU,
+        genel_sorumlu: ROLES.GENEL_SORUMLU,
+        discord_yoneticisi: ROLES.DISCORD_YONETICISI,
+        kidemli: ROLES.KIDEMLI_DISCORD_MODERATORU,
+        kıdemli: ROLES.KIDEMLI_DISCORD_MODERATORU,
+        kidemli_discord_moderatoru: ROLES.KIDEMLI_DISCORD_MODERATORU,
+        senior_moderator: ROLES.KIDEMLI_DISCORD_MODERATORU,
+        moderator: ROLES.DISCORD_MODERATORU,
+        discord_moderator: ROLES.DISCORD_MODERATORU,
+        discord_moderatoru: ROLES.DISCORD_MODERATORU,
+        support: ROLES.DISCORD_DESTEK_EKIBI,
+        destek: ROLES.DISCORD_DESTEK_EKIBI,
+        discord_destek_ekibi: ROLES.DISCORD_DESTEK_EKIBI,
+        viewer: ROLES.VIEWER,
+        pending: ROLES.PENDING,
+        blocked: ROLES.BLOCKED
     };
+
     if (aliases[normalized]) return aliases[normalized];
     if (aliases[ascii]) return aliases[ascii];
-    if (ROLE_LEVELS[normalized] !== undefined) return normalized;
-    if (ROLE_LEVELS[ascii] !== undefined) return ascii;
-    return 'pending';
-}
-
-function canUseAi(role) {
-    return (DEFAULT_GROQ_LIMITS[normalizeRole(role)] || 0) > 0;
+    if (ROLE_PERMISSIONS[normalized]) return normalized;
+    if (ROLE_PERMISSIONS[ascii]) return ascii;
+    return ROLES.PENDING;
 }
 
 function hasPermission(role, permission) {
@@ -169,4 +130,10 @@ function hasPermission(role, permission) {
     return permissions.includes('*') || permissions.includes(permission);
 }
 
-module.exports = { DEFAULT_GROQ_LIMITS, PERMISSIONS, ROLE_PERMISSIONS, normalizeRole, canUseAi, hasPermission };
+module.exports = {
+    ROLES,
+    PERMISSIONS,
+    ROLE_PERMISSIONS,
+    normalizeRole,
+    hasPermission
+};

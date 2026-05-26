@@ -971,13 +971,17 @@ async function saveAllowlist() {
         Toast.warning('Allowlist', 'Email gerekli');
         return;
     }
-    await FirebaseRepository.setGoogleAllowlist(email, {
-        role: DOM.allowRole.value,
-        allowed: true
-    }, state.session?.profile);
-    DOM.allowEmail.value = '';
-    await loadAuthAdminData();
-    Toast.success('Allowlist', 'Google erisimi kaydedildi');
+    try {
+        await FirebaseRepository.setGoogleAllowlist(email, {
+            role: DOM.allowRole.value,
+            allowed: true
+        }, state.session?.profile);
+        DOM.allowEmail.value = '';
+        await loadAuthAdminData();
+        Toast.success('Allowlist', 'Google erisimi kaydedildi');
+    } catch (error) {
+        Toast.error('Allowlist Kaydedilemedi', error.message || 'DB write failed');
+    }
 }
 
 async function saveRoleCache() {
@@ -988,15 +992,19 @@ async function saveRoleCache() {
         return;
     }
     const identityKey = raw.includes(':') ? raw : `discord:${raw}`;
-    await FirebaseRepository.setRoleCache(identityKey, {
-        discordId: identityKey.startsWith('discord:') ? identityKey.replace('discord:', '') : '',
-        displayName: DOM.roleCacheName.value.trim() || identityKey,
-        role: DOM.roleCacheRole.value
-    }, state.session?.profile);
-    DOM.roleCacheIdentity.value = '';
-    DOM.roleCacheName.value = '';
-    await loadAuthAdminData();
-    Toast.success('Role cache', 'Rol kaydi guncellendi');
+    try {
+        await FirebaseRepository.setRoleCache(identityKey, {
+            discordId: identityKey.startsWith('discord:') ? identityKey.replace('discord:', '') : '',
+            displayName: DOM.roleCacheName.value.trim() || identityKey,
+            role: DOM.roleCacheRole.value
+        }, state.session?.profile);
+        DOM.roleCacheIdentity.value = '';
+        DOM.roleCacheName.value = '';
+        await loadAuthAdminData();
+        Toast.success('Role cache', 'Rol kaydi guncellendi');
+    } catch (error) {
+        Toast.error('Role Cache Kaydedilemedi', error.message || 'DB write failed');
+    }
 }
 
 async function saveGroqPolicy() {
@@ -1005,29 +1013,41 @@ async function saveGroqPolicy() {
     DOM.groqLimitGrid.querySelectorAll('input[data-role]').forEach((input) => {
         groqLimits[input.dataset.role] = Number(input.value || 0);
     });
-    const current = await FirebaseRepository.getRolePolicy().catch(() => ({}));
-    await FirebaseRepository.saveRolePolicy({
-        ...(current || {}),
-        groqLimits
-    }, state.session?.profile);
-    await loadAuthAdminData();
-    Toast.success('Groq', 'Rol bazli limitler kaydedildi');
+    try {
+        const current = await FirebaseRepository.getRolePolicy().catch(() => ({}));
+        await FirebaseRepository.saveRolePolicy({
+            ...(current || {}),
+            groqLimits
+        }, state.session?.profile);
+        await loadAuthAdminData();
+        Toast.success('Groq', 'Rol bazli limitler kaydedildi');
+    } catch (error) {
+        Toast.error('Groq Limitleri Kaydedilemedi', error.message || 'DB write failed');
+    }
 }
 
 async function deleteAllowlist(email) {
     if (!requireUiPermission(PERMISSIONS.GOOGLE_ALLOWLIST_UPDATE, 'google_allowlist:delete')) return;
     if (!confirm(`${email} allowlist'ten silinecek. Emin misiniz?`)) return;
-    await FirebaseRepository.deleteGoogleAllowlist(email, state.session?.profile);
-    await loadAuthAdminData();
-    Toast.success('Allowlist', 'Erisim silindi');
+    try {
+        await FirebaseRepository.deleteGoogleAllowlist(email, state.session?.profile);
+        await loadAuthAdminData();
+        Toast.success('Allowlist', 'Erisim silindi');
+    } catch (error) {
+        Toast.error('Allowlist Silinemedi', error.message || 'DB write failed');
+    }
 }
 
 async function deleteRoleCache(identityKey) {
     if (!requireUiPermission(PERMISSIONS.STAFF_ASSIGN_ROLE, 'role_cache:delete')) return;
     if (!confirm(`${identityKey} cache'den silinecek. Emin misiniz?`)) return;
-    await FirebaseRepository.deleteRoleCache(identityKey, state.session?.profile);
-    await loadAuthAdminData();
-    Toast.success('Role cache', 'Rol kaydi silindi');
+    try {
+        await FirebaseRepository.deleteRoleCache(identityKey, state.session?.profile);
+        await loadAuthAdminData();
+        Toast.success('Role cache', 'Rol kaydi silindi');
+    } catch (error) {
+        Toast.error('Role Cache Silinemedi', error.message || 'DB write failed');
+    }
 }
 
 function calculateStats() {

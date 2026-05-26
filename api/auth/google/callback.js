@@ -17,7 +17,11 @@ function redirectWithError(res, redirectUri, error) {
 }
 
 async function exchangeCode(code, redirectUri) {
-    if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
+    if (!process.env.GOOGLE_CLIENT_ID) {
+        throw new Error('GOOGLE_CLIENT_ID_MISSING');
+    }
+
+    if (!process.env.GOOGLE_CLIENT_SECRET) {
         throw new Error('GOOGLE_CLIENT_SECRET_MISSING');
     }
 
@@ -32,13 +36,20 @@ async function exchangeCode(code, redirectUri) {
             redirect_uri: redirectUri
         })
     });
+
     const payload = await response.json().catch(() => ({}));
+
     if (!response.ok) {
-        throw new Error(payload.error === 'redirect_uri_mismatch'
-            ? 'GOOGLE_REDIRECT_URI_MISMATCH'
-            : 'GOOGLE_CODE_EXCHANGE_FAILED');
+        if (payload.error === 'redirect_uri_mismatch') {
+            throw new Error('GOOGLE_REDIRECT_URI_MISMATCH');
+        }
+        throw new Error(`GOOGLE_CODE_EXCHANGE_FAILED:${payload.error || response.status}`);
     }
-    if (!payload.access_token) throw new Error('GOOGLE_ACCESS_TOKEN_MISSING');
+
+    if (!payload.access_token) {
+        throw new Error('GOOGLE_ACCESS_TOKEN_MISSING');
+    }
+
     return payload.access_token;
 }
 

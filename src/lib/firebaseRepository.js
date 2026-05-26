@@ -1,6 +1,7 @@
 import { FirestoreRest } from './firestoreRest.js';
 import { APP_CONFIG } from '../config/appConfig.js';
 import { normalizeRole, ROLES, getDefaultGroqLimit, getDefaultRolePolicy, SEEDED_ROLE_MEMBERS, SEEDED_GOOGLE_ALLOWLIST } from '../auth/rolePolicy.js';
+import { AdminApiClient } from './adminApiClient.js';
 
 function safeDocId(value) {
     return String(value || 'unknown').trim().toLowerCase().replace(/\//g, '_');
@@ -53,16 +54,7 @@ export const FirebaseRepository = {
     },
 
     async setRoleCache(identityKey, data, actor = null) {
-        const role = normalizeRole(data.role);
-        const payload = {
-            identityKey,
-            ...data,
-            role,
-            updatedBy: actor?.uid || actor?.email || 'system',
-            updatedAt: new Date().toISOString()
-        };
-        await this.addAuditLog('role_cache_updated', payload, actor);
-        return FirestoreRest.setDocument(`roleCache/${safeDocId(identityKey)}`, payload);
+        return AdminApiClient.setRoleCache(identityKey, data);
     },
 
     async getGoogleAllowlist(email, token = null) {
@@ -71,21 +63,11 @@ export const FirebaseRepository = {
     },
 
     async setGoogleAllowlist(email, data, actor = null) {
-        const payload = {
-            email: String(email || '').trim().toLowerCase(),
-            allowed: data.allowed !== false,
-            role: normalizeRole(data.role || ROLES.VIEWER),
-            note: data.note || '',
-            expiresAt: data.expiresAt || null,
-            updatedBy: actor?.uid || actor?.email || 'system',
-            updatedAt: new Date().toISOString()
-        };
-        await this.addAuditLog('google_allowlist_updated', payload, actor);
-        return FirestoreRest.setDocument(`googleAllowlist/${safeDocId(email)}`, payload);
+        return AdminApiClient.setGoogleAllowlist(email, data);
     },
 
     async listGoogleAllowlist() {
-        return FirestoreRest.listDocuments('googleAllowlist', { pageSize: 100 });
+        return AdminApiClient.listGoogleAllowlist();
     },
 
     async listUsers() {
@@ -97,7 +79,7 @@ export const FirebaseRepository = {
     },
 
     async listRoleCache() {
-        return FirestoreRest.listDocuments('roleCache', { pageSize: 200 });
+        return AdminApiClient.listRoleCache();
     },
 
     async saveCases(cases, guildId = APP_CONFIG.guildId, actor = null) {
@@ -244,13 +226,7 @@ export const FirebaseRepository = {
     },
 
     async saveRolePolicy(policy, actor = null) {
-        const current = await this.getRolePolicy().catch(() => getDefaultRolePolicy());
-        await this.addAuditLog('role_policy_updated', policy, actor);
-        return FirestoreRest.setDocument('rolePolicy/settings', {
-            ...(current || {}),
-            ...policy,
-            updatedAt: new Date().toISOString()
-        });
+        return AdminApiClient.saveRolePolicy(policy);
     },
 
     async getGroqLimit(role) {
@@ -270,17 +246,15 @@ export const FirebaseRepository = {
     },
 
     async listAuditLogs() {
-        return FirestoreRest.listDocuments('auditLogs', { pageSize: 100, orderBy: 'createdAt desc' });
+        return AdminApiClient.listAuditLogs();
     },
 
     async deleteGoogleAllowlist(email, actor = null) {
-        await this.addAuditLog('google_allowlist_deleted', { email }, actor);
-        return FirestoreRest.deleteDocument(`googleAllowlist/${safeDocId(email)}`);
+        return AdminApiClient.deleteGoogleAllowlist(email);
     },
 
     async deleteRoleCache(identityKey, actor = null) {
-        await this.addAuditLog('role_cache_deleted', { identityKey }, actor);
-        return FirestoreRest.deleteDocument(`roleCache/${safeDocId(identityKey)}`);
+        return AdminApiClient.deleteRoleCache(identityKey);
     },
 
     async seedGoogleAllowlist(actor = null) {

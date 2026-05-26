@@ -58,6 +58,14 @@ async function loginWith(kind) {
             errorMsg = 'Giriş yapıldı, ancak profil veritabanına kaydedilemedi (USER_UPSERT_FORBIDDEN). Allowlist kaydı veya Firestore kurallarınızı kontrol edin.';
         } else if (errorMsgStr === 'GOOGLE_EMAIL_NOT_ALLOWLISTED') {
             errorMsg = 'Bu Google e-postası sistemde izin verilenler listesinde (Allowlist) bulunamadı.';
+        } else if (errorMsgStr.includes('GOOGLE_CLIENT_ID_MISSING')) {
+            errorMsg = 'Google Client ID Vercel Production ortamında eksik. GOOGLE_CLIENT_ID env değişkenini ekleyip redeploy yapın.';
+        } else if (errorMsgStr.includes('GOOGLE_CLIENT_SECRET_MISSING')) {
+            errorMsg = 'Google Client Secret Vercel Production ortamında eksik. GOOGLE_CLIENT_SECRET env değişkenini ekleyip redeploy yapın.';
+        } else if (errorMsgStr.includes('GOOGLE_REDIRECT_URI_MISMATCH')) {
+            errorMsg = 'Google redirect URI uyuşmuyor. Google Cloud Console içine https://lutheus.vercel.app/api/auth/google/callback eklenmeli.';
+        } else if (errorMsgStr.includes('FIREBASE_SERVICE_ACCOUNT_MISSING')) {
+            errorMsg = 'Firebase Admin service account Vercel env içinde eksik.';
         } else if (errorMsgStr.includes('DISCORD_PROFILE_DECODE_FAILED')) {
             errorMsg = 'Discord profil bilgileri çözümlenemedi (DISCORD_PROFILE_DECODE_FAILED).';
         } else if (errorMsgStr.includes('DISCORD_CLIENT_SECRET_MISSING')) {

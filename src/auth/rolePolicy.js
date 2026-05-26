@@ -311,7 +311,12 @@ export function canEditCuk(role) {
 }
 
 export function canAccessAdmin(role) {
-    return hasPermission(role, PERMISSIONS.DASHBOARD_VIEW);
+    return hasPermission(role, PERMISSIONS.STAFF_VIEW)
+        || hasPermission(role, PERMISSIONS.PENALTY_ACCURACY_UPDATE)
+        || hasPermission(role, PERMISSIONS.GOOGLE_ALLOWLIST_VIEW)
+        || hasPermission(role, PERMISSIONS.SYSTEM_SETTINGS_VIEW)
+        || hasPermission(role, PERMISSIONS.AI_SETTINGS_VIEW)
+        || hasPermission(role, PERMISSIONS.DISCORD_BOT_VIEW);
 }
 
 export function canRunAi(role) {

@@ -4,7 +4,8 @@ import {
     REST,
     Routes,
     EmbedBuilder,
-    ActivityType
+    ActivityType,
+    Partials
 } from 'discord.js';
 import { createServer } from 'node:http';
 import { db, botToken, logChannelId, guildId } from './botConfig.js';
@@ -24,13 +25,18 @@ import { ServerInfoCommand } from './commands/mod/ServerInfoCommand.js';
 import { ModLogsCommand } from './commands/mod/ModLogsCommand.js';
 import { UnbanCommand } from './commands/mod/UnbanCommand.js';
 
+// In-memory cache for dynamic guild configurations to power real-time welcome, automod, reaction roles etc.
+const guildConfigsCache: Record<string, any> = {};
+
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMembers,
         GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.GuildBans
-    ]
+        GatewayIntentBits.GuildBans,
+        GatewayIntentBits.GuildMessageReactions
+    ],
+    partials: [Partials.Message, Partials.Reaction, Partials.User]
 });
 
 // SECTION: HEALTH_SERVER
@@ -264,6 +270,26 @@ function startFirestoreListeners() {
         }, (error) => {
             console.error('Discord Bot: Firestore settings listener error:', error);
         });
+
+    db.collection('guildModuleConfigs')
+        .onSnapshot((snapshot) => {
+            snapshot.forEach((doc) => {
+                guildConfigsCache[doc.id] = doc.data();
+            });
+            console.log(`Discord Bot: Loaded configs cache for ${snapshot.size} guilds.`);
+        }, (error) => {
+            console.error('Discord Bot: Firestore guildModuleConfigs listener error:', error);
+        });
+
+    db.collection('guildConfigs')
+        .onSnapshot((snapshot) => {
+            snapshot.forEach((doc) => {
+                if (!guildConfigsCache[doc.id]) guildConfigsCache[doc.id] = {};
+                guildConfigsCache[doc.id].settings = doc.data();
+            });
+        }, (error) => {
+            console.error('Discord Bot: Firestore guildConfigs listener error:', error);
+        });
 }
 
 async function sendCaseEmbedLog(data: any) {
@@ -390,30 +416,56 @@ function setupAuditLogListeners() {
         }
     });
 
-    // Member removed (kick detection via audit log)
+    // Member removed (kick detection & goodbye module)
     client.on('guildMemberRemove', async (member) => {
-        if (!logChannelId) return;
-        try {
-            await new Promise(r => setTimeout(r, 500)); // Small delay to ensure audit log is available
-            const audit = await member.guild.fetchAuditLogs({ type: 20 /* KICK_MEMBER */, limit: 1 }).catch(() => null);
-            const entry = audit?.entries.first();
-            if (!entry || entry.targetId !== member.id) return;
-            if (Date.now() - entry.createdTimestamp > 5000) return; // Only recent kicks
-            const channel = await client.channels.fetch(logChannelId).catch(() => null);
-            if (!channel || !channel.isTextBased()) return;
-            const embed = new EmbedBuilder()
-                .setTitle('👢 Kullanıcı Atıldı (Kick)')
-                .setColor(0xff6b35)
-                .setThumbnail(member.user.displayAvatarURL())
-                .addFields(
-                    { name: '👤 Atılan', value: `**${member.user.tag}**\n\`${member.id}\``, inline: true },
-                    { name: '👮 Yetkili', value: entry.executor ? `**${entry.executor.tag}**` : 'Bilinmiyor', inline: true },
-                    { name: '📝 Sebep', value: entry.reason || 'Sebep belirtilmedi' }
-                )
-                .setFooter({ text: 'Lutheus Oto-Log' }).setTimestamp();
-            await (channel as any).send({ embeds: [embed] }).catch(() => null);
-        } catch {
-            // Ignore audit log delivery failures.
+        // 1. Kick detection
+        if (logChannelId) {
+            try {
+                await new Promise(r => setTimeout(r, 500)); // Small delay to ensure audit log is available
+                const audit = await member.guild.fetchAuditLogs({ type: 20 /* KICK_MEMBER */, limit: 1 }).catch(() => null);
+                const entry = audit?.entries.first();
+                if (entry && entry.targetId === member.id && Date.now() - entry.createdTimestamp <= 5000) {
+                    const channel = await client.channels.fetch(logChannelId).catch(() => null);
+                    if (channel && channel.isTextBased()) {
+                        const embed = new EmbedBuilder()
+                            .setTitle('👢 Kullanıcı Atıldı (Kick)')
+                            .setColor(0xff6b35)
+                            .setThumbnail(member.user.displayAvatarURL())
+                            .addFields(
+                                { name: '👤 Atılan', value: `**${member.user.tag}**\n\`${member.id}\``, inline: true },
+                                { name: '👮 Yetkili', value: entry.executor ? `**${entry.executor.tag}**` : 'Bilinmiyor', inline: true },
+                                { name: '📝 Sebep', value: entry.reason || 'Sebep belirtilmedi' }
+                            )
+                            .setFooter({ text: 'Lutheus Oto-Log' }).setTimestamp();
+                        await (channel as any).send({ embeds: [embed] }).catch(() => null);
+                    }
+                }
+            } catch {
+                // Ignore audit log delivery failures.
+            }
+        }
+
+        // 2. Goodbye message module
+        const config = guildConfigsCache[member.guild.id];
+        if (config && config.welcome && config.welcome.enabled && config.welcome.goodbyeEnabled) {
+            const welcome = config.welcome;
+            const goodbyeChannel = welcome.goodbyeChannelId || welcome.channelId;
+            if (goodbyeChannel) {
+                try {
+                    const channel = await member.guild.channels.fetch(goodbyeChannel).catch(() => null);
+                    if (channel && channel.isTextBased()) {
+                        const rawMsg = welcome.goodbyeMessage || '{username} sunucudan ayrıldı.';
+                        const msg = rawMsg
+                            .replace(/{user}/g, member.user.username)
+                            .replace(/{username}/g, member.user.username)
+                            .replace(/{server}/g, member.guild.name)
+                            .replace(/{memberCount}/g, String(member.guild.memberCount));
+                        await (channel as any).send(msg).catch(() => null);
+                    }
+                } catch {
+                    // Ignore goodbye delivery failures.
+                }
+            }
         }
     });
 
@@ -486,6 +538,18 @@ function setupAuditLogListeners() {
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.isChatInputCommand()) return;
 
+    const guildId = interaction.guildId;
+    if (guildId) {
+        const config = guildConfigsCache[guildId];
+        if (config && config.commands) {
+            const cmdConfig = config.commands;
+            if (cmdConfig.disabledCommands && cmdConfig.disabledCommands.includes(interaction.commandName)) {
+                await interaction.reply({ content: '❌ Bu komut sunucu yöneticisi tarafından devre dışı bırakılmıştır.', ephemeral: true });
+                return;
+            }
+        }
+    }
+
     const command = commands.find(cmd => cmd.data.name === interaction.commandName);
     if (!command) return;
 
@@ -499,6 +563,245 @@ client.on('interactionCreate', async (interaction) => {
         } else {
             await interaction.reply(replyObj).catch(() => null);
         }
+    }
+});
+
+// SECTION: ADDITIONAL_BOT_MODULES
+// PURPOSE: Event listeners for config-driven modules (Welcome, AutoMod, Levels, Reaction Roles) backed by Firestore
+
+// 1. Welcome Message module
+client.on('guildMemberAdd', async (member) => {
+    const config = guildConfigsCache[member.guild.id];
+    if (!config || !config.welcome || !config.welcome.enabled) return;
+
+    const welcome = config.welcome;
+    const channelId = welcome.channelId;
+    if (!channelId) return;
+
+    try {
+        const channel = await member.guild.channels.fetch(channelId).catch(() => null);
+        if (!channel || !channel.isTextBased()) return;
+
+        const rawMsg = welcome.message || 'Hoş geldin {user}!';
+        const msg = rawMsg
+            .replace(/{user}/g, `<@${member.id}>`)
+            .replace(/{username}/g, member.user.username)
+            .replace(/{server}/g, member.guild.name)
+            .replace(/{memberCount}/g, String(member.guild.memberCount));
+
+        if (welcome.embedEnabled) {
+            const embed = new EmbedBuilder()
+                .setTitle(welcome.embedTitle || 'Hoş Geldiniz!')
+                .setColor(welcome.embedColor || 0x7c5af5)
+                .setDescription(msg)
+                .setThumbnail(member.user.displayAvatarURL())
+                .setTimestamp();
+            await (channel as any).send({ content: `<@${member.id}>`, embeds: [embed] }).catch(() => null);
+        } else {
+            await (channel as any).send(msg).catch(() => null);
+        }
+
+        if (welcome.dmEnabled && welcome.dmMessage) {
+            const dm = welcome.dmMessage
+                .replace(/{user}/g, member.user.username)
+                .replace(/{server}/g, member.guild.name);
+            await member.send(dm).catch(() => null);
+        }
+    } catch (e: any) {
+        console.warn('Discord Bot: Welcome execution failed:', e.message);
+    }
+});
+
+// 2. Levels / XP gain cooldown map
+const xpCooldowns = new Set<string>();
+
+async function handleUserXPGain(message: any) {
+    if (message.author.bot || !message.guildId) return;
+
+    const config = guildConfigsCache[message.guildId];
+    if (!config || !config.levels || !config.levels.enabled) return;
+
+    const key = `${message.guildId}:${message.author.id}`;
+    if (xpCooldowns.has(key)) return;
+
+    const levels = config.levels;
+    const xpMin = levels.xpMin || 15;
+    const xpMax = levels.xpMax || 25;
+    const xpGained = Math.floor(Math.random() * (xpMax - xpMin + 1)) + xpMin;
+
+    // Set user cooldown
+    xpCooldowns.add(key);
+    setTimeout(() => xpCooldowns.delete(key), (levels.cooldownSeconds || 60) * 1000);
+
+    try {
+        const docRef = db.collection('levelProfiles').doc(`${message.guildId}_${message.author.id}`);
+        const doc = await docRef.get().catch(() => null);
+
+        let xp = xpGained;
+        let level = 1;
+
+        if (doc?.exists) {
+            const data = doc.data();
+            if (data) {
+                xp = (data.xp || 0) + xpGained;
+                level = data.level || 1;
+            }
+        }
+
+        const nextLevelXp = level * 100;
+        if (xp >= nextLevelXp) {
+            level++;
+            const lvlMsg = await message.channel.send(`🎉 Tebrikler ${message.author}! Seviye atladın ve **Level ${level}** oldun!`).catch(() => null);
+            if (lvlMsg) setTimeout(() => lvlMsg.delete().catch(() => null), 6000);
+
+            // Assign reward role
+            const rewards = levels.rewards || {};
+            const rewardRoleId = rewards[level];
+            if (rewardRoleId && message.member) {
+                await message.member.roles.add(rewardRoleId).catch(() => null);
+            }
+        }
+
+        await docRef.set({
+            guildId: message.guildId,
+            userId: message.author.id,
+            xp,
+            level,
+            lastMessageAt: Date.now()
+        }, { merge: true }).catch(() => null);
+    } catch (e: any) {
+        console.warn('Discord Bot: Levels profile update failed:', e.message);
+    }
+}
+
+// 3. AutoMod & message XP listener
+client.on('messageCreate', async (message) => {
+    if (message.author.bot || !message.guildId) return;
+
+    // Handle XP gain concurrently
+    handleUserXPGain(message).catch(() => null);
+
+    const config = guildConfigsCache[message.guildId];
+    if (!config || !config.automod || !config.automod.enabled) return;
+
+    const automod = config.automod;
+    const member = message.member;
+    if (!member) return;
+
+    // Check exemptions
+    const exemptRoles = automod.antiLink?.exemptRoles || [];
+    const exemptChannels = automod.exemptChannels || [];
+
+    if (exemptChannels.includes(message.channelId)) return;
+    const hasExemptRole = member.roles.cache.some(r => exemptRoles.includes(r.id));
+    if (hasExemptRole) return;
+
+    const content = message.content;
+    let shouldDelete = false;
+    let action = 'delete';
+    let reason = 'AutoMod Violation';
+
+    // 3.1 Anti-Link
+    if (automod.antiLink_enabled && /https?:\/\/[^\s]+/.test(content)) {
+        shouldDelete = true;
+        action = automod.antiLink_action || 'warn';
+        reason = 'Zararlı/İzinsiz Link Paylaşımı';
+    }
+
+    // 3.2 Anti-Invite
+    if (automod.antiInvite_enabled && /(discord\.gg|discord\.com\/invite)\/[^\s]+/.test(content)) {
+        shouldDelete = true;
+        action = automod.antiLink_action || 'warn';
+        reason = 'Sunucu Davet Linki Paylaşımı';
+    }
+
+    // 3.3 Bad Words
+    if (automod.badWords_enabled && automod.badWords_list) {
+        const badWords = String(automod.badWords_list).split(',').map(w => w.trim().toLowerCase()).filter(Boolean);
+        const lowerContent = content.toLowerCase();
+        const containsBadWord = badWords.some(w => lowerContent.includes(w));
+        if (containsBadWord) {
+            shouldDelete = true;
+            action = 'delete';
+            reason = 'Yasaklı Kelime Kullanımı';
+        }
+    }
+
+    // 3.4 Anti-Caps
+    if (automod.antiCaps_enabled && content.length >= 10) {
+        const capsCount = content.replace(/[^A-ZÇĞİÖŞÜ]/g, '').length;
+        const percent = (capsCount / content.length) * 100;
+        const maxPercent = automod.antiCaps_maxPercent || 70;
+        if (percent > maxPercent) {
+            shouldDelete = true;
+            action = 'delete';
+            reason = 'Aşırı Büyük Harf Kullanımı';
+        }
+    }
+
+    if (shouldDelete) {
+        await message.delete().catch(() => null);
+        if (action === 'warn') {
+            const warnChannel = await message.channel.send(`⚠️ ${message.author}, lütfen sunucumuzda kurallara uyun. Sebep: **${reason}**`).catch(() => null);
+            if (warnChannel) setTimeout(() => warnChannel.delete().catch(() => null), 6000);
+        } else if (action === 'timeout') {
+            await member.timeout(10 * 60 * 1000, `AutoMod: ${reason}`).catch(() => null);
+            const muteMsg = await message.channel.send(`⏱️ ${message.author} 10 dakika boyunca susturuldu. Sebep: **${reason}**`).catch(() => null);
+            if (muteMsg) setTimeout(() => muteMsg.delete().catch(() => null), 8000);
+        }
+    }
+});
+
+// 4. Reaction Roles panel listeners
+client.on('messageReactionAdd', async (reaction, user) => {
+    if (user.bot || !reaction.message.guildId) return;
+
+    if (reaction.partial) await reaction.fetch().catch(() => null);
+    const messageId = reaction.message.id;
+    const guildId = reaction.message.guildId;
+
+    const config = guildConfigsCache[guildId];
+    if (!config || !config.reactionRoles) return;
+
+    const panel = (config.reactionRoles as any[] || []).find(p => p.messageId === messageId || p.channelId === reaction.message.channelId);
+    if (!panel) return;
+
+    const emojiName = reaction.emoji.name;
+    const option = (panel.roles as any[] || []).find(r => r.emoji === emojiName);
+    if (!option) return;
+
+    const guild = reaction.message.guild;
+    if (!guild) return;
+
+    const member = await guild.members.fetch(user.id).catch(() => null);
+    if (member) {
+        await member.roles.add(option.roleId).catch(() => null);
+    }
+});
+
+client.on('messageReactionRemove', async (reaction, user) => {
+    if (user.bot || !reaction.message.guildId) return;
+
+    if (reaction.partial) await reaction.fetch().catch(() => null);
+    const messageId = reaction.message.id;
+    const guildId = reaction.message.guildId;
+
+    const config = guildConfigsCache[guildId];
+    if (!config || !config.reactionRoles) return;
+
+    const panel = (config.reactionRoles as any[] || []).find(p => p.messageId === messageId || p.channelId === reaction.message.channelId);
+    if (!panel) return;
+
+    const emojiName = reaction.emoji.name;
+    const option = (panel.roles as any[] || []).find(r => r.emoji === emojiName);
+    if (!option) return;
+
+    const guild = reaction.message.guild;
+    if (!guild) return;
+
+    const member = await guild.members.fetch(user.id).catch(() => null);
+    if (member) {
+        await member.roles.remove(option.roleId).catch(() => null);
     }
 });
 

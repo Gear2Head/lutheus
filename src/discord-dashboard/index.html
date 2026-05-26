@@ -1,0 +1,742 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lutheus Bot Dashboard</title>
+  <link rel="stylesheet" href="dashboard.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+</head>
+<body class="dark-theme">
+
+  <!-- Toast Stack -->
+  <div class="toast-stack" id="toastStack"></div>
+
+  <!-- Command Palette -->
+  <div class="modal-overlay hidden" id="commandPaletteModal">
+    <div class="modal-box compact">
+      <div class="search-field">
+        <i class="fa-solid fa-magnifying-glass"></i>
+        <input type="text" id="commandPaletteInput" placeholder="Gitmek istediğiniz sayfayı arayın (örn: AutoMod, Moderasyon)...">
+      </div>
+      <div class="palette-results" id="paletteResults">
+        <!-- Renders matches -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Confirmation Dialog -->
+  <div class="modal-overlay hidden" id="confirmModal">
+    <div class="modal-box compact" style="max-width: 420px;">
+      <div class="modal-header">
+        <strong id="confirmTitle" style="color: var(--red);">Emin misiniz?</strong>
+      </div>
+      <div class="modal-body" style="padding: 20px; font-size: 13px; color: var(--text-2); line-height: 1.5;">
+        <p id="confirmMessage">Bu işlem geri alınamaz.</p>
+      </div>
+      <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 8px; padding: 12px 20px; border-top: 1px solid var(--border);">
+        <button class="btn btn-ghost" id="confirmCancelBtn">İptal</button>
+        <button class="btn btn-danger" id="confirmConfirmBtn">Onayla</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- App Shell -->
+  <div class="app-shell">
+
+    <!-- ── Sidebar ────────────────────────────────────────── -->
+    <nav class="sidebar">
+      <div class="sidebar-logo">
+        <svg width="28" height="28" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M624.16 179.336L348.64 384.88L640.48 672.488L262.336 844.664L624.16 179.336Z" fill="#7c5af5"/>
+        </svg>
+        <span>Lutheus</span>
+      </div>
+
+      <!-- Guild Profile Widget -->
+      <div class="sidebar-guild" id="activeGuildWidget">
+        <img src="" alt="" class="guild-icon" id="sidebarGuildIcon">
+        <div class="guild-info">
+          <div class="guild-name" id="sidebarGuildName">Sunucu Seçin</div>
+          <div class="guild-status">Bot Bağlı</div>
+        </div>
+      </div>
+
+      <div class="sidebar-nav" id="sidebarNav">
+        <button class="nav-item active" data-tab="overview">
+          <i class="fa-solid fa-house"></i> Overview
+        </button>
+        <button class="nav-item" data-tab="moderation">
+          <i class="fa-solid fa-gavel"></i> Moderasyon
+        </button>
+        <button class="nav-item" data-tab="automod">
+          <i class="fa-solid fa-shield-halved"></i> AutoMod
+        </button>
+        <button class="nav-item" data-tab="logging">
+          <i class="fa-solid fa-list-ul"></i> Günlük Kayıtları
+        </button>
+        <button class="nav-item" data-tab="welcome">
+          <i class="fa-solid fa-door-open"></i> Karşılama
+        </button>
+        <button class="nav-item" data-tab="reaction-roles">
+          <i class="fa-solid fa-icons"></i> Tepki Rolleri
+        </button>
+        <button class="nav-item" data-tab="commands">
+          <i class="fa-solid fa-terminal"></i> Komutlar
+        </button>
+        <button class="nav-item" data-tab="permissions">
+          <i class="fa-solid fa-user-shield"></i> Yetkiler
+        </button>
+        <button class="nav-item" data-tab="levels">
+          <i class="fa-solid fa-ranking-star"></i> Seviye & XP
+        </button>
+        <button class="nav-item" data-tab="settings">
+          <i class="fa-solid fa-sliders"></i> Bot Ayarları
+        </button>
+      </div>
+
+      <div class="sidebar-footer">
+        <button class="btn btn-ghost" id="btnBackToAdmin" style="width: 100%; font-size: 11px; height: 32px;">
+          <i class="fa-solid fa-arrow-left"></i> Ceza Raporuna Dön
+        </button>
+      </div>
+    </nav>
+
+    <!-- ── Main Content Area ──────────────────────────────── -->
+    <div class="main-content">
+
+      <!-- Header -->
+      <header class="topbar">
+        <div class="topbar-brand">
+          <span class="brand-name">Lutheus <span>Bot Panel</span></span>
+          <span class="brand-sub" id="pageSubtitle">sunucu yönetimi</span>
+        </div>
+
+        <div style="display:flex;align-items:center;gap:10px;flex:1;max-width:320px;">
+          <div class="search-field" style="flex:1;" id="btnOpenCommandPalette">
+            <i class="fa-solid fa-magnifying-glass"></i>
+            <input type="text" placeholder="Komut paletini aç (Ctrl+K)..." readonly style="cursor: pointer;">
+          </div>
+        </div>
+
+        <div class="topbar-actions">
+          <button class="btn btn-ghost" id="btnSelectGuild">
+            <i class="fa-solid fa-server"></i> Sunucu Değiştir
+          </button>
+          <div class="topbar-user" id="topbarUser">
+            <img src="" alt="" class="user-avatar" id="userAvatar">
+            <div class="user-info">
+              <div class="user-name" id="userName">Discord User</div>
+              <div class="user-role">YÖNETİCİ</div>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <!-- Main Body -->
+      <div class="page-body">
+
+        <!-- ═══ SERVER SELECTOR ═════════════════════════════ -->
+        <div class="tab-content" id="tab-server-selector">
+          <div style="margin-bottom: 24px;">
+            <h2 class="section-title">Yönettiğiniz Sunucular</h2>
+            <p class="section-desc">Lutheus botunun ayarlarını yapılandırmak istediğiniz Discord sunucusunu seçin.</p>
+          </div>
+
+          <div class="table-toolbar" style="margin-bottom: 20px;">
+            <div class="search-field" style="max-width: 320px; flex: 1;">
+              <i class="fa-solid fa-magnifying-glass"></i>
+              <input type="text" id="guildSearchInput" placeholder="Sunucu ara...">
+            </div>
+            <select id="guildFilterSelect" class="btn btn-ghost" style="padding: 0 10px;">
+              <option value="all">Tüm Sunucular</option>
+              <option value="installed">Bot Eklendi</option>
+              <option value="setup">Kurulum Gerekli</option>
+            </select>
+          </div>
+
+          <div class="guilds-grid" id="guildsGrid">
+            <!-- Renders servers -->
+          </div>
+        </div>
+
+        <!-- ═══ OVERVIEW ════════════════════════════════════ -->
+        <div class="tab-content hidden" id="tab-overview">
+          <div class="split-3-1" style="align-items: start;">
+            <div style="display: flex; flex-direction: column; gap: 20px;">
+              <div class="panel">
+                <div class="panel-header">
+                  <span class="panel-title"><i class="fa-solid fa-circle-nodes"></i> Sunucu Özeti</span>
+                </div>
+                <div class="panel-body">
+                  <div class="delta-grid" style="grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));">
+                    <div class="delta-card">
+                      <div class="delta-label">Üye Sayısı</div>
+                      <div class="delta-val" id="ovMemberCount">0</div>
+                    </div>
+                    <div class="delta-card">
+                      <div class="delta-label">Aktif Modüller</div>
+                      <div class="delta-val" id="ovActiveModules">0/8</div>
+                    </div>
+                    <div class="delta-card">
+                      <div class="delta-label">Rol Sayısı</div>
+                      <div class="delta-val" id="ovRoleCount">0</div>
+                    </div>
+                    <div class="delta-card">
+                      <div class="delta-label">Kanal Sayısı</div>
+                      <div class="delta-val" id="ovChannelCount">0</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="panel">
+                <div class="panel-header">
+                  <span class="panel-title"><i class="fa-solid fa-grip"></i> Modül Durumları</span>
+                </div>
+                <div class="panel-body">
+                  <div class="modules-status-grid" id="modulesStatusGrid">
+                    <!-- Renders module toggle grids -->
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Side actions / Checklist -->
+            <div style="display: flex; flex-direction: column; gap: 20px;">
+              <div class="panel">
+                <div class="panel-header">
+                  <span class="panel-title"><i class="fa-solid fa-list-check"></i> Kurulum Kontrol Listesi</span>
+                </div>
+                <div class="panel-body" style="display: flex; flex-direction: column; gap: 10px;">
+                  <label class="checklist-item done"><input type="checkbox" checked disabled> Bot sunucuya katıldı</label>
+                  <label class="checklist-item" id="checkLogsChannel"><input type="checkbox" disabled> Log kanalı seçildi</label>
+                  <label class="checklist-item" id="checkModConfig"><input type="checkbox" disabled> Moderasyon yapılandırıldı</label>
+                  <label class="checklist-item" id="checkWelcome"><input type="checkbox" disabled> Karşılama mesajı ayarlandı</label>
+                </div>
+              </div>
+
+              <div class="panel">
+                <div class="panel-header">
+                  <span class="panel-title"><i class="fa-solid fa-clock-rotate-left"></i> Son Aktivite Akışı</span>
+                </div>
+                <div class="panel-body" id="overviewActivityFeed" style="display:flex; flex-direction:column; gap:10px; max-height:280px; overflow-y:auto;">
+                  <!-- Logs -->
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ═══ MODERATION ══════════════════════════════════ -->
+        <div class="tab-content hidden" id="tab-moderation">
+          <form id="form-moderation">
+            <div class="panel-header" style="padding:0 0 20px 0; display:flex; justify-content:space-between; align-items:center;">
+              <div>
+                <h2 class="section-title">Gelişmiş Moderasyon</h2>
+                <p class="section-desc">Sunucunuzdaki ban, susturma, uyarı ve kick kurallarını yapılandırın.</p>
+              </div>
+              <label class="switch-container">
+                <input type="checkbox" name="enabled" class="module-master-toggle" data-module="moderation">
+                <span class="switch-slider"></span>
+              </label>
+            </div>
+
+            <div class="panel" style="margin-bottom: 20px;">
+              <div class="panel-header"><span class="panel-title">Rol & Kanal Yapılandırması</span></div>
+              <div class="panel-body grid-2">
+                <div class="field-group">
+                  <label class="field-label">Yetkili Rolleri (Moderator)</label>
+                  <select name="moderatorRoles" class="field-input select-roles" multiple style="height: 100px;"></select>
+                </div>
+                <div class="field-group">
+                  <label class="field-label">Susturulmuş Kullanıcı Rolü (Mute)</label>
+                  <select name="muteRole" class="field-input select-roles"></select>
+                </div>
+                <div class="field-group">
+                  <label class="field-label">Cezaların Loglanacağı Kanal</label>
+                  <select name="logChannelId" class="field-input select-channels"></select>
+                </div>
+                <div class="field-group">
+                  <label class="field-label">Ceza İtiraz Formu Linki (opsiyonel)</label>
+                  <input type="text" name="appealLink" class="field-input" placeholder="https://...">
+                </div>
+              </div>
+            </div>
+
+            <div class="panel">
+              <div class="panel-header"><span class="panel-title">Ceza Seçenekleri</span></div>
+              <div class="panel-body grid-2">
+                <label class="checkbox-container">
+                  <input type="checkbox" name="dmOnAction">
+                  <span>Cezalandırılan kullanıcıya özel mesajla bilgi ver</span>
+                </label>
+                <label class="checkbox-container">
+                  <input type="checkbox" name="reasonRequired">
+                  <span>Cezalandırma işlemlerinde sebep belirtmeyi zorunlu yap</span>
+                </label>
+              </div>
+            </div>
+          </form>
+        </div>
+
+        <!-- ═══ AUTOMOD ════════════════════════════════════ -->
+        <div class="tab-content hidden" id="tab-automod">
+          <form id="form-automod">
+            <div class="panel-header" style="padding:0 0 20px 0; display:flex; justify-content:space-between; align-items:center;">
+              <div>
+                <h2 class="section-title">Oto-Moderasyon (AutoMod)</h2>
+                <p class="section-desc">Sunucuyu spam, zararlı link, küfür ve aşırı harf kullanımından koruyun.</p>
+              </div>
+              <label class="switch-container">
+                <input type="checkbox" name="enabled" class="module-master-toggle" data-module="automod">
+                <span class="switch-slider"></span>
+              </label>
+            </div>
+
+            <div class="grid-2" style="margin-bottom: 20px;">
+              <div class="panel">
+                <div class="panel-header"><span class="panel-title">Anti-Spam</span></div>
+                <div class="panel-body" style="display:flex; flex-direction:column; gap:12px;">
+                  <label class="checkbox-container">
+                    <input type="checkbox" name="antiSpam_enabled">
+                    <span>Hızlı mesaj gönderimini engelle</span>
+                  </label>
+                  <div class="field-group">
+                    <label class="field-label">Spam Hassasiyeti (Saniyede Maks. Mesaj)</label>
+                    <input type="number" name="antiSpam_threshold" class="field-input" min="2" max="10">
+                  </div>
+                  <div class="field-group">
+                    <label class="field-label">Cezalandırma Yöntemi</label>
+                    <select name="antiSpam_action" class="field-input">
+                      <option value="delete">Sadece Sil</option>
+                      <option value="warn">Uyar</option>
+                      <option value="timeout">Timeout At</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              <div class="panel">
+                <div class="panel-header"><span class="panel-title">Zararlı Link Koruması</span></div>
+                <div class="panel-body" style="display:flex; flex-direction:column; gap:12px;">
+                  <label class="checkbox-container">
+                    <input type="checkbox" name="antiLink_enabled">
+                    <span>Giden mesajlardaki tüm linkleri tarayın ve silin</span>
+                  </label>
+                  <label class="checkbox-container">
+                    <input type="checkbox" name="antiInvite_enabled">
+                    <span>Discord davet linklerini otomatik engelle</span>
+                  </label>
+                  <div class="field-group">
+                    <label class="field-label">Zararlı Link Cezalandırması</label>
+                    <select name="antiLink_action" class="field-input">
+                      <option value="delete">Sil</option>
+                      <option value="warn">Sil & Uyar</option>
+                      <option value="timeout">Sil & Sustur</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="panel">
+              <div class="panel-header"><span class="panel-title">Aşırı Harf & Kötü Söz Filtresi</span></div>
+              <div class="panel-body grid-2">
+                <div style="display:flex; flex-direction:column; gap:12px;">
+                  <label class="checkbox-container">
+                    <input type="checkbox" name="antiCaps_enabled">
+                    <span>Aşırı BÜYÜK HARF kullanımını engelle</span>
+                  </label>
+                  <div class="field-group">
+                    <label class="field-label">Maksimum Büyük Harf Oranı (%)</label>
+                    <input type="number" name="antiCaps_maxPercent" class="field-input" min="30" max="100">
+                  </div>
+                </div>
+
+                <div style="display:flex; flex-direction:column; gap:12px;">
+                  <label class="checkbox-container">
+                    <input type="checkbox" name="badWords_enabled">
+                    <span>Yasaklı Kelime Filtresini Aktifleştir</span>
+                  </label>
+                  <div class="field-group">
+                    <label class="field-label">Engellenecek Kelimeler (Virgülle ayırın)</label>
+                    <textarea name="badWords_list" class="field-input" style="height: 60px;" placeholder="reklam, kufur, ..."></textarea>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </form>
+        </div>
+
+        <!-- ═══ LOGGING ═════════════════════════════════════ -->
+        <div class="tab-content hidden" id="tab-logging">
+          <form id="form-logging">
+            <div class="panel-header" style="padding:0 0 20px 0; display:flex; justify-content:space-between; align-items:center;">
+              <div>
+                <h2 class="section-title">Detaylı Loglama (Günlük Kayıtları)</h2>
+                <p class="section-desc">Sunucunuzdaki olayları anlık olarak Discord kanalına gönderin.</p>
+              </div>
+              <label class="switch-container">
+                <input type="checkbox" name="enabled" class="module-master-toggle" data-module="logging">
+                <span class="switch-slider"></span>
+              </label>
+            </div>
+
+            <div class="split-3-1" style="align-items: start;">
+              <div style="display:flex; flex-direction:column; gap:20px;">
+                <div class="panel">
+                  <div class="panel-header"><span class="panel-title">Log Kanalı</span></div>
+                  <div class="panel-body">
+                    <div class="field-group">
+                      <label class="field-label">Log Gönderim Kanalı</label>
+                      <select name="logChannelId" class="field-input select-channels"></select>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="panel">
+                  <div class="panel-header"><span class="panel-title">Loglanacak Olaylar</span></div>
+                  <div class="panel-body grid-2">
+                    <label class="checkbox-container"><input type="checkbox" name="events_messageDelete"> Mesaj Silinmesi</label>
+                    <label class="checkbox-container"><input type="checkbox" name="events_messageEdit"> Mesaj Düzenlenmesi</label>
+                    <label class="checkbox-container"><input type="checkbox" name="events_memberJoin"> Üye Katılımı</label>
+                    <label class="checkbox-container"><input type="checkbox" name="events_memberLeave"> Üye Ayrılışı</label>
+                    <label class="checkbox-container"><input type="checkbox" name="events_roleChange"> Rol Değişiklikleri</label>
+                    <label class="checkbox-container"><input type="checkbox" name="events_channelChange"> Kanal Oluşturma/Silme</label>
+                    <label class="checkbox-container"><input type="checkbox" name="events_voiceState"> Ses Kanalı Hareketleri</label>
+                    <label class="checkbox-container"><input type="checkbox" name="events_modAction"> Moderasyon Cezaları</label>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Embed Preview -->
+              <div class="panel">
+                <div class="panel-header"><span class="panel-title">Önizleme</span></div>
+                <div class="panel-body">
+                  <div class="discord-embed" style="border-left-color: #7c5af5;">
+                    <div class="embed-author">Lutheus Log Servisi</div>
+                    <div class="embed-title">🗑️ Mesaj Silindi</div>
+                    <div class="embed-desc">
+                      <strong>Gönderen:</strong> @Gear_Head (1223431616081166336)<br>
+                      <strong>Kanal:</strong> #genel<br>
+                      <strong>Mesaj İçeriği:</strong> <code>Deneme mesaj silindi.</code>
+                    </div>
+                    <div class="embed-footer">Bugün saat 21:30</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </form>
+        </div>
+
+        <!-- ═══ WELCOME & GOODBYE ═══════════════════════════ -->
+        <div class="tab-content hidden" id="tab-welcome">
+          <form id="form-welcome">
+            <div class="panel-header" style="padding:0 0 20px 0; display:flex; justify-content:space-between; align-items:center;">
+              <div>
+                <h2 class="section-title">Karşılama & Uğurlama Mesajları</h2>
+                <p class="section-desc">Sunucunuza yeni katılan veya ayrılan üyelere otomatik mesajlar gönderin.</p>
+              </div>
+              <label class="switch-container">
+                <input type="checkbox" name="enabled" class="module-master-toggle" data-module="welcome">
+                <span class="switch-slider"></span>
+              </label>
+            </div>
+
+            <div class="split-3-1" style="align-items: start;">
+              <div style="display:flex; flex-direction:column; gap:20px;">
+                <div class="panel">
+                  <div class="panel-header"><span class="panel-title">Karşılama Seçenekleri</span></div>
+                  <div class="panel-body grid-2">
+                    <div class="field-group">
+                      <label class="field-label">Karşılama Kanalı</label>
+                      <select name="channelId" class="field-input select-channels"></select>
+                    </div>
+                    <div class="field-group">
+                      <label class="field-label">Mesaj Şablonu</label>
+                      <textarea name="message" class="field-input" style="height:80px;" id="welcomeMessageText"></textarea>
+                      <small style="color:var(--text-3); font-size:11px;">Kullanılabilir: {user}, {server}, {memberCount}</small>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="panel">
+                  <div class="panel-header"><span class="panel-title">Embed & DM Yapılandırması</span></div>
+                  <div class="panel-body grid-2">
+                    <label class="checkbox-container">
+                      <input type="checkbox" name="embedEnabled" id="chkWelcomeEmbed">
+                      <span>Mesajı Zengin Embed şeklinde gönder</span>
+                    </label>
+                    <label class="checkbox-container">
+                      <input type="checkbox" name="dmEnabled">
+                      <span>Yeni katılan üyeye DM (Özel Mesaj) gönder</span>
+                    </label>
+                    <div class="field-group">
+                      <label class="field-label">Embed Başlığı</label>
+                      <input type="text" name="embedTitle" class="field-input" id="welcomeEmbedTitle">
+                    </div>
+                    <div class="field-group">
+                      <label class="field-label">Embed Rengi</label>
+                      <input type="color" name="embedColor" class="field-input" style="height:38px; padding:2px;" id="welcomeEmbedColor">
+                    </div>
+                    <div class="field-group" style="grid-column: span 2;">
+                      <label class="field-label">DM Mesaj Şablonu</label>
+                      <textarea name="dmMessage" class="field-input" style="height: 60px;"></textarea>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="panel">
+                  <div class="panel-header"><span class="panel-title">Giriş / Uğurlama Testi</span></div>
+                  <div class="panel-body" style="display:flex; gap:10px;">
+                    <button class="btn btn-ghost" type="button" id="btnTestWelcome">
+                      <i class="fa-solid fa-paper-plane"></i> Karşılamayı Test Et
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Live Embed/Text Preview -->
+              <div class="panel">
+                <div class="panel-header"><span class="panel-title">Canlı Önizleme</span></div>
+                <div class="panel-body" id="welcomePreviewContainer">
+                  <!-- Renders preview dynamically -->
+                </div>
+              </div>
+            </div>
+          </form>
+        </div>
+
+        <!-- ═══ REACTION ROLES ══════════════════════════════ -->
+        <div class="tab-content hidden" id="tab-reaction-roles">
+          <div class="panel-header" style="padding:0 0 20px 0; display:flex; justify-content:space-between; align-items:center;">
+            <div>
+              <h2 class="section-title">Tepki Rolleri (Reaction Roles)</h2>
+              <p class="section-desc">Kullanıcıların mesaja tepki (emoji) ekleyerek kendi kendilerine rol almalarını sağlayın.</p>
+            </div>
+            <button class="btn btn-primary" id="btnCreateRRPanel"><i class="fa-solid fa-plus"></i> Yeni Panel Ekle</button>
+          </div>
+
+          <div class="panels-list" id="rrPanelsList" style="display:flex; flex-direction:column; gap:20px;">
+            <!-- Reaction panels -->
+          </div>
+        </div>
+
+        <!-- ═══ COMMANDS ════════════════════════════════════ -->
+        <div class="tab-content hidden" id="tab-commands">
+          <div style="margin-bottom: 24px;">
+            <h2 class="section-title">Komut Yönetimi</h2>
+            <p class="section-desc">Botun sahip olduğu slash komutlarını açıp kapatın veya bekleme sürelerini yapılandırın.</p>
+          </div>
+
+          <div class="table-toolbar" style="margin-bottom: 20px;">
+            <div class="search-field" style="max-width: 320px; flex: 1;">
+              <i class="fa-solid fa-magnifying-glass"></i>
+              <input type="text" id="commandSearchInput" placeholder="Komut ara...">
+            </div>
+            <select id="commandCategorySelect" class="btn btn-ghost" style="padding: 0 10px;">
+              <option value="all">Tüm Kategoriler</option>
+              <option value="moderation">Moderasyon</option>
+              <option value="config">Yapılandırma</option>
+            </select>
+          </div>
+
+          <div class="panel">
+            <div style="overflow: auto;">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Komut Adı</th>
+                    <th>Açıklama</th>
+                    <th>Bekleme Süresi (Saniye)</th>
+                    <th>Durum</th>
+                  </tr>
+                </thead>
+                <tbody id="botCommandsTableBody">
+                  <!-- Renders command configurations -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- ═══ PERMISSIONS ═════════════════════════════════ -->
+        <div class="tab-content hidden" id="tab-permissions">
+          <form id="form-permissions">
+            <div class="panel-header" style="padding:0 0 20px 0; display:flex; justify-content:space-between; align-items:center;">
+              <div>
+                <h2 class="section-title">Yetki & Dashboard İzinleri</h2>
+                <p class="section-desc">Hangi Discord rolünün panelde hangi ayarları değiştirebileceğini matris ile sınırlandırın.</p>
+              </div>
+            </div>
+
+            <div class="panel" style="margin-bottom: 20px;">
+              <div class="panel-header"><span class="panel-title">Rütbe Atamaları</span></div>
+              <div class="panel-body grid-2">
+                <div class="field-group">
+                  <label class="field-label">Kurucu / Süper Yönetici Rolleri</label>
+                  <select name="adminRoles" class="field-input select-roles" multiple style="height: 80px;"></select>
+                </div>
+                <div class="field-group">
+                  <label class="field-label">Moderatör Rolleri</label>
+                  <select name="moderatorRoles" class="field-input select-roles" multiple style="height: 80px;"></select>
+                </div>
+              </div>
+            </div>
+
+            <div class="panel">
+              <div class="panel-header"><span class="panel-title">Dashboard İzin Matrisi</span></div>
+              <div class="panel-body" style="overflow:auto;">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>İzin Alanı</th>
+                      <th style="text-align: center;">Yönetici (Admin)</th>
+                      <th style="text-align: center;">Moderatör (Mod)</th>
+                      <th style="text-align: center;">Destek Ekibi</th>
+                    </tr>
+                  </thead>
+                  <tbody id="permissionMatrixTableBody">
+                    <!-- Matrix rows -->
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </form>
+        </div>
+
+        <!-- ═══ LEVELS & XP ═════════════════════════════════ -->
+        <div class="tab-content hidden" id="tab-levels">
+          <form id="form-levels">
+            <div class="panel-header" style="padding:0 0 20px 0; display:flex; justify-content:space-between; align-items:center;">
+              <div>
+                <h2 class="section-title">Seviye & XP Sistemi</h2>
+                <p class="section-desc">Sunucudaki kullanıcıların mesaj ve ses hareketlerine göre XP / Seviye kazanmalarını sağlayın.</p>
+              </div>
+              <label class="switch-container">
+                <input type="checkbox" name="enabled" class="module-master-toggle" data-module="levels">
+                <span class="switch-slider"></span>
+              </label>
+            </div>
+
+            <div class="split-3-1" style="align-items: start;">
+              <div style="display:flex; flex-direction:column; gap:20px;">
+                <div class="panel">
+                  <div class="panel-header"><span class="panel-title">XP Kazanma Kuralları</span></div>
+                  <div class="panel-body grid-2">
+                    <div class="field-group">
+                      <label class="field-label">Mesaj Başı Min. XP</label>
+                      <input type="number" name="xpMin" class="field-input" min="1" max="100">
+                    </div>
+                    <div class="field-group">
+                      <label class="field-label">Mesaj Başı Maks. XP</label>
+                      <input type="number" name="xpMax" class="field-input" min="1" max="100">
+                    </div>
+                    <div class="field-group">
+                      <label class="field-label">XP Kazanma Cooldown (Saniye)</label>
+                      <input type="number" name="cooldownSeconds" class="field-input" min="5" max="300">
+                    </div>
+                  </div>
+                </div>
+
+                <div class="panel">
+                  <div class="panel-header"><span class="panel-title">Seviye Rol Ödülleri</span></div>
+                  <div class="panel-body" style="display:flex; flex-direction:column; gap:12px;">
+                    <div id="levelRewardsList" style="display:flex; flex-direction:column; gap:8px;">
+                      <!-- Level Rewards items -->
+                    </div>
+                    <button class="btn btn-ghost" type="button" id="btnAddLevelReward"><i class="fa-solid fa-plus"></i> Ödül Rolü Ekle</button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Leaderboard Preview -->
+              <div class="panel">
+                <div class="panel-header"><span class="panel-title">Liderlik Tablosu Önizleme</span></div>
+                <div class="panel-body" style="display:flex; flex-direction:column; gap:10px;">
+                  <div class="leaderboard-item">
+                    <span class="rank">#1</span>
+                    <img src="" class="avatar" data-mock-avatar="1">
+                    <span class="name">Gear_Head</span>
+                    <span class="level-badge">LVL 42</span>
+                  </div>
+                  <div class="leaderboard-item">
+                    <span class="rank">#2</span>
+                    <img src="" class="avatar" data-mock-avatar="2">
+                    <span class="name">Lutheus_Mod</span>
+                    <span class="level-badge">LVL 35</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </form>
+        </div>
+
+        <!-- ═══ BOT SETTINGS ════════════════════════════════ -->
+        <div class="tab-content hidden" id="tab-settings">
+          <form id="form-settings">
+            <div style="margin-bottom: 24px;">
+              <h2 class="section-title">Genel Bot Ayarları</h2>
+              <p class="section-desc">Dile, zaman dilimine ve veri tutma politikalarına karar verin.</p>
+            </div>
+
+            <div class="panel" style="margin-bottom: 20px;">
+              <div class="panel-header"><span class="panel-title">Uluslararası & Erişim</span></div>
+              <div class="panel-body grid-2">
+                <div class="field-group">
+                  <label class="field-label">Bot Varsayılan Dili</label>
+                  <select name="language" class="field-input">
+                    <option value="tr">Türkçe (Turkish)</option>
+                    <option value="en">English (US)</option>
+                  </select>
+                </div>
+                <div class="field-group">
+                  <label class="field-label">Sunucu Zaman Dilimi</label>
+                  <select name="timezone" class="field-input">
+                    <option value="Europe/Istanbul">Europe/Istanbul (GMT+3)</option>
+                    <option value="UTC">UTC</option>
+                  </select>
+                </div>
+                <div class="field-group">
+                  <label class="field-label">Veri Tutma Süresi (Gün)</label>
+                  <input type="number" name="retentionDays" class="field-input" min="7" max="365">
+                </div>
+              </div>
+            </div>
+
+            <div class="panel danger-zone">
+              <div class="panel-header" style="border-bottom-color: rgba(240,78,78,0.2);"><span class="panel-title" style="color: var(--red);"><i class="fa-solid fa-triangle-exclamation"></i> Tehlikeli Bölge</span></div>
+              <div class="panel-body" style="display:flex; flex-direction:column; gap:16px;">
+                <p style="font-size:12px; color:var(--text-3);">Bu işlemler sunucu üzerindeki bot ayarlarını tamamen sıfırlar ve kurtarılamaz.</p>
+                <div style="display:flex; gap:10px;">
+                  <button class="btn btn-danger" type="button" id="btnDangerReset">
+                    <i class="fa-solid fa-rotate-left"></i> Modül Ayarlarını Sıfırla
+                  </button>
+                </div>
+              </div>
+            </div>
+          </form>
+        </div>
+
+      </div>
+
+      <!-- Sticky Save Bar -->
+      <div class="dirty-save-bar hidden" id="dirtySaveBar">
+        <div class="save-bar-content">
+          <span>⚠️ Yapılandırılmış değişiklikleriniz var!</span>
+          <div style="display:flex; gap:10px;">
+            <button class="btn btn-ghost" id="btnDiscardChanges">Vazgeç</button>
+            <button class="btn btn-primary" id="btnSaveChanges">Değişiklikleri Kaydet</button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <script type="module" src="dashboard.js"></script>
+</body>
+</html>

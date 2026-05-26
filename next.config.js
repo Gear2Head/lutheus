@@ -17,6 +17,10 @@ const nextConfig = {
         source: "/auth/login",
         destination: "/auth/login.html",
       },
+      {
+        source: "/src/:path*",
+        destination: "/:path*",
+      },
     ];
   },
   async redirects() {

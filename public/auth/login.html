@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="tr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lutheus CezaRapor - Giriş</title>
+    <link rel="stylesheet" href="../sidepanel/sidepanel.css">
+    <link rel="stylesheet" href="login.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+
+<body>
+    <main class="login-shell">
+        <section class="login-panel">
+            <div class="login-brand" style="display: flex; align-items: center; gap: 12px;">
+                <svg width="44" height="44" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg" style="filter: drop-shadow(0px 0px 12px rgba(124, 90, 245, 0.7));">
+                    <path d="M624.16 179.336L348.64 384.88L640.48 672.488L262.336 844.664L624.16 179.336Z" fill="#7c5af5"/>
+                </svg>
+                <div>
+                    <h1 style="margin: 0; font-size: 20px;">Lutheus CezaRapor</h1>
+                    <p id="loginSubtitle" style="margin-top: 2px;">Devam etmek için hesap bağla</p>
+                </div>
+            </div>
+
+            <div class="login-status" id="loginStatus"></div>
+
+            <button class="btn primary-btn full login-action" id="btnDiscordLogin">
+                <i class="fa-brands fa-discord"></i>
+                Discord ile Giriş Yap
+            </button>
+            <button class="btn secondary-btn full login-action" id="btnGoogleLogin">
+                <i class="fa-brands fa-google"></i>
+                Google ile Giriş Yap
+            </button>
+
+            <div class="login-note">
+                <span>Google erişimi admin allowlist kaydı gerektirir.</span>
+                <span>Discord rolleri admin onaylı role cache üzerinden uygulanır.</span>
+            </div>
+        </section>
+    </main>
+    <script type="module" src="login.js"></script>
+</body>
+
+</html>

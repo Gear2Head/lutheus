@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Lutheus CezaRapor - Admin v3</title>
-  <link rel="stylesheet" href="src/dashboard/admin.css">
+  <link rel="stylesheet" href="admin.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -39,33 +39,37 @@
 
   <!-- ── Sidebar ────────────────────────────────────────── -->
   <nav class="sidebar">
-    <div class="sidebar-logo">L</div>
+    <div class="sidebar-logo" style="background: transparent; border: none; padding: 0;">
+      <svg width="34" height="34" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg" style="filter: drop-shadow(0px 0px 10px rgba(124, 90, 245, 0.65));">
+        <path d="M624.16 179.336L348.64 384.88L640.48 672.488L262.336 844.664L624.16 179.336Z" fill="#7c5af5"/>
+      </svg>
+    </div>
     <div class="sidebar-nav">
-      <button class="nav-item active" data-page="dashboard" title="">
+      <button class="nav-item active" data-page="dashboard" data-permission="dashboard:view" title="">
         <i class="fa-solid fa-chart-line"></i>
         <span class="tooltip">Dashboard</span>
       </button>
-      <button class="nav-item" data-page="management" title="">
+      <button class="nav-item" data-page="management" data-permission="staff:view" title="">
         <i class="fa-solid fa-user-gear"></i>
         <span class="tooltip">Yönetim</span>
       </button>
-      <button class="nav-item" data-page="cuk" title="">
+      <button class="nav-item" data-page="cuk" data-permission="penalty_accuracy:update" title="">
         <i class="fa-solid fa-brain"></i>
         <span class="tooltip">CUK Kural Editörü</span>
       </button>
-      <button class="nav-item" data-page="pointtrain" title="">
+      <button class="nav-item" data-page="pointtrain" data-permission="reports:view" title="">
         <i class="fa-solid fa-ranking-star"></i>
         <span class="tooltip">Pointtrain</span>
       </button>
-      <button class="nav-item" data-page="auth" title="">
+      <button class="nav-item" data-page="auth" data-permission="google_allowlist:view" title="">
         <i class="fa-solid fa-id-card-clip"></i>
         <span class="tooltip">Erişim</span>
       </button>
-      <button class="nav-item" data-page="profile" title="">
+      <button class="nav-item" data-page="profile" data-permission="dashboard:view" title="">
         <i class="fa-solid fa-id-card"></i>
         <span class="tooltip">Profil</span>
       </button>
-      <a href="src/discord-dashboard/index.html" target="_blank" style="text-decoration: none; display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; border-radius: var(--radius-sm); color: var(--text-3); transition: color 0.2s, background 0.2s; margin-top: 4px;" onmouseover="this.style.color='var(--text-2)'; this.style.backgroundColor='var(--bg-hover)';" onmouseout="this.style.color='var(--text-3)'; this.style.backgroundColor='transparent';">
+      <a href="../discord-dashboard/index.html" target="_blank" style="text-decoration: none; display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; border-radius: var(--radius-sm); color: var(--text-3); transition: color 0.2s, background 0.2s; margin-top: 4px;" onmouseover="this.style.color='var(--text-2)'; this.style.backgroundColor='var(--bg-hover)';" onmouseout="this.style.color='var(--text-3)'; this.style.backgroundColor='transparent';">
         <i class="fa-brands fa-discord" style="font-size: 16px;"></i>
       </a>
     </div>
@@ -79,7 +83,10 @@
 
     <!-- Topbar -->
     <header class="topbar">
-      <div class="topbar-brand">
+      <div class="topbar-brand" style="display: flex; align-items: center; gap: 10px;">
+        <svg width="24" height="24" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M624.16 179.336L348.64 384.88L640.48 672.488L262.336 844.664L624.16 179.336Z" fill="#7c5af5"/>
+        </svg>
         <span class="brand-name">Lutheus <span>CezaRapor</span></span>
         <span class="brand-sub" id="pageSubtitle">admin :: dashboard</span>
       </div>
@@ -92,6 +99,9 @@
       </div>
 
       <div class="topbar-actions">
+        <button class="btn btn-ghost btn-icon" id="btnThemeToggle" title="Tema Değiştir">
+          <i class="fa-solid fa-moon"></i>
+        </button>
         <button class="btn btn-ghost btn-icon" id="btnRevalidate" title="Yeniden Doğrula">
           <i class="fa-solid fa-check-double"></i>
         </button>
@@ -101,7 +111,7 @@
         <button class="btn btn-ghost" id="btnRefresh">
           <i class="fa-solid fa-arrows-rotate"></i> Yenile
         </button>
-        <button class="btn btn-ghost" id="btnStartSapphireScan">
+        <button class="btn btn-ghost" id="btnStartSapphireScan" data-permission="reports:create">
           <i class="fa-solid fa-bolt"></i> Sapphire Tara
         </button>
         <button class="btn btn-primary" id="btnExport">
@@ -183,7 +193,7 @@
             <div style="overflow:auto;">
               <table class="data-table">
                 <thead><tr>
-                  <th>#</th><th>Yetkili</th><th>Rütbe</th><th>İşlem</th><th>Doğruluk</th><th></th>
+                  <th>#</th><th>Yetkili</th><th>Rütbe</th><th>İşlem</th><th>Doğruluk</th><th>Trend</th><th></th>
                 </tr></thead>
                 <tbody id="modTableBody">
                   <tr><td colspan="6" style="text-align:center;color:var(--text-3);padding:28px;">Veri bekleniyor...</td></tr>
@@ -218,10 +228,10 @@
             </p>
           </div>
           <div style="display:flex;gap:8px;">
-            <button class="btn btn-ghost" id="btnCukImport">
+            <button class="btn btn-ghost" id="btnCukImport" data-permission="penalty_accuracy:update">
               <i class="fa-solid fa-file-import"></i> İçe Aktar
             </button>
-            <button class="btn btn-primary" id="btnCukSave">
+            <button class="btn btn-primary" id="btnCukSave" data-permission="penalty_accuracy:update">
               <i class="fa-solid fa-floppy-disk"></i> Kaydet ve Uygula
             </button>
           </div>
@@ -421,7 +431,7 @@
           <div class="panel">
             <div class="panel-header">
               <span class="panel-title"><i class="fa-solid fa-user-shield"></i> Yetkili Listesi</span>
-              <button class="btn btn-ghost btn-icon" id="roleBtn" title="Yetki Ekle">
+              <button class="btn btn-ghost btn-icon" id="roleBtn" data-permission="staff:assign_role" title="Yetki Ekle">
                 <i class="fa-solid fa-user-plus"></i>
               </button>
             </div>
@@ -432,9 +442,23 @@
             </div>
           </div>
           <div class="panel">
-            <div class="panel-header">
-              <span class="panel-title"><i class="fa-solid fa-clock-rotate-left"></i> Son Cezalar</span>
-              <div class="case-toolbar">
+            <div class="panel-header" style="display:flex; flex-direction:column; gap:10px; align-items:stretch;">
+              <div style="display:flex; justify-content:space-between; align-items:center; width:100%;">
+                <span class="panel-title"><i class="fa-solid fa-clock-rotate-left"></i> Son Cezalar</span>
+                <div id="bulkActionsToolbar" class="hidden" style="display:flex; align-items:center; gap:8px; background:rgba(124,90,245,0.1); padding:4px 10px; border-radius:6px; border:1px solid rgba(124,90,245,0.2);">
+                  <span style="font-size:11px; font-weight:700; color:var(--text-1);" id="bulkSelectedCount">0 seçildi</span>
+                  <button class="btn btn-ghost" id="btnBulkValid" style="height:26px; font-size:11px; color:var(--emerald); background:rgba(45,213,115,0.1); border:1px solid rgba(45,213,115,0.2); padding:0 8px; cursor:pointer;">
+                    <i class="fa-solid fa-circle-check"></i> Onayla
+                  </button>
+                  <button class="btn btn-ghost" id="btnBulkInvalid" style="height:26px; font-size:11px; color:var(--red); background:rgba(240,78,78,0.1); border:1px solid rgba(240,78,78,0.2); padding:0 8px; cursor:pointer;">
+                    <i class="fa-solid fa-circle-xmark"></i> Reddet
+                  </button>
+                  <button class="btn btn-ghost btn-icon" id="btnBulkCancel" title="İptal Et" style="width:26px; height:26px; font-size:11px; border:none; background:transparent; cursor:pointer;">
+                    <i class="fa-solid fa-xmark"></i>
+                  </button>
+                </div>
+              </div>
+              <div class="case-toolbar" style="width:100%; display:flex; justify-content:flex-end;">
                 <select id="casePeriodFilter" class="btn btn-ghost">
                   <option value="today">Bugün</option>
                   <option value="week" selected>Bu Hafta</option>
@@ -455,7 +479,10 @@
             </div>
             <div style="overflow:auto; max-height: 640px;">
               <table class="data-table">
-                <thead><tr><th>ID</th><th>Yetkili</th><th>Sebep</th><th>Durum</th></tr></thead>
+                <thead><tr>
+                  <th style="width:40px; text-align:center;"><input type="checkbox" id="chkSelectAll" style="cursor:pointer;"></th>
+                  <th>ID</th><th>Yetkili</th><th>Sebep</th><th>Durum</th>
+                </tr></thead>
                 <tbody id="mgmtCaseList">
                   <tr><td colspan="4" style="text-align:center;color:var(--text-3);padding:40px;">Yükleniyor...</td></tr>
                 </tbody>
@@ -499,24 +526,53 @@
       Purpose: Google allowlist ve Discord rol cache markup yapısı
       Search: auth, google allowlist, role cache, groq limits, audit log
       ========================================================= -->
+<!-- SECTION: ACCESS_MANAGEMENT -->
+      <!-- PURPOSE: Google allowlist and Discord role cache management panel markup with advanced query controls -->
       <div class="page-section" id="page-auth">
         <div class="split-2">
           <div class="panel">
              <div class="panel-header"><span class="panel-title"><i class="fa-brands fa-google"></i> Google Allowlist</span></div>
              <div class="panel-body">
-                <div style="display:flex; gap:8px; margin-bottom:16px;">
+                <div style="display:flex; gap:8px; margin-bottom:12px;">
                    <input type="text" id="allowEmail" class="field-input" placeholder="Email..." style="flex:1;">
                    <select id="allowRole" class="field-input" style="width:110px;">
-                      <option value="moderator">Mod</option>
+                      <option value="discord_moderatoru">Mod</option>
                       <option value="admin">Admin</option>
                       <option value="viewer">İzleyici</option>
                    </select>
-                   <button class="btn btn-primary" id="saveAllowBtn">Ekle</button>
+                   <button class="btn btn-primary" id="saveAllowBtn" data-permission="google_allowlist:update">Ekle</button>
                 </div>
-                <table class="data-table">
-                   <thead><tr><th>Email</th><th>Rol</th><th>Durum</th><th>İşlem</th></tr></thead>
-                   <tbody id="allowlistTableBody"></tbody>
-                </table>
+                
+                <div class="table-toolbar" style="display:flex; gap:8px; margin-bottom:12px; align-items:center;">
+                   <div class="search-bar" style="flex:1; padding:6px 10px; height:32px; display:flex; align-items:center; gap:8px; background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius-md);">
+                      <i class="fa-solid fa-magnifying-glass" style="font-size:11px; opacity:0.5;"></i>
+                      <input type="text" id="allowlistSearch" placeholder="Allowlist'te ara..." style="background:none; border:none; color:inherit; font-size:12px; width:100%; outline:none;">
+                   </div>
+                   <select id="allowlistFilter" class="field-input" style="width:110px; height:32px; font-size:12px; padding:0 8px;">
+                      <option value="all">Tüm Roller</option>
+                      <option value="discord_moderatoru">Mod</option>
+                      <option value="admin">Admin</option>
+                      <option value="viewer">İzleyici</option>
+                   </select>
+                   <button class="btn btn-danger btn-icon" id="allowlistBatchDeleteBtn" style="height:32px; width:32px; font-size:11px; border-radius:var(--radius-md);" title="Seçilenleri Toplu Sil">
+                      <i class="fa-solid fa-trash-can"></i>
+                   </button>
+                </div>
+
+                <div style="max-height: 280px; overflow-y: auto;">
+                   <table class="data-table">
+                      <thead>
+                         <tr>
+                            <th style="width:30px; text-align:center;"><input type="checkbox" id="allowlistSelectAll"></th>
+                            <th>Email</th>
+                            <th>Rol (Hızlı Değiştir)</th>
+                            <th>Durum</th>
+                            <th>İşlem</th>
+                         </tr>
+                      </thead>
+                      <tbody id="allowlistTableBody"></tbody>
+                   </table>
+                </div>
              </div>
           </div>
           <div class="panel">
@@ -526,18 +582,45 @@
                    <input type="text" id="roleCacheIdentity" class="field-input" placeholder="ID (discord:...)">
                    <input type="text" id="roleCacheName" class="field-input" placeholder="Görünen İsim">
                 </div>
-                <div style="display:flex; gap:8px; margin-bottom:16px;">
+                <div style="display:flex; gap:8px; margin-bottom:12px;">
                    <select id="roleCacheRole" class="field-input" style="flex:1;">
-                      <option value="moderator">Mod</option>
+                      <option value="discord_moderatoru">Mod</option>
                       <option value="admin">Admin</option>
-                      <option value="senior_mod">Senior</option>
+                      <option value="kidemli_discord_moderatoru">Senior</option>
                    </select>
-                   <button class="btn btn-primary" id="saveRoleCacheBtn">Kaydet</button>
+                   <button class="btn btn-primary" id="saveRoleCacheBtn" data-permission="staff:assign_role">Kaydet</button>
                 </div>
-                <table class="data-table">
-                   <thead><tr><th>Kimlik</th><th>İsim</th><th>Rol</th><th>İşlem</th></tr></thead>
-                   <tbody id="roleCacheTableBody"></tbody>
-                </table>
+                
+                <div class="table-toolbar" style="display:flex; gap:8px; margin-bottom:12px; align-items:center;">
+                   <div class="search-bar" style="flex:1; padding:6px 10px; height:32px; display:flex; align-items:center; gap:8px; background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius-md);">
+                      <i class="fa-solid fa-magnifying-glass" style="font-size:11px; opacity:0.5;"></i>
+                      <input type="text" id="roleCacheSearch" placeholder="Cache'de ara..." style="background:none; border:none; color:inherit; font-size:12px; width:100%; outline:none;">
+                   </div>
+                   <select id="roleCacheFilter" class="field-input" style="width:110px; height:32px; font-size:12px; padding:0 8px;">
+                      <option value="all">Tüm Roller</option>
+                      <option value="discord_moderatoru">Mod</option>
+                      <option value="admin">Admin</option>
+                      <option value="kidemli_discord_moderatoru">Senior</option>
+                   </select>
+                   <button class="btn btn-danger btn-icon" id="roleCacheBatchDeleteBtn" style="height:32px; width:32px; font-size:11px; border-radius:var(--radius-md);" title="Seçilenleri Toplu Sil">
+                      <i class="fa-solid fa-trash-can"></i>
+                   </button>
+                </div>
+
+                <div style="max-height: 280px; overflow-y: auto;">
+                   <table class="data-table">
+                      <thead>
+                         <tr>
+                            <th style="width:30px; text-align:center;"><input type="checkbox" id="roleCacheSelectAll"></th>
+                            <th>Kimlik</th>
+                            <th>İsim</th>
+                            <th>Rol (Hızlı Değiştir)</th>
+                            <th>İşlem</th>
+                         </tr>
+                      </thead>
+                      <tbody id="roleCacheTableBody"></tbody>
+                   </table>
+                </div>
              </div>
           </div>
         </div>
@@ -546,7 +629,7 @@
           <div class="panel">
              <div class="panel-header">
                 <span class="panel-title"><i class="fa-solid fa-microchip"></i> AI (Groq) Limit Politikası</span>
-                <button class="btn btn-primary" id="saveGroqPolicyBtn">Limitleri Kaydet</button>
+                <button class="btn btn-primary" id="saveGroqPolicyBtn" data-permission="ai_settings:update">Limitleri Kaydet</button>
              </div>
              <div class="panel-body">
                 <div id="groqLimitGrid" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap:12px;">
@@ -577,22 +660,23 @@
                    <label class="field-label">Discord Log Kanal ID</label>
                    <div style="display:flex; gap:8px;">
                       <input type="text" id="botLogChannelId" class="field-input" placeholder="Kanal ID girin..." style="flex:1;">
-                      <button class="btn btn-primary" id="btnSaveBotConfig">Kaydet</button>
+                      <button class="btn btn-primary" id="btnSaveBotConfig" data-permission="discord_bot:update">Kaydet</button>
                    </div>
                 </div>
                 <div style="display:flex; gap:8px; margin-top:4px;">
-                   <button class="btn btn-ghost" id="btnSyncProfiles" style="flex:1; font-size:12px; height:32px;">
+                   <button class="btn btn-ghost" id="btnSyncProfiles" data-permission="discord_bot:update" style="flex:1; font-size:12px; height:32px;">
                       <i class="fa-solid fa-arrows-spin"></i> Profilleri Eşitle
                    </button>
-                   <button class="btn btn-ghost" id="btnTestBotLog" style="flex:1; font-size:12px; height:32px;">
+                   <button class="btn btn-ghost" id="btnTestBotLog" data-permission="discord_bot:update" style="flex:1; font-size:12px; height:32px;">
                       <i class="fa-solid fa-paper-plane"></i> Test Logu Yolla
                    </button>
                 </div>
              </div>
           </div>
-          <div class="panel">
+          <div class="panel" id="srePanel">
              <div class="panel-header">
                 <span class="panel-title"><i class="fa-solid fa-server"></i> SRE Sistem Durumu</span>
+                <span id="lockdownIndicator" class="hidden" style="color:var(--red); font-weight:bold; font-size:11px; animation: pulse-glow 1s infinite alternate;"><i class="fa-solid fa-triangle-exclamation"></i> LOCKDOWN AKTİF</span>
              </div>
              <div class="panel-body" style="display:flex; flex-direction:column; gap:12px;">
                 <div class="delta-grid" style="grid-template-columns: 1fr 1fr; gap:10px;">
@@ -609,6 +693,9 @@
                   <p><strong>Lutheus Engine v3.2.0</strong></p>
                   <p style="margin-top:4px;">Güvenlik seviyesi: <span style="color:var(--purple-hi); font-weight:700;">MAKSİMUM</span>. Tüm işlemler HMAC imzalı olarak doğrulanmaktadır.</p>
                 </div>
+                <button class="btn btn-danger" id="btnToggleLockdown" style="width:100%; margin-top:8px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; height:36px; font-size:11px;">
+                    <i class="fa-solid fa-triangle-exclamation"></i> ACİL DURUM KİLİDİ (LOCKDOWN)
+                </button>
              </div>
           </div>
         </div>
@@ -823,6 +910,6 @@
   </div>
 </div>
 
-<script type="module" src="src/dashboard/admin.js"></script>
+<script type="module" src="admin.js"></script>
 </body>
 </html>

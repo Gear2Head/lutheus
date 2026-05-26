@@ -65,14 +65,22 @@ function getLocalAuthToken() {
 // SECTION: API_CLIENT
 // PURPOSE: Calls serverless administrative APIs on Vercel
 const discordDashboardApiClient = {
+    async fetchGuilds() {
+        const token = getLocalAuthToken();
+        const res = await fetch('/api/admin/discord-bot-guilds', {
+            headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+        });
+        if (!res.ok) throw new Error('API_GUILDS_FAILED');
+        return res.json(); // { guilds: [...] }
+    },
+
     async fetchDashboardConfig(guildId) {
         const token = getLocalAuthToken();
         const res = await fetch(`/api/admin/discord-bot-dashboard?guildId=${guildId}`, {
             headers: token ? { 'Authorization': `Bearer ${token}` } : {}
         });
         if (!res.ok) throw new Error('API_FETCH_FAILED');
-        const data = await res.json();
-        return data.configs;
+        return res.json(); // { configs, channels, roles, commands }
     },
 
     async saveDashboardConfig(guildId, configs) {
@@ -195,16 +203,23 @@ async function selectGuild(guildId) {
     DOM.sidebarGuildName.textContent = guild.name;
     DOM.activeGuildWidget.style.display = 'flex';
 
-    // Populate active guild options in sidebar selects
-    populateSelectSelectors();
-
-    // Fetch config
+    // Fetch real config, channels, roles, commands
     try {
-        const configs = await discordDashboardApiClient.fetchDashboardConfig(guildId);
-        state.originalConfigs = JSON.parse(JSON.stringify(configs));
+        const data = await discordDashboardApiClient.fetchDashboardConfig(guildId);
+        state.originalConfigs = JSON.parse(JSON.stringify(data.configs));
+        if (data.channels?.length) state.channels = data.channels;
+        if (data.roles?.length) state.roles = data.roles;
+        if (data.commands?.length) state.commands = data.commands;
+        // Populate selects with fresh data
+        populateSelectSelectors();
+        Toast.success('Sunucu Yüklendi', `${guild.name} yapılandırması yüklendi.`);
     } catch {
         Toast.info('Sandbox Modu', 'Sunucu ayarları yerel mock veritabanından yüklendi.');
         state.originalConfigs = JSON.parse(JSON.stringify(discordDashboardMock.configs));
+        if (!state.channels.length) state.channels = discordDashboardMock.channels;
+        if (!state.roles.length) state.roles = discordDashboardMock.roles;
+        if (!state.commands.length) state.commands = discordDashboardMock.commands;
+        populateSelectSelectors();
     }
 
     state.dirtyConfigs = JSON.parse(JSON.stringify(state.originalConfigs));
@@ -752,8 +767,7 @@ function filterPaletteResults() {
 
 // Startup loader
 async function initDashboard() {
-    // Fill local metadata variables
-    state.guilds = JSON.parse(JSON.stringify(discordDashboardMock.guilds));
+    // Load mock fallbacks initially
     state.channels = JSON.parse(JSON.stringify(discordDashboardMock.channels));
     state.roles = JSON.parse(JSON.stringify(discordDashboardMock.roles));
     state.commands = JSON.parse(JSON.stringify(discordDashboardMock.commands));
@@ -761,6 +775,30 @@ async function initDashboard() {
 
     DOM.userAvatar.src = state.user.avatarUrl;
     DOM.userName.textContent = state.user.username;
+
+    // Try to load user profile from localStorage
+    try {
+        const profileRaw = localStorage.getItem('userProfile');
+        if (profileRaw) {
+            const profile = JSON.parse(profileRaw);
+            if (profile.avatar) DOM.userAvatar.src = profile.avatar;
+            if (profile.displayName || profile.username) DOM.userName.textContent = profile.displayName || profile.username;
+            if (profile.discordId) state.user.id = profile.discordId;
+        }
+    } catch {}
+
+    // Fetch real guilds from API
+    try {
+        const data = await discordDashboardApiClient.fetchGuilds();
+        if (data.guilds?.length) {
+            state.guilds = data.guilds;
+        } else {
+            state.guilds = JSON.parse(JSON.stringify(discordDashboardMock.guilds));
+        }
+    } catch {
+        state.guilds = JSON.parse(JSON.stringify(discordDashboardMock.guilds));
+        Toast.info('Bağlantı Hatası', 'Sunucu listesi yüklenemedi, yerel mod aktif.');
+    }
 
     // Load initial servers selector
     renderServerSelector();

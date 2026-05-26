@@ -103,5 +103,10 @@ service cloud.firestore {
       allow read: if activeUser();
       allow write: if false;
     }
+
+    match /botGuildConfigs/{guildId} {
+      allow read: if activeUser();
+      allow write: if operations();
+    }
   }
 }

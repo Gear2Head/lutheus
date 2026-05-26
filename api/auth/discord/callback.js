@@ -50,7 +50,7 @@ async function exchangeCode(code, redirectUri, host) {
         }
         throw new Error('DISCORD_CODE_EXCHANGE_FAILED');
     }
-    return payload.access_token;
+    return { accessToken: payload.access_token, refreshToken: payload.refresh_token };
 }
 
 async function fetchDiscordUser(accessToken) {
@@ -63,6 +63,18 @@ async function fetchDiscordUser(accessToken) {
         throw new Error('DISCORD_USER_FETCH_FAILED');
     }
     return payload;
+}
+
+async function fetchDiscordUserGuilds(accessToken) {
+    try {
+        const response = await fetch('https://discord.com/api/users/@me/guilds', {
+            headers: { Authorization: `Bearer ${accessToken}` }
+        });
+        if (!response.ok) return [];
+        return response.json();
+    } catch {
+        return [];
+    }
 }
 
 async function resolveRole(db, discordId) {
@@ -104,8 +116,11 @@ module.exports = async function handler(req, res) {
 
         const code = String(req.query.code || '');
         if (!code) throw new Error('DISCORD_CODE_MISSING');
-        const accessToken = await exchangeCode(code, oauthRedirectUri, req.headers.host);
-        const discordUser = await fetchDiscordUser(accessToken);
+        const { accessToken, refreshToken } = await exchangeCode(code, oauthRedirectUri, req.headers.host);
+        const [discordUser, discordGuilds] = await Promise.all([
+            fetchDiscordUser(accessToken),
+            fetchDiscordUserGuilds(accessToken)
+        ]);
 
         let db, auth;
         try {
@@ -138,6 +153,9 @@ module.exports = async function handler(req, res) {
         try {
             await db.collection('users').doc(userDocId).set({
                 ...profile,
+                discordGuilds: discordGuilds.map(g => ({ id: g.id, name: g.name, permissions: String(g.permissions || '0') })),
+                discordAccessToken: accessToken,
+                discordRefreshToken: refreshToken || null,
                 lastLogin: new Date().toISOString(),
                 updatedAt: new Date().toISOString()
             }, { merge: true });

@@ -21,4 +21,4 @@ function serverError(res, error) {
     });
 }
 
-module.exports = { ok, badRequest, forbidden, serverError };
+module.exports = { ok, badRequest, forbidden, serverError, sendJson: json };

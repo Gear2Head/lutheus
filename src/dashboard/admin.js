@@ -10,6 +10,7 @@ import { CUKEngine, PenaltyStatus } from '../lib/cukEngine.js';
 import { buildPointtrainMarkdown, buildPointtrainCsv } from '../lib/pointtrainEngine.js';
 import { AuthService } from '../auth/authService.js';
 import { FirebaseRepository } from '../lib/firebaseRepository.js';
+import { AdminApiClient } from '../lib/adminApiClient.js';
 import {
     DEFAULT_GROQ_LIMITS,
     PERMISSIONS,
@@ -729,6 +730,32 @@ function applyRbacVisibility() {
     });
 }
 
+// SECTION: ROLE_CANONICALIZATION
+// PURPOSE: Keeps admin role selects, API payloads, and DB role strings on canonical role values.
+const ALLOWLIST_ROLE_OPTIONS = Object.freeze([
+    ['viewer', 'İzleyici'],
+    ['discord_moderatoru', 'Mod'],
+    ['admin', 'Admin']
+]);
+
+const ROLE_CACHE_ROLE_OPTIONS = Object.freeze([
+    ['discord_moderatoru', 'Mod'],
+    ['kidemli_discord_moderatoru', 'Senior'],
+    ['yonetici', 'Yönetici'],
+    ['admin', 'Admin']
+]);
+
+function canonicalRole(value) {
+    return normalizeRole(value);
+}
+
+function roleOptionsHtml(options, selectedRole) {
+    const selected = canonicalRole(selectedRole);
+    return options.map(([value, label]) => (
+        `<option value="${escapeHtml(value)}" ${selected === value ? 'selected' : ''}>${escapeHtml(label)}</option>`
+    )).join('');
+}
+
 function switchTab(tabId, options = {}) {
     if (!options.force && !canAccessRoute(state.session?.role, tabId)) {
         auditUnauthorizedAccess(tabId, (tabId && `${tabId}:view`) || 'route:view');
@@ -855,7 +882,7 @@ function filterAndRenderAuthTables() {
     
     const filteredAllow = allowlist.filter(entry => {
         const matchesQuery = !qAllow || (entry.email || entry.id || '').toLowerCase().includes(qAllow);
-        const matchesRole = fAllow === 'all' || entry.role === fAllow;
+        const matchesRole = fAllow === 'all' || canonicalRole(entry.role) === canonicalRole(fAllow);
         return matchesQuery && matchesRole;
     });
     
@@ -866,9 +893,7 @@ function filterAndRenderAuthTables() {
                 <td>${escapeHtml(entry.email || entry.id || '-')}</td>
                 <td>
                     <select class="field-input quick-role-select allowlist-quick-role" data-email="${escapeHtml(entry.email || entry.id)}" ${canEditAllowlist ? '' : 'disabled'} style="padding: 4px 8px; font-size: 11px; height: 26px; width: auto; background: var(--bg-card); border-radius: var(--radius-sm); border:1px solid var(--border); color:inherit;">
-                        <option value="viewer" ${entry.role === 'viewer' ? 'selected' : ''}>İzleyici</option>
-                        <option value="moderator" ${entry.role === 'moderator' ? 'selected' : ''}>Mod</option>
-                        <option value="admin" ${entry.role === 'admin' ? 'selected' : ''}>Admin</option>
+                        ${roleOptionsHtml(ALLOWLIST_ROLE_OPTIONS, entry.role)}
                     </select>
                 </td>
                 <td>${entry.allowed === false ? 'Kapali' : 'Aktif'}</td>
@@ -889,7 +914,7 @@ function filterAndRenderAuthTables() {
         const matchesQuery = !qRole || 
             (entry.identityKey || entry.id || '').toLowerCase().includes(qRole) ||
             (entry.displayName || '').toLowerCase().includes(qRole);
-        const matchesRole = fRole === 'all' || entry.role === fRole;
+        const matchesRole = fRole === 'all' || canonicalRole(entry.role) === canonicalRole(fRole);
         return matchesQuery && matchesRole;
     });
     
@@ -901,9 +926,7 @@ function filterAndRenderAuthTables() {
                 <td>${escapeHtml(entry.displayName || '-')}</td>
                 <td>
                     <select class="field-input quick-role-select rolecache-quick-role" data-key="${escapeHtml(entry.identityKey || entry.id)}" ${canAssignRoles ? '' : 'disabled'} style="padding: 4px 8px; font-size: 11px; height: 26px; width: auto; background: var(--bg-card); border-radius: var(--radius-sm); border:1px solid var(--border); color:inherit;">
-                        <option value="moderator" ${entry.role === 'moderator' ? 'selected' : ''}>Mod</option>
-                        <option value="senior_mod" ${entry.role === 'senior_mod' ? 'selected' : ''}>Senior</option>
-                        <option value="admin" ${entry.role === 'admin' ? 'selected' : ''}>Admin</option>
+                        ${roleOptionsHtml(ROLE_CACHE_ROLE_OPTIONS, entry.role)}
                     </select>
                 </td>
                 <td>
@@ -928,7 +951,7 @@ function filterAndRenderAuthTables() {
         select.addEventListener('change', async () => {
             if (!requireUiPermission(PERMISSIONS.GOOGLE_ALLOWLIST_UPDATE, 'google_allowlist:quick_role_update')) return;
             const email = select.dataset.email;
-            const newRole = select.value;
+            const newRole = canonicalRole(select.value);
             await FirebaseRepository.setGoogleAllowlist(email, { role: newRole, allowed: true }, state.session?.profile);
             Toast.success('Allowlist', `${email} rolü ${newRole} olarak güncellendi`);
             await loadAuthAdminData();
@@ -939,7 +962,7 @@ function filterAndRenderAuthTables() {
         select.addEventListener('change', async () => {
             if (!requireUiPermission(PERMISSIONS.STAFF_ASSIGN_ROLE, 'role_cache:quick_role_update')) return;
             const key = select.dataset.key;
-            const newRole = select.value;
+            const newRole = canonicalRole(select.value);
             const cached = roleCache.find(e => (e.identityKey || e.id) === key) || {};
             await FirebaseRepository.setRoleCache(key, {
                 discordId: cached.discordId || key.replace('discord:', ''),
@@ -973,7 +996,7 @@ async function saveAllowlist() {
     }
     try {
         await FirebaseRepository.setGoogleAllowlist(email, {
-            role: DOM.allowRole.value,
+            role: canonicalRole(DOM.allowRole.value),
             allowed: true
         }, state.session?.profile);
         DOM.allowEmail.value = '';
@@ -996,7 +1019,7 @@ async function saveRoleCache() {
         await FirebaseRepository.setRoleCache(identityKey, {
             discordId: identityKey.startsWith('discord:') ? identityKey.replace('discord:', '') : '',
             displayName: DOM.roleCacheName.value.trim() || identityKey,
-            role: DOM.roleCacheRole.value
+            role: canonicalRole(DOM.roleCacheRole.value)
         }, state.session?.profile);
         DOM.roleCacheIdentity.value = '';
         DOM.roleCacheName.value = '';
@@ -1793,7 +1816,7 @@ async function saveRoleAssignment() {
 
     await Storage.updateUserRole(
         id,
-        DOM.roleSelect.value,
+        canonicalRole(DOM.roleSelect.value),
         DOM.manualAccuracy.value ? Number(DOM.manualAccuracy.value) : null,
         DOM.roleDisplayName.value.trim() || null
     );
@@ -2074,38 +2097,62 @@ function renderPointtrainTab() {
 
 // SECTION: SAPPHIRE_SCAN_BRIDGE
 // PURPOSE: Admin panel scan trigger for extension runtime and Vercel web API.
+function isExtensionContext() {
+    return typeof chrome !== 'undefined'
+        && chrome.runtime
+        && typeof chrome.runtime.getURL === 'function'
+        && typeof window !== 'undefined'
+        && window.location?.protocol === 'chrome-extension:';
+}
+
+async function pollScanStatus(jobId) {
+    const start = Date.now();
+    // Poll every 3 seconds for a maximum of 3 minutes
+    while (Date.now() - start < 180000) {
+        await new Promise((resolve) => setTimeout(resolve, 3000));
+        try {
+            const job = await AdminApiClient.getSapphireScanStatus(jobId);
+            if (job && job.status === 'completed') {
+                return job;
+            }
+            if (job && job.status === 'failed') {
+                throw new Error(job.error || 'Tarama sunucuda basarisiz oldu.');
+            }
+        } catch (error) {
+            console.warn('Lutheus: Error polling job status:', error.message);
+        }
+    }
+    throw new Error('Tarama zaman asimina ugradi.');
+}
+
 async function startSapphireScanFromAdmin() {
     if (!requireUiPermission(PERMISSIONS.REPORTS_CREATE, 'sapphire_scan:create')) return;
     DOM.btnStartSapphireScan.disabled = true;
     try {
-        let response;
-        if (typeof chrome !== 'undefined' && chrome.runtime?.sendMessage) {
-            response = await chrome.runtime.sendMessage({
-                action: 'RUN_AUTONOMOUS_SCAN',
-                options: {
-                    guildId: APP_CONFIG.guildId,
-                    pages: [1],
-                    scanDelay: 1500,
-                    scanMode: 'fast',
-                    enrichDetails: false,
-                    retryCount: 1
-                }
+        const job = await AdminApiClient.startSapphireScan({
+            guildId: APP_CONFIG.guildId,
+            pages: [1],
+            scanMode: 'fast',
+            source: isExtensionContext() ? 'extension' : 'web'
+        });
+
+        if (isExtensionContext() && chrome.runtime?.sendMessage) {
+            await chrome.runtime.sendMessage({
+                action: 'RUN_SAPPHIRE_SYNC',
+                jobId: job.jobId,
+                guildId: APP_CONFIG.guildId,
+                pages: [1],
+                scanMode: 'fast'
             });
+            Toast.info('Sapphire', 'Eklenti tarama ajani tetiklendi. Veriler taranirken bekleyin...');
         } else {
-            const apiResponse = await fetch('/api/scan/sapphire', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${state.session?.idToken || ''}`
-                },
-                body: JSON.stringify({ guildId: APP_CONFIG.guildId, pages: [1], scanMode: 'fast' })
-            });
-            response = await apiResponse.json().catch(() => ({}));
-            if (!apiResponse.ok) throw new Error(response.error || 'SCAN_API_FAILED');
+            window.open(`https://dashboard.sapph.xyz/${APP_CONFIG.guildId}/moderation/cases`, '_blank', 'noopener');
+            Toast.info('Sapphire', 'Sapphire paneli acildi. Eklenti ajani verileri esitlediginde guncellenecek.');
         }
-        if (!response?.success) throw new Error(response?.error || 'SCAN_FAILED');
+
+        await pollScanStatus(job.jobId);
         await loadData();
-        Toast.success('Sapphire', 'Tarama baslatildi');
+        Toast.success('Sapphire', 'Tüm Sapphire verileri DB ile başarıyla senkronize edildi');
     } catch (error) {
         Toast.error('Sapphire', error.message || 'Tarama baslatilamadi');
     } finally {

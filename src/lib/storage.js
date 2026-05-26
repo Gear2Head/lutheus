@@ -345,36 +345,39 @@ export const Storage = {
     },
 
     async getCases() {
-        // ASSUME: Local storage is source of truth; remote merges on top without clobbering local metadata
         const localCases = await this.get('cases').then((value) => (Array.isArray(value) ? value : []));
-        const syncCases = [];
-
         const caseMap = new Map();
-        // Local has priority
+        
+        // Load local entries as initial state (preserves notes, reviewStatus, assignee, overrides)
         for (const entry of localCases) {
             const id = String(entry.id || entry.caseId || '');
             if (id) caseMap.set(id, normalizeCaseEntry(entry));
         }
-        // Sync layer: only fills missing fields
-        for (const entry of syncCases) {
-            const id = String(entry.id || entry.caseId || '');
-            if (!id) continue;
-            const existing = caseMap.get(id);
-            caseMap.set(id, existing ? normalizeCaseEntry({ ...entry, ...existing, id }, existing) : normalizeCaseEntry({ ...entry, id }));
-        }
-        // Firebase: only fill missing, never overwrite local metadata (note/reviewStatus)
-        const remoteCases = await FirebaseRepository.listCases().catch(() => []);
-        for (const entry of remoteCases) {
-            const id = String(entry.caseId || entry.id || '');
-            if (!id) continue;
-            const existing = caseMap.get(id);
-            if (existing) {
-                // Preserve local-only fields
-                caseMap.set(id, normalizeCaseEntry({ ...entry, ...existing, id }, existing));
-            } else {
-                caseMap.set(id, normalizeCaseEntry({ ...entry, id }));
+
+        try {
+            const remoteCases = await FirebaseRepository.listCases();
+            if (Array.isArray(remoteCases)) {
+                for (const entry of remoteCases) {
+                    const id = String(entry.caseId || entry.id || '');
+                    if (!id) continue;
+                    const existing = caseMap.get(id);
+                    if (existing) {
+                        // Merge remote data into existing local data to preserve local-only metadata
+                        caseMap.set(id, normalizeCaseEntry({ ...entry, ...existing, id }, existing));
+                    } else {
+                        caseMap.set(id, normalizeCaseEntry({ ...entry, id }));
+                    }
+                }
+                const allCases = Array.from(caseMap.values()).sort(compareCases);
+                await this.set('cases', allCases);
+                await this.updateUserRegistry(allCases);
+                await this.upsertStaffDirectoryFromCases(allCases);
+                return allCases;
             }
+        } catch (error) {
+            console.warn('Lutheus: Failed to fetch remote cases from Firestore, falling back to local cache:', error.message);
         }
+
         const allCases = Array.from(caseMap.values()).sort(compareCases);
         await this.updateUserRegistry(allCases);
         await this.upsertStaffDirectoryFromCases(allCases);
@@ -915,15 +918,16 @@ export const Storage = {
     },
 
     async getRoleCache() {
-        const cached = await this.get('roleCache');
-        // Fetch from Firestore and update cache asynchronously
-        FirebaseRepository.listRoleCache().then(async (remoteCache) => {
+        try {
+            const remoteCache = await FirebaseRepository.listRoleCache();
             if (Array.isArray(remoteCache) && remoteCache.length) {
                 await this.set('roleCache', remoteCache);
+                return remoteCache;
             }
-        }).catch((err) => {
-            console.warn('Lutheus: Failed to fetch remote roleCache:', err.message);
-        });
+        } catch (err) {
+            console.warn('Lutheus: Failed to fetch remote roleCache, falling back to local cache:', err.message);
+        }
+        const cached = await this.get('roleCache');
         return Array.isArray(cached) ? cached : [];
     },
 

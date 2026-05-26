@@ -751,6 +751,9 @@ async function runAutonomousScan(options = {}) {
 
     if (allCases.length > 0) {
         await storageSaveCases(allCases, true);
+        if (typeof activeJobId !== 'undefined' && activeJobId) {
+            await forwardToVercelIngest(allCases, activeJobId, `https://dashboard.sapph.xyz/${guildId}/moderation/cases`);
+        }
     }
 
     if (onComplete) {
@@ -1034,6 +1037,52 @@ async function runPointtrainScan(options = {}) {
     return run;
 }
 
+let activeJobId = null;
+
+async function forwardToVercelIngest(records, jobId, sourceUrl, finished = false) {
+    try {
+        const session = await new Promise(resolve => chrome.storage.local.get(['lutheus:session', 'session'], (res) => resolve(res['lutheus:session'] || res['session'] || null)));
+        const idToken = session?.idToken;
+        if (!idToken) {
+            console.warn('[Lutheus SW] No idToken found in storage for Vercel ingest.');
+            return;
+        }
+
+        const settings = await new Promise(resolve => chrome.storage.sync.get(['settings'], (res) => resolve(res.settings || {})));
+        const guildId = settings.guildId || '1223431616081166336';
+        
+        const config = await new Promise(resolve => chrome.storage.local.get(['appConfig'], (res) => resolve(res.appConfig || {})));
+        const apiBase = config.vercelAuthBaseUrl || 'https://lutheus.vercel.app';
+        const url = `${apiBase.replace(/\/+$/, '')}/api/scan/sapphire/ingest`;
+
+        console.log(`[Lutheus SW] Forwarding ${records.length} records to Vercel API (finished=${finished}): ${url}`);
+
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${idToken}`
+            },
+            body: JSON.stringify({
+                jobId,
+                guildId,
+                sourceUrl,
+                items: records,
+                finished
+            })
+        });
+
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            console.error('[Lutheus SW] Ingest failed:', data.error || response.statusText);
+        } else {
+            console.log('[Lutheus SW] Ingest successful:', data);
+        }
+    } catch (err) {
+        console.error('[Lutheus SW] Failed to forward to Vercel ingest:', err.message);
+    }
+}
+
 chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
     if (request.action === ACTIONS.POINTTRAIN_PROGRESS_EVENT || request.action === ACTIONS.POINTTRAIN_DONE_EVENT) {
         return false;
@@ -1060,6 +1109,32 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
                     break;
                 }
 
+                case 'RUN_SAPPHIRE_SYNC': {
+                    const jobId = request.jobId;
+                    activeJobId = jobId;
+                    console.log(`[Lutheus SW] Running Sapphire V2 sync for jobId: ${jobId}`);
+
+                    // Start autonomous scan
+                    runAutonomousScan({
+                        guildId: request.guildId || LUTHEUS_GUILD_ID,
+                        pages: request.pages || [1],
+                        scanMode: request.scanMode || 'fast',
+                        onComplete: async (result) => {
+                            console.log(`[Lutheus SW] Sapphire sync job ${jobId} finished:`, result);
+                            // Send final completion ingest batch (finished: true) to close the job
+                            await forwardToVercelIngest([], jobId, `https://dashboard.sapph.xyz/${request.guildId || LUTHEUS_GUILD_ID}/moderation/cases`, true);
+                            activeJobId = null;
+                        }
+                    }).catch(async (error) => {
+                        console.error(`[Lutheus SW] Sapphire scan job failed:`, error.message);
+                        await forwardToVercelIngest([], jobId, `https://dashboard.sapph.xyz/${request.guildId || LUTHEUS_GUILD_ID}/moderation/cases`, true);
+                        activeJobId = null;
+                    });
+
+                    sendResponse({ success: true, jobId });
+                    break;
+                }
+
                 case 'INTERCEPTED_PUNISHMENTS': {
                     const records = request.records || [];
                     if (records.length) {
@@ -1083,6 +1158,9 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
                         await storageSaveCases(normalized, true);
                         await updateRegistryFromCases(normalized);
                         console.log(`[Lutheus SW] Intercepted ${normalized.length} punishments saved`);
+                        if (typeof activeJobId !== 'undefined' && activeJobId) {
+                            await forwardToVercelIngest(normalized, activeJobId, request.sourceUrl || '');
+                        }
                     }
                     sendResponse({ status: 'received', count: records.length });
                     break;

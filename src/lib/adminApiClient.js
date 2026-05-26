@@ -1,4 +1,39 @@
 import { AuthService } from '../auth/authService.js';
+import { APP_CONFIG } from '../config/appConfig.js';
+
+// SECTION: API_CLIENT
+// PURPOSE: Handles secure administrative API requests with context-aware URL resolution.
+
+function isExtensionContext() {
+    return typeof chrome !== 'undefined'
+        && chrome.runtime
+        && typeof chrome.runtime.getURL === 'function'
+        && typeof window !== 'undefined'
+        && window.location?.protocol === 'chrome-extension:';
+}
+
+function getApiBaseUrl() {
+    try {
+        return new URL(APP_CONFIG.vercelAuthBaseUrl || 'https://lutheus.vercel.app').origin;
+    } catch (_error) {
+        return 'https://lutheus.vercel.app';
+    }
+}
+
+function resolveApiUrl(path) {
+    if (/^https?:\/\//i.test(path)) return path;
+    const normalized = path.startsWith('/') ? path : `/${path}`;
+
+    if (isExtensionContext()) {
+        return `${getApiBaseUrl()}${normalized}`;
+    }
+
+    if (typeof window !== 'undefined' && window.location?.origin?.startsWith('http')) {
+        return `${window.location.origin}${normalized}`;
+    }
+
+    return `${getApiBaseUrl()}${normalized}`;
+}
 
 async function authHeaders() {
     const session = await AuthService.getSession();
@@ -11,8 +46,9 @@ async function authHeaders() {
 
 async function request(path, options = {}) {
     const headers = await authHeaders();
+    const url = resolveApiUrl(path);
 
-    const response = await fetch(path, {
+    const response = await fetch(url, {
         ...options,
         headers: {
             ...headers,
@@ -84,5 +120,24 @@ export const AdminApiClient = {
     async listAuditLogs() {
         const payload = await request('/api/admin/audit-logs');
         return payload.items || [];
+    },
+
+    async startSapphireScan(payload) {
+        return request('/api/scan/sapphire/start', {
+            method: 'POST',
+            body: JSON.stringify(payload)
+        });
+    },
+
+    async ingestSapphireBatch(payload) {
+        return request('/api/scan/sapphire/ingest', {
+            method: 'POST',
+            body: JSON.stringify(payload)
+        });
+    },
+
+    async getSapphireScanStatus(jobId) {
+        const payload = await request(`/api/scan/sapphire/status?jobId=${encodeURIComponent(jobId)}`);
+        return payload.job;
     }
 };

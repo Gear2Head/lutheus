@@ -15,6 +15,10 @@ describe('rolePolicy', () => {
         expect(normalizeRole('Discord Yöneticisi')).toBe(ROLES.DISCORD_YONETICISI);
         expect(normalizeRole('kıdemli')).toBe(ROLES.KIDEMLI_DISCORD_MODERATORU);
         expect(normalizeRole('moderator')).toBe(ROLES.DISCORD_MODERATORU);
+        expect(normalizeRole('mod')).toBe(ROLES.DISCORD_MODERATORU);
+        expect(normalizeRole('discord_mod')).toBe(ROLES.DISCORD_MODERATORU);
+        expect(normalizeRole('senior_mod')).toBe(ROLES.KIDEMLI_DISCORD_MODERATORU);
+        expect(normalizeRole('senior_moderator')).toBe(ROLES.KIDEMLI_DISCORD_MODERATORU);
         expect(normalizeRole('support')).toBe(ROLES.DISCORD_DESTEK_EKIBI);
     });
 

@@ -12,7 +12,10 @@ module.exports = async function handler(req, res) {
         if (req.method === 'GET') {
             await requirePermission(req, PERMISSIONS.STAFF_VIEW);
             const snap = await db.collection('roleCache').limit(500).get();
-            const items = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+            const items = snap.docs.map((doc) => {
+                const data = doc.data();
+                return { id: doc.id, ...data, role: normalizeRole(data.role || 'pending') };
+            });
             return ok(res, { items });
         }
 

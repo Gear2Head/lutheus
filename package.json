@@ -22,12 +22,14 @@
     "start:bot": "npm run start --workspace=apps/discord-bot"
   },
   "dependencies": {
+    "@google-cloud/firestore": "^8.6.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vercel/analytics": "^2.0.1",
     "discord.js": "^14.26.4",
     "firebase": "^11.10.0",
-    "firebase-admin": "^13.0.2",
+    "firebase-admin": "^13.10.0",
+    "google-auth-library": "^10.6.2",
     "react": "^19.2.5",
     "react-dom": "^19.2.5"
   },

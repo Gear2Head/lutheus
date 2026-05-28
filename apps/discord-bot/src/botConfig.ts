@@ -1,4 +1,7 @@
-import admin from 'firebase-admin';
+// SECTION: BOT_ENV
+// PURPOSE: Configures environment and exports the Supabase client and Discord bot secrets.
+
+import { createClient } from '@supabase/supabase-js';
 import fs from 'node:fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -6,8 +9,6 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// SECTION: BOT_ENV
-// PURPOSE: Railway uses real env vars; local development may read a root .env without bundling secrets.
 const envPath = path.resolve(__dirname, '../../../.env');
 if (fs.existsSync(envPath)) {
     for (const line of fs.readFileSync(envPath, 'utf8').split(/\r?\n/)) {
@@ -18,78 +19,16 @@ if (fs.existsSync(envPath)) {
     }
 }
 
-let serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
-if (serviceAccountJson) {
-    serviceAccountJson = serviceAccountJson.trim();
-    if (serviceAccountJson.startsWith("'") && serviceAccountJson.endsWith("'")) {
-        serviceAccountJson = serviceAccountJson.slice(1, -1);
-    }
-    if (serviceAccountJson.startsWith('"') && serviceAccountJson.endsWith('"')) {
-        serviceAccountJson = serviceAccountJson.slice(1, -1);
-    }
-}
-const firebaseProjectId = process.env.FIREBASE_PROJECT_ID || process.env.GOOGLE_CLOUD_PROJECT || process.env.GCLOUD_PROJECT;
-const firebaseClientEmail = process.env.FIREBASE_CLIENT_EMAIL;
-const firebasePrivateKey = process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n');
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://jxhzhaqqtlynbnntwpyu.supabase.co';
+const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || '';
 
-function initializeDefaultFirebaseAdmin() {
-    if (firebaseProjectId) {
-        admin.initializeApp({ projectId: firebaseProjectId });
-        console.log('Discord Bot: Initialized default Firebase Admin with project ID');
-        return;
+export const supabase = createClient(supabaseUrl, supabaseKey, {
+    auth: {
+        persistSession: false,
+        autoRefreshToken: false
     }
+});
 
-    admin.initializeApp();
-    console.log('Discord Bot: Initialized default Firebase Admin');
-}
-
-// SECTION: FIREBASE_ADMIN_INIT
-// PURPOSE: Initializes Firebase Admin from Railway env vars or local default credentials.
-if (admin.apps.length === 0) {
-    if (serviceAccountJson) {
-        try {
-            const cleanedJson = serviceAccountJson.replace(/\\n/g, '\n');
-            const serviceAccount = JSON.parse(cleanedJson);
-            admin.initializeApp({
-                credential: admin.credential.cert(serviceAccount),
-                projectId: serviceAccount.project_id || firebaseProjectId
-            });
-            console.log('Discord Bot: Initialized Firebase Admin cert successfully');
-        } catch (e: unknown) {
-            const message = e instanceof Error ? e.message : String(e);
-            console.warn('Discord Bot: Service account JSON parse failed, falling back to split credentials:', message);
-            if (firebaseProjectId && firebaseClientEmail && firebasePrivateKey) {
-                admin.initializeApp({
-                    credential: admin.credential.cert({
-                        projectId: firebaseProjectId,
-                        clientEmail: firebaseClientEmail,
-                        privateKey: firebasePrivateKey
-                    }),
-                    projectId: firebaseProjectId
-                });
-                console.log('Discord Bot: Initialized Firebase Admin split credentials successfully');
-            } else {
-                initializeDefaultFirebaseAdmin();
-            }
-        }
-    } else if (firebaseProjectId && firebaseClientEmail && firebasePrivateKey) {
-        admin.initializeApp({
-            credential: admin.credential.cert({
-                projectId: firebaseProjectId,
-                clientEmail: firebaseClientEmail,
-                privateKey: firebasePrivateKey
-            }),
-            projectId: firebaseProjectId
-        });
-        console.log('Discord Bot: Initialized Firebase Admin split credentials successfully');
-    } else {
-        initializeDefaultFirebaseAdmin();
-    }
-}
-
-// SECTION: BOT_TOKENS
-// PURPOSE: Exports credentials and configs for logging and API calls.
-export const db = admin.firestore();
 export const botToken = process.env.DISCORD_BOT_TOKEN || process.env.Discord_Bot_Token || process.env.DISCORD_TOKEN || process.env.BOT_TOKEN || '';
 export const logChannelId = process.env.DISCORD_LOG_CHANNEL_ID || '';
 export const guildId = process.env.DISCORD_GUILD_ID || '';

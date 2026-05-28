@@ -35,6 +35,10 @@ function resolveApiUrl(path) {
     return `${getApiBaseUrl()}${normalized}`;
 }
 
+const failedUntil = new Map();
+const inFlight = new Map();
+const FAILURE_TTL_MS = 60_000;
+
 async function authHeaders() {
     const session = await AuthService.getSession();
     if (!session?.idToken) throw new Error('AUTH_REQUIRED');
@@ -45,6 +49,17 @@ async function authHeaders() {
 }
 
 async function request(path, options = {}) {
+    const method = String(options.method || 'GET').toUpperCase();
+    const cacheKey = `${method}:${path}`;
+    const now = Date.now();
+    if ((failedUntil.get(cacheKey) || 0) > now) {
+        throw new Error('ADMIN_API_UNAVAILABLE');
+    }
+    if (method === 'GET' && inFlight.has(cacheKey)) {
+        return inFlight.get(cacheKey);
+    }
+
+    const run = (async () => {
     const headers = await authHeaders();
     const url = resolveApiUrl(path);
 
@@ -59,10 +74,23 @@ async function request(path, options = {}) {
     const payload = await response.json().catch(() => ({}));
 
     if (!response.ok || payload.ok === false) {
+        if (response.status >= 500 || response.status === 429) {
+            failedUntil.set(cacheKey, Date.now() + FAILURE_TTL_MS);
+        }
         throw new Error(payload.error || payload.message || `API_REQUEST_FAILED_${response.status}`);
     }
 
+    failedUntil.delete(cacheKey);
     return payload;
+    })();
+
+    if (method !== 'GET') return run;
+    inFlight.set(cacheKey, run);
+    try {
+        return await run;
+    } finally {
+        inFlight.delete(cacheKey);
+    }
 }
 
 export const AdminApiClient = {
@@ -87,6 +115,19 @@ export const AdminApiClient = {
 
     async listRoleCache() {
         const payload = await request('/api/admin/role-cache');
+        return payload.items || [];
+    },
+
+    async listStaffProfiles() {
+        const payload = await request('/api/admin/staff-profiles');
+        return payload.items || [];
+    },
+
+    async upsertStaffProfiles(profiles) {
+        const payload = await request('/api/admin/staff-profiles', {
+            method: 'POST',
+            body: JSON.stringify({ profiles })
+        });
         return payload.items || [];
     },
 

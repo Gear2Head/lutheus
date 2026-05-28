@@ -112,6 +112,7 @@ body {
 .sidebar-logo:hover { box-shadow: 0 0 20px var(--purple-glow); }
 
 .sidebar-nav { display: flex; flex-direction: column; gap: 6px; flex: 1; }
+.sidebar-footer { display: flex; flex-direction: column; align-items: center; gap: 10px; }
 
 .nav-item {
   width: 40px;
@@ -543,6 +544,56 @@ body {
   font-size: 16px;
   font-weight: 700;
   color: var(--purple-hi);
+}
+
+/* SECTION: SETTINGS_PANEL */
+/* PURPOSE: Compact control layout for local dashboard, scan, CUK, and Pointtrain settings. */
+.settings-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.settings-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+.settings-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-2);
+  font-size: 13px;
+}
+.settings-toggle input {
+  accent-color: var(--purple);
+}
+.settings-textarea {
+  min-height: 118px;
+  resize: vertical;
+}
+.settings-status-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+  color: var(--text-2);
+  font-size: 13px;
+}
+.settings-status-row strong {
+  color: var(--text-1);
+  text-align: right;
+}
+.panel:has(#botLogChannelId) {
+  display: none;
+}
+
+@media (max-width: 900px) {
+  .settings-grid { grid-template-columns: 1fr; }
 }
 
 

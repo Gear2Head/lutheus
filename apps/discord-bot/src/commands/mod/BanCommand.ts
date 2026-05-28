@@ -1,8 +1,9 @@
-import { SlashCommandBuilder, ChatInputCommandInteraction, EmbedBuilder, PermissionFlagsBits, GuildMember } from 'discord.js';
-import { db } from '../../botConfig.js';
+// SECTION: BOT_COMMANDS
+// PURPOSE: Permanent ban command with audit logging to Supabase.
 
-// SECTION: BAN_COMMAND
-// PURPOSE: Kullanıcıyı sunucudan kalıcı olarak yasaklar ve Firestore'a audit log yazar.
+import { SlashCommandBuilder, ChatInputCommandInteraction, EmbedBuilder, PermissionFlagsBits, GuildMember } from 'discord.js';
+import { supabase } from '../../botConfig.js';
+
 export const BanCommand = {
     data: new SlashCommandBuilder()
         .setName('ban')
@@ -30,16 +31,19 @@ export const BanCommand = {
 
             await guild.bans.create(target.id, { reason: `${interaction.user.tag}: ${reason}`, deleteMessageSeconds: deleteMessageDays * 86400 });
 
-            await db.collection('auditLogs').add({
+            await supabase.from('audit_logs').insert([{
                 action: 'ban',
-                targetId: target.id,
-                targetTag: target.tag,
-                actorId: interaction.user.id,
-                actorTag: interaction.user.tag,
-                reason,
-                guildId: guild.id,
-                createdAt: new Date().toISOString(),
-            });
+                target_type: 'member',
+                actor_discord_id: interaction.user.id,
+                metadata: {
+                    targetId: target.id,
+                    targetTag: target.tag,
+                    actorTag: interaction.user.tag,
+                    reason,
+                    guildId: guild.id
+                },
+                created_at: new Date().toISOString()
+            }]);
 
             const embed = new EmbedBuilder()
                 .setTitle('🔨 Kullanıcı Yasaklandı')

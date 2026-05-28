@@ -764,18 +764,6 @@ export const Storage = {
         const roleCache = await this.getRoleCache();
         let changed = false;
 
-        for (const key of Object.keys(directory)) {
-            const cleanKey = key.replace(/^discord:/, '').replace(/^name:/, '');
-            const isInCache = roleCache.some(r => {
-                const rcId = r.discordId || String(r.identityKey || r.id || '').replace(/^discord:/, '');
-                return rcId === cleanKey || r.displayName === cleanKey;
-            });
-            if (!isInCache) {
-                delete directory[key];
-                changed = true;
-            }
-        }
-
         for (const member of roleCache) {
             const memberId = member.discordId || String(member.identityKey || member.id || '').replace(/^discord:/, '');
             if (!memberId) continue;
@@ -820,7 +808,6 @@ export const Storage = {
     async upsertStaffDirectoryFromCases(cases) {
         const directory = await this.getStaffDirectory();
         const registry = (await this.get('userRegistry')) || {};
-        const roleCache = await this.getRoleCache();
         let changed = false;
 
         for (const entry of cases) {
@@ -839,12 +826,6 @@ export const Storage = {
             }
 
             if (!authorId && !authorName) continue;
-
-            const isInRoleCache = roleCache.some(r => {
-                const rcId = r.discordId || String(r.identityKey || r.id || '').replace(/^discord:/, '');
-                return rcId === authorId;
-            });
-            if (!isInRoleCache) continue;
 
             const key = authorId || `name:${authorName}`;
             const aliases = [authorName].filter(Boolean);

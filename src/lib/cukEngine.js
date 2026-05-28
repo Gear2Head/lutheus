@@ -33,14 +33,21 @@ export const LUTHEUS_RANKS = {
 export function parseDuration(durationStr) {
     if (!durationStr) return null;
 
-    const str = durationStr.toLowerCase().trim();
+    let str = durationStr.toLowerCase().trim();
+
+    // Strip out remaining time indicator like "in 3 hours" or "kalan 5 dk" or "(in 3 hours)"
+    const index = str.search(/\b(in|kalan)\b/i);
+    if (index !== -1) {
+        str = str.substring(0, index).trim();
+    }
+    // Also remove any trailing open parenthesis left behind, e.g. "1 day ("
+    str = str.replace(/\s*\(\s*$/, '').trim();
 
     // Özel durum: Süresiz / Ban
     if (str.includes('süresiz') || str.includes('perma') || str.includes('sonsuz') || str.includes('perm') || str.includes('belirsiz')) {
         return Infinity;
     }
 
-    // Pattern: "20s", "1h", "2d", "1w", etc.
     const patterns = [
         { regex: /(\d+)\s*(saniye|sec|seconds?|sn|s)(?![a-zA-ZçğıöşüÇĞIÖŞÜ])/i, multiplier: 1 / 60 },
         { regex: /(\d+)\s*(dakika|min|minutes?|dk|m)(?![a-zA-ZçğıöşüÇĞIÖŞÜ])/i, multiplier: 1 },
@@ -55,7 +62,7 @@ export function parseDuration(durationStr) {
     let found = false;
 
     for (const { regex, multiplier } of patterns) {
-        const matches = str.matchAll(new RegExp(regex.source, 'gi'));
+        const matches = [...str.matchAll(new RegExp(regex.source, 'gi'))];
         for (const match of matches) {
             totalMinutes += parseInt(match[1]) * multiplier;
             found = true;
@@ -393,6 +400,30 @@ export const CUKEngine = {
             return { category: 'Yönetim', degree: null, repeat: null };
         }
 
+        // Akıllı eşleşmeler (Zorunlu Kurallar)
+        const sunucuDinamigiD5Keywords = [
+            'sohbet bütünlüğünü bozacak davranış',
+            'sohbetin bütünlüğünü bozacak davranış',
+            'sohbet bütünlüğü',
+            'bütünlüğünü bozacak',
+            'spam',
+            'flood',
+            'harf uzatma',
+            'latin alfabesi dışı',
+            'embed'
+        ];
+        if (sunucuDinamigiD5Keywords.some(kw => lowerReason.includes(kw))) {
+            return { category: 'Sunucu Dinamiği', degree: 5, repeat: repeat };
+        }
+
+        if (lowerReason.includes('kutsal') || lowerReason.includes('dini') || lowerReason.includes('milli') || lowerReason.includes('atatürk') || lowerReason.includes('dinlere')) {
+            return { category: 'Dini/Milli Değerler', degree: null, repeat: repeat };
+        }
+
+        if (lowerReason.includes('markasına zarar') || lowerReason.includes('markaya zarar') || lowerReason.includes('lutheus markası') || lowerReason.includes('sunucuya/lutheus markasına')) {
+            return { category: 'Sunucu Dinamiği', degree: 2, repeat: repeat };
+        }
+
         // Skor tabanlı kategori seçimi
         const scores = {};
         for (const [cat, rule] of Object.entries(this.rules.categories)) {
@@ -431,7 +462,8 @@ export const CUKEngine = {
      * @returns {{status: string, reason: string, details: Object}}
      */
     validate(caseData) {
-        const { reason, duration, type, reviewStatus, note } = caseData;
+        const { reason, duration, type, reviewStatus, note, evidenceText, description, proofText, raw } = caseData;
+        const repeatIndex = caseData.repeatIndex !== undefined ? Number(caseData.repeatIndex) : null;
 
         // 0. Manuel Override Kontrolü
         if (reviewStatus && (reviewStatus === PenaltyStatus.VALID || reviewStatus === PenaltyStatus.INVALID)) {
@@ -489,6 +521,25 @@ export const CUKEngine = {
             };
         }
 
+        // 3.2 Akıllı Alt Derece Eşleşmesi (Kanıt, açıklama, not, vb. alanlardan alt ihlal/derece tespiti)
+        let matchedDegree = parsed.degree;
+        if (matchedDegree === null && rule.degrees) {
+            const contextText = [
+                evidenceText,
+                description,
+                note,
+                proofText,
+                typeof raw === 'string' ? raw : (raw && JSON.stringify(raw))
+            ].filter(Boolean).join(' ').toLowerCase();
+
+            for (const d of rule.degrees) {
+                if (d.keywords && d.keywords.some(kw => contextText.includes(kw.toLowerCase()))) {
+                    matchedDegree = d.degree;
+                    break;
+                }
+            }
+        }
+
         // 4. Süre ve Tür Kontrolü (Esnek Eşleşme)
         const durationMinutes = parseDuration(duration);
         const givenType = type ? type.toLowerCase() : 'unknown';
@@ -498,68 +549,96 @@ export const CUKEngine = {
         const possiblePenalties = [];
 
         // Hiyerarşiyi tarayarak olası süreleri/türleri topla
-        const collectPossibilities = (r) => {
-            if (r.duration) possiblePenalties.push({ duration: r.duration, type: r.type || 'mute' });
-            if (r.type === 'ban') possiblePenalties.push({ type: 'ban' });
-            if (r.type === 'warn') possiblePenalties.push({ type: 'warn' });
+        const collectPossibilities = (r, specificDegree = null) => {
+            const currentDegree = specificDegree !== null ? specificDegree : (r.degree || null);
+            if (r.duration) possiblePenalties.push({ duration: r.duration, type: r.type || 'mute', degree: currentDegree });
+            if (r.type === 'ban') possiblePenalties.push({ type: 'ban', degree: currentDegree });
+            if (r.type === 'warn') possiblePenalties.push({ type: 'warn', degree: currentDegree });
 
             if (r.repeats) {
-                Object.values(r.repeats).forEach(rep => {
-                    if (rep.duration) possiblePenalties.push({ duration: rep.duration, type: rep.type || 'mute' });
-                    if (rep.type) possiblePenalties.push({ type: rep.type });
-                    // If repeat rule has a ban note/type, it's also a possibility
-                    if (rep.notes && (rep.notes.toLowerCase().includes('ban') || rep.notes.toLowerCase().includes('kısıtlama'))) {
-                        possiblePenalties.push({ type: 'ban' });
+                if (repeatIndex && repeatIndex > 0) {
+                    const keys = Object.keys(r.repeats).map(Number).sort((a, b) => a - b);
+                    if (keys.length > 0) {
+                        const targetKey = keys.includes(repeatIndex) ? repeatIndex : keys[keys.length - 1];
+                        const rep = r.repeats[targetKey];
+                        if (rep) {
+                            if (rep.duration) possiblePenalties.push({ duration: rep.duration, type: rep.type || 'mute', degree: currentDegree });
+                            if (rep.type === 'ban' || (rep.notes && (rep.notes.toLowerCase().includes('ban') || rep.notes.toLowerCase().includes('kısıtlama')))) {
+                                possiblePenalties.push({ type: 'ban', degree: currentDegree });
+                            }
+                        }
                     }
-                });
+                } else {
+                    Object.values(r.repeats).forEach(rep => {
+                        if (rep.duration) possiblePenalties.push({ duration: rep.duration, type: rep.type || 'mute', degree: currentDegree });
+                        if (rep.type === 'ban' || (rep.notes && (rep.notes.toLowerCase().includes('ban') || rep.notes.toLowerCase().includes('kısıtlama')))) {
+                            possiblePenalties.push({ type: 'ban', degree: currentDegree });
+                        }
+                    });
+                }
             }
             if (r.degrees) {
-                r.degrees.forEach(d => collectPossibilities(d));
+                if (specificDegree !== null) {
+                    const d = r.degrees.find(x => x.degree === specificDegree);
+                    if (d) collectPossibilities(d, specificDegree);
+                } else {
+                    r.degrees.forEach(d => collectPossibilities(d, d.degree));
+                }
             }
             if (r.flexible) {
-                r.flexible.forEach(f => possiblePenalties.push(f));
+                r.flexible.forEach(f => possiblePenalties.push({ ...f, degree: currentDegree }));
             }
             if (r.type === 'mute' && !r.duration && !r.repeats && !r.degrees) {
-                // Generic mute with no specific duration rule
-                possiblePenalties.push({ type: 'mute' });
+                possiblePenalties.push({ type: 'mute', degree: currentDegree });
             }
         };
 
-        collectPossibilities(rule);
+        collectPossibilities(rule, matchedDegree);
 
-        // Belirli bir derece/tekrar tespiti varsa onu önceliklendir (opsiyonel ama yardımcı)
         let match = false;
+        let matchedPenalty = null;
 
         // 1. Ban/Perma kontrolü
         if (givenType.includes('ban') || isPerma) {
-            if (possiblePenalties.some(p => p.type === 'ban')) {
-                match = true;
-            }
+            matchedPenalty = possiblePenalties.find(p => p.type === 'ban');
+            if (matchedPenalty) match = true;
         }
 
         // 2. Süreli ceza kontrolü
         if (!match && (durationMinutes || givenType !== 'unknown')) {
-            match = possiblePenalties.some(p => {
-                // Tür eşleşmesi
+            matchedPenalty = possiblePenalties.find(p => {
                 if (p.type && givenType !== 'unknown' && !givenType.includes(p.type)) return false;
 
-                // Süre eşleşmesi
                 if (p.duration) {
                     if (!durationMinutes) return false;
                     const diff = Math.abs(p.duration - durationMinutes);
-                    return diff <= 5 || (diff / p.duration) <= 0.05;
+                    // 10% tolerance or up to 60 minutes difference
+                    return diff <= 60 || (diff / p.duration) <= 0.10;
                 }
 
-                if (p.type && givenType.includes(p.type)) return true;
-                return false;
+                if (p.type === 'mute' && durationMinutes) return false;
+                return p.type && givenType.includes(p.type);
             });
+            if (matchedPenalty) match = true;
         }
+
+        // 3.3 Dereceye ve Kategori Kuralına Göre Sonuç Oluşturma
+        const multiDegreeCategories = [
+            'Oyunculara Saygısızlık',
+            'Küfür/Hakaret/Uygunsuz Öge İçerikli Mesaj',
+            'Sunucu Dinamiğini Sarsmak',
+            'Destek Talebi'
+        ];
 
         if (match) {
             return {
                 status: PenaltyStatus.VALID,
-                reason: 'Süre ve tür kurallarla uyumlu',
-                details: { category: parsed.category }
+                reason: matchedDegree !== null ? 'Kategori, alt ihlal ve süre CUK ile uyumlu' : 'Süre ve tür kurallarla uyumlu',
+                details: {
+                    category: parsed.category,
+                    degree: matchedDegree || (matchedPenalty ? matchedPenalty.degree : null),
+                    repeat: repeatIndex
+                }
             };
         } else {
             // Detaylı hata mesajı
@@ -571,6 +650,21 @@ export const CUKEngine = {
 
             const expected = expectedList.join(' veya ');
             const givenLabel = isPerma ? 'Süresiz' : formatDuration(durationMinutes);
+
+            if (multiDegreeCategories.includes(parsed.category) && matchedDegree === null) {
+                return {
+                    status: PenaltyStatus.INVALID,
+                    reason: "Verilen süre bu kategori altındaki hiçbir CUK süresiyle uyumlu değil",
+                    details: {
+                        category: parsed.category,
+                        degree: null,
+                        given: {
+                            type: type || 'mute',
+                            durationMinutes: durationMinutes
+                        }
+                    }
+                };
+            }
 
             return {
                 status: PenaltyStatus.INVALID,

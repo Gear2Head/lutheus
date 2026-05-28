@@ -1,58 +1,9 @@
 const { supabase } = require('../../_lib/supabaseClient');
-const { readState } = require('../../_lib/oauthState');
 const { normalizeRole } = require('../../_lib/roles');
 const jwt = require('jsonwebtoken');
 
 // SECTION: API_ROUTES
-// PURPOSE: Google web OAuth callback endpoint with server-side token exchange using Supabase.
-
-function encodeProfile(profile) {
-    return Buffer.from(encodeURIComponent(JSON.stringify(profile))).toString('base64');
-}
-
-function redirectWithError(res, redirectUri, error) {
-    const url = new URL(redirectUri);
-    url.searchParams.set('error', error);
-    res.writeHead(302, { Location: url.toString() });
-    res.end();
-}
-
-async function exchangeCode(code, redirectUri) {
-    if (!process.env.GOOGLE_CLIENT_ID) {
-        throw new Error('GOOGLE_CLIENT_ID_MISSING');
-    }
-
-    if (!process.env.GOOGLE_CLIENT_SECRET) {
-        throw new Error('GOOGLE_CLIENT_SECRET_MISSING');
-    }
-
-    const response = await fetch('https://oauth2.googleapis.com/token', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({
-            client_id: process.env.GOOGLE_CLIENT_ID,
-            client_secret: process.env.GOOGLE_CLIENT_SECRET,
-            code,
-            grant_type: 'authorization_code',
-            redirect_uri: redirectUri
-        })
-    });
-
-    const payload = await response.json().catch(() => ({}));
-
-    if (!response.ok) {
-        if (payload.error === 'redirect_uri_mismatch') {
-            throw new Error('GOOGLE_REDIRECT_URI_MISMATCH');
-        }
-        throw new Error(`GOOGLE_CODE_EXCHANGE_FAILED:${payload.error || response.status}`);
-    }
-
-    if (!payload.access_token) {
-        throw new Error('GOOGLE_ACCESS_TOKEN_MISSING');
-    }
-
-    return payload.access_token;
-}
+// PURPOSE: Dedicated Google Access Token exchange endpoint for Chrome Extensions using Supabase.
 
 async function fetchGoogleUser(accessToken) {
     const response = await fetch('https://openidconnect.googleapis.com/v1/userinfo', {
@@ -78,21 +29,17 @@ async function resolveRole(email) {
 }
 
 module.exports = async function handler(req, res) {
-    let redirectUri = '';
+    if (req.method !== 'POST') {
+        res.status(405).json({ error: 'METHOD_NOT_ALLOWED' });
+        return;
+    }
+
     try {
-        const state = readState(req.query.state);
-        redirectUri = state.redirectUri;
-        const oauthRedirectUri = state.oauthRedirectUri || `https://${req.headers.host}/api/auth/google/callback`;
+        const body = req.body || {};
+        const accessToken = String(body.accessToken || '');
 
-        if (req.query.error) {
-            redirectWithError(res, redirectUri, String(req.query.error));
-            return;
-        }
+        if (!accessToken) throw new Error('GOOGLE_ACCESS_TOKEN_MISSING');
 
-        const code = String(req.query.code || '');
-        if (!code) throw new Error('GOOGLE_CODE_MISSING');
-
-        const accessToken = await exchangeCode(code, oauthRedirectUri);
         const googleUser = await fetchGoogleUser(accessToken);
         const uid = googleUser.sub ? `google:${googleUser.sub}` : '';
         if (!uid) throw new Error('USER_UID_REQUIRED');
@@ -124,21 +71,34 @@ module.exports = async function handler(req, res) {
             updated_at: new Date().toISOString()
         };
 
-        const { data: existingProfile } = await supabase
-            .from('staff_profiles')
-            .select('*')
-            .eq('email', email.toLowerCase())
-            .maybeSingle();
+        let existingProfile = null;
+        try {
+            const { data } = await supabase
+                .from('staff_profiles')
+                .select('*')
+                .eq('email', email.toLowerCase())
+                .maybeSingle();
+            existingProfile = data;
+        } catch (_) {}
 
         if (existingProfile) {
-            userProfile.discord_id = existingProfile.discord_id;
-        }
-
-        try {
-            await supabase.from('staff_profiles').upsert([userProfile], { onConflict: 'email' });
-        } catch (dbError) {
-            console.error('Supabase DB User Write Failed:', dbError);
-            throw new Error('SUPABASE_USER_WRITE_FAILED');
+            userProfile.discord_id = existingProfile.discord_id || null;
+            const { error: updateError } = await supabase
+                .from('staff_profiles')
+                .update(userProfile)
+                .eq('id', existingProfile.id);
+            if (updateError) {
+                console.error('Supabase DB User Update Failed:', updateError);
+                throw new Error('SUPABASE_USER_WRITE_FAILED');
+            }
+        } else {
+            const { error: insertError } = await supabase
+                .from('staff_profiles')
+                .insert([userProfile]);
+            if (insertError) {
+                console.error('Supabase DB User Insert Failed:', insertError);
+                throw new Error('SUPABASE_USER_WRITE_FAILED');
+            }
         }
 
         let supabaseToken;
@@ -174,13 +134,16 @@ module.exports = async function handler(req, res) {
             throw new Error('SUPABASE_CUSTOM_TOKEN_FAILED');
         }
 
-        const url = new URL(redirectUri);
-        url.searchParams.set('supabaseToken', supabaseToken);
-        url.searchParams.set('profile', encodeProfile(profile));
-        res.writeHead(302, { Location: url.toString() });
-        res.end();
+        res.status(200).json({
+            ok: true,
+            uid,
+            supabaseToken,
+            profile
+        });
     } catch (error) {
-        const fallback = redirectUri || `https://${req.headers.host}/src/auth/login.html`;
-        redirectWithError(res, fallback, error.message || 'GOOGLE_AUTH_FAILED');
+        console.error('Google Exchange Endpoint Error:', error);
+        res.status(400).json({
+            error: error.message || 'GOOGLE_AUTH_FAILED'
+        });
     }
 };

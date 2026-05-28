@@ -1,4 +1,4 @@
-import { APP_CONFIG, FIREBASE_CONFIG } from '../config/appConfig.js';
+import { APP_CONFIG } from '../config/appConfig.js';
 import {
     clearStoredSession,
     getStoredSession,
@@ -8,7 +8,8 @@ import {
 import { canAccessAdmin, normalizeRole, ROLES } from './rolePolicy.js';
 import { FirebaseRepository } from '../lib/firebaseRepository.js';
 
-const IDENTITY_TOOLKIT_BASE = 'https://identitytoolkit.googleapis.com/v1';
+// SECTION: AUTH_SERVICE
+// PURPOSE: Lightweight, dependency-free Supabase Auth and Session manager for dashboard and sidepanel.
 
 const isExtensionRuntime = () =>
     typeof chrome !== 'undefined'
@@ -31,23 +32,6 @@ function getSafeReturnTo() {
     } catch (_error) {
         return '/';
     }
-}
-
-function authEndpoint(path) {
-    return `${IDENTITY_TOOLKIT_BASE}/${path}?key=${encodeURIComponent(FIREBASE_CONFIG.apiKey)}`;
-}
-
-async function postJson(url, body) {
-    const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
-    });
-    const payload = await response.json().catch(() => null);
-    if (!response.ok) {
-        throw new Error(payload?.error?.message || `AUTH_REQUEST_FAILED_${response.status}`);
-    }
-    return payload;
 }
 
 function parseHashOrQuery(url) {
@@ -118,11 +102,7 @@ async function resolveRole(profile, token = null) {
 }
 
 async function signInWithCustomToken(customToken, oauthProfile = {}) {
-    const payload = await postJson(authEndpoint('accounts:signInWithCustomToken'), {
-        token: customToken,
-        returnSecureToken: true
-    });
-    const tokenClaims = parseJwtPayload(payload.idToken);
+    const tokenClaims = parseJwtPayload(customToken);
 
     const rawAvatar = oauthProfile.avatar || null;
     const discordId = oauthProfile.discordId || oauthProfile.id || null;
@@ -130,7 +110,7 @@ async function signInWithCustomToken(customToken, oauthProfile = {}) {
         ? rawAvatar
         : (rawAvatar && discordId ? `https://cdn.discordapp.com/avatars/${discordId}/${rawAvatar}.png?size=128` : rawAvatar);
 
-    const uid = payload.localId || oauthProfile.uid || (discordId ? `discord:${discordId}` : null);
+    const uid = oauthProfile.uid || (discordId ? `discord:${discordId}` : null);
     if (!uid) {
         throw new Error('USER_UID_REQUIRED');
     }
@@ -149,7 +129,7 @@ async function signInWithCustomToken(customToken, oauthProfile = {}) {
     const serverRole = tokenClaims.role || oauthProfile.role || null;
     const role = serverRole
         ? normalizeRole(serverRole)
-        : await resolveRole(profile, payload.idToken).catch((error) => {
+        : await resolveRole(profile, customToken).catch((error) => {
             if (error.message === 'GOOGLE_EMAIL_NOT_ALLOWLISTED') throw error;
             return ROLES.PENDING;
         });
@@ -157,9 +137,9 @@ async function signInWithCustomToken(customToken, oauthProfile = {}) {
     const session = {
         uid,
         provider: profile.provider,
-        idToken: payload.idToken,
-        refreshToken: payload.refreshToken,
-        expiresAt: Date.now() + (Number(payload.expiresIn || 3600) * 1000),
+        idToken: customToken,
+        refreshToken: null,
+        expiresAt: tokenClaims.exp ? (tokenClaims.exp * 1000) : (Date.now() + (7 * 24 * 60 * 60 * 1000)),
         profile: { ...profile, role, status: profile.status },
         role
     };
@@ -167,86 +147,28 @@ async function signInWithCustomToken(customToken, oauthProfile = {}) {
     try {
         await FirebaseRepository.upsertUser(session.profile);
     } catch (error) {
-        if (profile.provider === 'google' && !serverRole) {
-            console.error("upsertUser failed during Google sign-in:", error);
-            throw error;
-        }
         console.warn("upsertUser skipped after server-issued custom token:", error);
     }
     return session;
 }
 
 async function signInWithGoogleAccessToken(accessToken) {
-    const payload = await postJson(authEndpoint('accounts:signInWithIdp'), {
-        postBody: `access_token=${encodeURIComponent(accessToken)}&providerId=google.com`,
-        requestUri: typeof chrome !== 'undefined' && chrome.identity?.getRedirectURL
-            ? extensionRedirectUrl('google')
-            : `${window.location.origin}/src/auth/login.html`,
-        returnIdpCredential: true,
-        returnSecureToken: true
+    const callbackEndpoint = new URL('/api/auth/google/exchange', APP_CONFIG.vercelAuthBaseUrl);
+    const response = await fetch(callbackEndpoint.toString(), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accessToken })
     });
-
-    const profile = {
-        uid: payload.localId,
-        provider: 'google',
-        email: payload.email?.toLowerCase() || '',
-        displayName: payload.displayName || payload.email || 'Google User',
-        avatar: payload.photoUrl || null
-    };
-    const provisionalSession = {
-        uid: payload.localId,
-        provider: 'google',
-        idToken: payload.idToken,
-        refreshToken: payload.refreshToken,
-        expiresAt: Date.now() + (Number(payload.expiresIn || 3600) * 1000),
-        profile: { ...profile, role: ROLES.PENDING, status: 'pending' },
-        role: ROLES.PENDING
-    };
-    await setStoredSession(provisionalSession);
-
-    let role;
-    try {
-        role = await resolveRole(profile, payload.idToken);
-    } catch (error) {
-        await clearStoredSession();
-        throw error;
+    const payload = await response.json();
+    if (!response.ok) {
+        throw new Error(payload.error || 'GOOGLE_AUTH_FAILED');
     }
-
-    const session = {
-        ...provisionalSession,
-        profile: { ...profile, role, status: 'active' },
-        role
-    };
-    await setStoredSession(session);
-    try {
-        await FirebaseRepository.upsertUser(session.profile);
-    } catch (error) {
-        console.error("upsertUser failed during Google sign-in:", error);
-        throw error;
-    }
-    return session;
+    return signInWithCustomToken(payload.supabaseToken, payload.profile);
 }
 
 async function refreshSession(session) {
-    const response = await fetch(`https://securetoken.googleapis.com/v1/token?key=${encodeURIComponent(FIREBASE_CONFIG.apiKey)}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({
-            grant_type: 'refresh_token',
-            refresh_token: session.refreshToken
-        })
-    });
-    const payload = await response.json().catch(() => null);
-    if (!response.ok) throw new Error(payload?.error?.message || 'TOKEN_REFRESH_FAILED');
-
-    const next = {
-        ...session,
-        idToken: payload.id_token,
-        refreshToken: payload.refresh_token || session.refreshToken,
-        expiresAt: Date.now() + (Number(payload.expires_in || 3600) * 1000)
-    };
-    await setStoredSession(next);
-    return next;
+    // Custom Supabase JWTs do not need manual SecureToken refresh
+    return session;
 }
 
 export const AuthService = {
@@ -358,12 +280,12 @@ export const AuthService = {
             throw new Error(errorMsg);
         }
 
-        const { firebaseToken, profile } = payload;
-        if (!firebaseToken) {
+        const { supabaseToken, profile } = payload;
+        if (!supabaseToken) {
             throw new Error('DISCORD_TOKEN_MISSING');
         }
 
-        return signInWithCustomToken(firebaseToken, profile);
+        return signInWithCustomToken(supabaseToken, profile);
     },
 
     async loginWithGoogle() {
@@ -392,21 +314,5 @@ export const AuthService = {
 
     async logout() {
         await clearStoredSession();
-    },
-
-    redirectToLogin(returnTo = null, reason = null) {
-        const url = new URL(getURL('src/auth/login.html'));
-        if (returnTo) url.searchParams.set('returnTo', returnTo);
-        if (reason) url.searchParams.set('reason', reason);
-        window.location.href = url.toString();
-    },
-
-    getPostLoginUrl(session) {
-        if (canAccessAdmin(session?.role)) {
-            if (typeof chrome === 'undefined' || !chrome.runtime?.getURL) return `${window.location.origin}/`;
-            return getURL('src/dashboard/admin.html');
-        }
-        if (typeof chrome === 'undefined' || !chrome.runtime?.getURL) return `${window.location.origin}/src/sidepanel/sidepanel.html`;
-        return getURL('src/sidepanel/sidepanel.html');
     }
 };

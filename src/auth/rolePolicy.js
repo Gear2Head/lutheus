@@ -116,9 +116,12 @@ export const ROLE_PERMISSIONS = Object.freeze({
 export const ROUTE_PERMISSIONS = Object.freeze({
     dashboard: [PERMISSIONS.DASHBOARD_VIEW],
     management: [PERMISSIONS.STAFF_VIEW],
+    yetkililer: [PERMISSIONS.STAFF_VIEW],
+    cezalar: [PERMISSIONS.STAFF_VIEW],
     cuk: [PERMISSIONS.PENALTY_ACCURACY_UPDATE],
     pointtrain: [PERMISSIONS.REPORTS_VIEW],
     auth: [PERMISSIONS.GOOGLE_ALLOWLIST_VIEW],
+    settings: [PERMISSIONS.DASHBOARD_VIEW],
     profile: [PERMISSIONS.DASHBOARD_VIEW]
 });
 

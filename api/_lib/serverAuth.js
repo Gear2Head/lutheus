@@ -1,8 +1,9 @@
-const { getAuth, getDb } = require('./firebaseAdmin');
+const { supabase } = require('./supabaseClient');
 const { normalizeRole, hasPermission } = require('./roles');
+const jwt = require('jsonwebtoken');
 
 // SECTION: SERVER_AUTH
-// PURPOSE: Handles server-side identity verification, allowance checks, and custom role mappings.
+// PURPOSE: Handles server-side identity verification, allowance checks, and custom role mappings using Supabase.
 
 function safeDocId(value) {
     return String(value || 'unknown').trim().toLowerCase().replace(/\//g, '_');
@@ -17,8 +18,10 @@ function getBearerToken(req) {
 function extractDiscordId(decoded) {
     const candidates = [
         decoded.discordId,
+        decoded.user_metadata?.discordId,
         decoded.firebase?.identities?.['discord.com']?.[0],
-        String(decoded.uid || '').startsWith('discord:') ? String(decoded.uid).replace(/^discord:/, '') : null
+        String(decoded.uid || '').startsWith('discord:') ? String(decoded.uid).replace(/^discord:/, '') : null,
+        String(decoded.sub || '').startsWith('discord:') ? String(decoded.sub).replace(/^discord:/, '') : null
     ].filter(Boolean);
 
     return candidates.find((value) => /^\d{17,20}$/.test(String(value))) || '';
@@ -30,48 +33,66 @@ async function resolveActorFromToken(req) {
         throw Object.assign(new Error('AUTH_REQUIRED'), { statusCode: 401 });
     }
 
-    const decoded = await getAuth().verifyIdToken(token);
-    const db = getDb();
+    // Verify JWT using SUPABASE_JWT_SECRET (custom tokens signed by exchange endpoints)
+    const jwtSecret = process.env.SUPABASE_JWT_SECRET || 'super-secret-jwt-key-with-at-least-32-characters-long';
+    let decoded;
+    try {
+        decoded = jwt.verify(token, jwtSecret);
+    } catch (jwtError) {
+        throw Object.assign(new Error('AUTH_REQUIRED'), { statusCode: 401 });
+    }
 
-    const uid = decoded.uid;
-    const email = String(decoded.email || '').trim().toLowerCase();
+    const uid = decoded.sub || decoded.uid || '';
+    const email = String(decoded.email || decoded.user_metadata?.email || '').trim().toLowerCase();
     const discordId = extractDiscordId(decoded);
+
 
     let role = null;
     let source = 'none';
 
-    // 1. users doc
-    const userDoc = uid
-        ? await db.collection('users').doc(safeDocId(uid)).get().catch(() => null)
-        : null;
+    // 2. googleAllowlist check
+    if (email) {
+        const { data: allowRow } = await supabase
+            .from('google_allowlist')
+            .select('*')
+            .eq('email', email)
+            .eq('active', true)
+            .maybeSingle();
 
-    if (userDoc?.exists && userDoc.data()?.role) {
-        role = userDoc.data().role;
-        source = 'users';
-    }
-
-    // 2. googleAllowlist doc
-    if (!role && email) {
-        const allowDoc = await db.collection('googleAllowlist').doc(safeDocId(email)).get().catch(() => null);
-        if (allowDoc?.exists && allowDoc.data()?.allowed === true && allowDoc.data()?.role) {
-            role = allowDoc.data().role;
+        if (allowRow?.dashboard_access_role) {
+            role = allowRow.dashboard_access_role;
             source = 'googleAllowlist';
         }
     }
 
-    // 3. roleCache doc
+    // 3. roleCache check
     if (!role && discordId) {
-        const roleDoc = await db.collection('roleCache').doc(`discord:${discordId}`).get().catch(() => null);
-        if (roleDoc?.exists && roleDoc.data()?.role) {
-            role = roleDoc.data().role;
+        const { data: roleRow } = await supabase
+            .from('role_cache')
+            .select('*')
+            .eq('discord_id', discordId)
+            .eq('active', true)
+            .maybeSingle();
+
+        if (roleRow?.staff_rank) {
+            role = roleRow.staff_rank;
             source = 'roleCache';
         }
     }
 
-    // 4. tokenClaim
-    if (!role && decoded.role) {
-        role = decoded.role;
-        source = 'tokenClaim';
+    // 4. staff_profiles check
+    if (!role && discordId) {
+        const { data: profileRow } = await supabase
+            .from('staff_profiles')
+            .select('*')
+            .eq('discord_id', discordId)
+            .eq('is_active_staff', true)
+            .maybeSingle();
+
+        if (profileRow?.staff_rank) {
+            role = profileRow.staff_rank;
+            source = 'staff_profiles';
+        }
     }
 
     role = normalizeRole(role || 'pending');
@@ -95,23 +116,24 @@ async function requireUser(req) {
 
 async function requirePermission(req, permission) {
     const actor = await requireUser(req);
-    const db = getDb();
 
     if (!hasPermission(actor.role, permission)) {
-        await db.collection('auditLogs').add({
+        await supabase.from('audit_logs').insert([{
             action: 'unauthorized_access_attempt',
-            resource: req.url || 'api',
-            permission: permission,
-            uid: actor.uid,
-            email: actor.email || null,
-            discordId: actor.discordId || null,
-            role: actor.role,
-            roleSource: actor.roleSource,
-            method: req.method,
-            path: req.url,
-            userAgent: req.headers['user-agent'] || null,
-            createdAt: new Date().toISOString()
-        }).catch(() => null);
+            target_type: 'api',
+            actor_email: actor.email || null,
+            actor_discord_id: actor.discordId || null,
+            metadata: {
+                resource: req.url || 'api',
+                permission: permission,
+                uid: actor.uid,
+                role: actor.role,
+                roleSource: actor.roleSource,
+                method: req.method,
+                path: req.url,
+                userAgent: req.headers['user-agent'] || null
+            }
+        }]).catch(() => null);
 
         throw Object.assign(new Error('FORBIDDEN'), { statusCode: 403 });
     }

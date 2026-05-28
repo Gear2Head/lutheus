@@ -1,54 +1,56 @@
-const { getAuth, getDb, admin } = require('../_lib/firebaseAdmin');
-const { DEFAULT_GROQ_LIMITS, PERMISSIONS, hasPermission, normalizeRole } = require('../_lib/roles');
+const { supabase } = require('../_lib/supabaseClient');
+const { requirePermission } = require('../_lib/serverAuth');
+const { DEFAULT_GROQ_LIMITS, PERMISSIONS, normalizeRole } = require('../_lib/roles');
 
-function getBearer(req) {
-    const header = req.headers.authorization || '';
-    const match = header.match(/^Bearer\s+(.+)$/i);
-    return match ? match[1] : '';
-}
+// SECTION: AI_SERVICE
+// PURPOSE: Handles server-side AI evaluation with Groq, utilizing Supabase Auth and app_settings-based rate limits.
 
 function todayKey() {
     return new Date().toISOString().slice(0, 10);
 }
 
-async function resolveLimit(db, role) {
-    const policy = await db.collection('rolePolicy').doc('settings').get();
-    const limits = policy.exists ? (policy.data().groqLimits || {}) : {};
+async function resolveLimit(role) {
+    const { data: row } = await supabase
+        .from('app_settings')
+        .select('*')
+        .eq('key', 'settings')
+        .maybeSingle();
+
+    const policy = row ? (row.value || {}) : {};
+    const limits = policy.groqLimits || {};
     return Number(limits[normalizeRole(role)] ?? DEFAULT_GROQ_LIMITS[normalizeRole(role)] ?? 0);
 }
 
-async function consumeQuota(db, uid, role) {
-    const limit = await resolveLimit(db, role);
+async function consumeQuota(uid, role) {
+    const limit = await resolveLimit(role);
     if (limit <= 0) throw new Error('AI_DISABLED_FOR_ROLE');
-    const ref = db.collection('aiQuota').doc(`${encodeURIComponent(uid)}_${todayKey()}`);
-    await db.runTransaction(async (tx) => {
-        const snap = await tx.get(ref);
-        const used = snap.exists ? Number(snap.data().used || 0) : 0;
-        if (used >= limit) throw new Error('AI_RATE_LIMIT_EXCEEDED');
-        tx.set(ref, {
+
+    const key = `ai_quota_${uid}_${todayKey()}`;
+
+    const { data: row } = await supabase
+        .from('app_settings')
+        .select('*')
+        .eq('key', key)
+        .maybeSingle();
+
+    const current = row ? (row.value || {}) : {};
+    const used = Number(current.used || 0);
+
+    if (used >= limit) throw new Error('AI_RATE_LIMIT_EXCEEDED');
+
+    await supabase.from('app_settings').upsert([{
+        key,
+        value: {
             uid,
             role,
             date: todayKey(),
             used: used + 1,
             limit,
-            updatedAt: admin.firestore.FieldValue.serverTimestamp()
-        }, { merge: true });
-    });
-    return limit;
-}
+            updatedAt: new Date().toISOString()
+        }
+    }], { onConflict: 'key' });
 
-async function logUnauthorized(db, uid, role, permission, req) {
-    await db.collection('auditLogs').add({
-        userId: uid,
-        role,
-        action: 'unauthorized_access_attempt',
-        resource: 'api/ai/analyze',
-        permission,
-        method: req.method,
-        path: req.url || '/api/ai/analyze',
-        userAgent: req.headers['user-agent'] || null,
-        createdAt: new Date().toISOString()
-    }).catch(() => null);
+    return limit;
 }
 
 async function callGroq(payload) {
@@ -92,21 +94,14 @@ module.exports = async function handler(req, res) {
     }
 
     try {
-        const token = getBearer(req);
-        if (!token) throw new Error('AUTH_REQUIRED');
-        const decoded = await getAuth().verifyIdToken(token);
-        const db = getDb();
-        const userDoc = await db.collection('users').doc(decoded.uid).get();
-        const role = normalizeRole(userDoc.exists ? userDoc.data().role : decoded.role);
-        if (!hasPermission(role, PERMISSIONS.REPORTS_REVIEW)) {
-            await logUnauthorized(db, decoded.uid, role, PERMISSIONS.REPORTS_REVIEW, req);
-            return res.status(403).json({ ok: false, success: false, error: 'FORBIDDEN', message: 'Bu islem icin yetkiniz yok.' });
-        }
-        await consumeQuota(db, decoded.uid, role);
+        const actor = await requirePermission(req, PERMISSIONS.REPORTS_REVIEW);
+        await consumeQuota(actor.uid, actor.role);
         const analysis = await callGroq(req.body || {});
-        res.status(200).json({ success: true, role, analysis });
+        res.status(200).json({ success: true, role: actor.role, analysis });
     } catch (error) {
-        res.status(error.message === 'AI_RATE_LIMIT_EXCEEDED' ? 429 : 400).json({
+        console.error('AI Analyze API Error:', error);
+        const statusCode = error.statusCode || (error.message === 'AI_RATE_LIMIT_EXCEEDED' ? 429 : 400);
+        res.status(statusCode).json({
             success: false,
             error: error.message || 'AI_ANALYZE_FAILED'
         });

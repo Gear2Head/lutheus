@@ -475,6 +475,10 @@ async function storageSaveCases(newCases, append = true) {
         const current = await getLocal('caseQuarantine') || [];
         await setLocal('caseQuarantine', [...quarantined, ...current].slice(0, 100));
     }
+    if (newCases.length) {
+        const jobId = activeJobId || `extension_${Date.now()}`;
+        await forwardToVercelIngest(newCases, jobId, `https://dashboard.sapph.xyz/${LUTHEUS_GUILD_ID}/moderation/cases`, !activeJobId);
+    }
     return allCases.length;
 }
 

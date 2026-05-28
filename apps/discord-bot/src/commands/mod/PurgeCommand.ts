@@ -1,8 +1,9 @@
-import { SlashCommandBuilder, ChatInputCommandInteraction, EmbedBuilder, PermissionFlagsBits, TextChannel } from 'discord.js';
-import { db } from '../../botConfig.js';
+// SECTION: BOT_COMMANDS
+// PURPOSE: Message bulk delete command with audit logging to Supabase.
 
-// SECTION: PURGE_COMMAND
-// PURPOSE: Kanaldan toplu mesaj siler (max 100, 14 günden eski mesajlar silinemez).
+import { SlashCommandBuilder, ChatInputCommandInteraction, EmbedBuilder, PermissionFlagsBits, TextChannel } from 'discord.js';
+import { supabase } from '../../botConfig.js';
+
 export const PurgeCommand = {
     data: new SlashCommandBuilder()
         .setName('temizle')
@@ -23,7 +24,6 @@ export const PurgeCommand = {
 
             let toDelete = [...messages.values()];
 
-            // Remove messages older than 14 days (Discord bulk delete limitation)
             const twoWeeksAgo = Date.now() - 14 * 24 * 60 * 60 * 1000;
             toDelete = toDelete.filter(m => m.createdTimestamp > twoWeeksAgo);
 
@@ -40,13 +40,20 @@ export const PurgeCommand = {
 
             const deleted = await channel.bulkDelete(toDelete, true);
 
-            await db.collection('auditLogs').add({
-                action: 'purge', count: deleted.size,
-                actorId: interaction.user.id, actorTag: interaction.user.tag,
-                channelId: channel.id, channelName: channel.name,
-                filterUserId: filterUser?.id || null,
-                guildId: interaction.guild!.id, createdAt: new Date().toISOString(),
-            });
+            await supabase.from('audit_logs').insert([{
+                action: 'purge',
+                target_type: 'channel',
+                actor_discord_id: interaction.user.id,
+                metadata: {
+                    count: deleted.size,
+                    actorTag: interaction.user.tag,
+                    channelId: channel.id,
+                    channelName: channel.name,
+                    filterUserId: filterUser?.id || null,
+                    guildId: interaction.guild!.id
+                },
+                created_at: new Date().toISOString()
+            }]);
 
             const embed = new EmbedBuilder()
                 .setTitle('🧹 Toplu Mesaj Silindi')
@@ -61,7 +68,6 @@ export const PurgeCommand = {
 
             await interaction.editReply({ embeds: [embed] });
 
-            // Delete the reply after 5 seconds
             setTimeout(() => interaction.deleteReply().catch(() => null), 5000);
         } catch (err: any) {
             await interaction.editReply({ content: `❌ **Hata:** ${err.message}` });

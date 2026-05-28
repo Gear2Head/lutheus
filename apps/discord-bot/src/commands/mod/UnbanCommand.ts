@@ -1,8 +1,9 @@
-import { SlashCommandBuilder, ChatInputCommandInteraction, EmbedBuilder, PermissionFlagsBits } from 'discord.js';
-import { db } from '../../botConfig.js';
+// SECTION: BOT_COMMANDS
+// PURPOSE: Unban command with audit logging to Supabase.
 
-// SECTION: UNBAN_COMMAND
-// PURPOSE: Yasaklı kullanıcının yasağını kaldırır.
+import { SlashCommandBuilder, ChatInputCommandInteraction, EmbedBuilder, PermissionFlagsBits } from 'discord.js';
+import { supabase } from '../../botConfig.js';
+
 export const UnbanCommand = {
     data: new SlashCommandBuilder()
         .setName('unban')
@@ -28,11 +29,19 @@ export const UnbanCommand = {
 
             await guild.bans.remove(targetId, `${interaction.user.tag}: ${reason}`);
 
-            await db.collection('auditLogs').add({
-                action: 'unban', targetId, targetTag: ban.user.tag,
-                actorId: interaction.user.id, actorTag: interaction.user.tag,
-                reason, guildId: guild.id, createdAt: new Date().toISOString(),
-            });
+            await supabase.from('audit_logs').insert([{
+                action: 'unban',
+                target_type: 'member',
+                actor_discord_id: interaction.user.id,
+                metadata: {
+                    targetId,
+                    targetTag: ban.user.tag,
+                    actorTag: interaction.user.tag,
+                    reason,
+                    guildId: guild.id
+                },
+                created_at: new Date().toISOString()
+            }]);
 
             const embed = new EmbedBuilder()
                 .setTitle('✅ Yasak Kaldırıldı')

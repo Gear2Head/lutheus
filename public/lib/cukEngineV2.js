@@ -474,7 +474,8 @@ export const CUKEngine = {
                 if (p.duration) {
                     if (!durationMinutes) return false;
                     const diff = Math.abs(p.duration - durationMinutes);
-                    return diff <= 5 || (diff / p.duration) <= 0.05;
+                    const durationMatch = diff <= 5 || (diff / p.duration) <= 0.05;
+                    if (!durationMatch) return false;
                 }
 
                 if (p.type && givenType.includes(p.type)) return true;

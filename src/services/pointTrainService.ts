@@ -1,16 +1,8 @@
-import { collection, query, where, getDocs, Timestamp } from 'firebase/firestore';
-// @ts-expect-error - Firebase config is provided by the extension runtime build.
-import { db } from '../config/firebase'; // Adjust this import based on the actual firebase setup
-import { RULES, RuleCategory } from '../config/punishments';
+// SECTION: STATE_STORE
+// PURPOSE: Computes and aggregates moderator point train statistics from Supabase cases.
 
-export interface ModerationCase {
-  id: string;
-  moderatorId: string;
-  userId: string;
-  ruleId: string;
-  duration: number;
-  timestamp: Timestamp;
-}
+import { FirebaseRepository } from '../lib/firebaseRepository.js';
+import { RULES } from '../config/punishments';
 
 export interface PointTrainResult {
   moderatorId: string;
@@ -19,7 +11,15 @@ export interface PointTrainResult {
   topRule: string;
 }
 
-// Helper to determine PT value of a rule
+type PointTrainCase = {
+  createdAt?: string;
+  created?: { createdAt?: string };
+  authorName?: string;
+  author?: { displayName?: string };
+  reason?: { category?: string };
+  reasonCategory?: string;
+};
+
 function getPTValueForRule(ruleId: string): number {
   const rule = RULES[ruleId];
   if (!rule) return 1; // Default fallback
@@ -28,45 +28,48 @@ function getPTValueForRule(ruleId: string): number {
   if (rule.categoryId === 'DIRECT_RESTRICTION') return 3;
   if (rule.categoryId === 'TICKET') return 2;
   
-  // A, B, C, D categories
   return 1;
 }
 
 export async function fetchPointTrainData(startDate: Date, endDate: Date, moderatorId?: string): Promise<PointTrainResult[]> {
   try {
-    const casesRef = collection(db, 'cases');
-    let q = query(
-      casesRef,
-      where('timestamp', '>=', Timestamp.fromDate(startDate)),
-      where('timestamp', '<=', Timestamp.fromDate(endDate))
-    );
+    const rawCases = await FirebaseRepository.listCases() as PointTrainCase[];
+    if (!rawCases || !Array.isArray(rawCases)) return [];
 
-    if (moderatorId && moderatorId !== 'all') {
-      q = query(q, where('moderatorId', '==', moderatorId));
-    }
+    const cases = rawCases.filter(c => {
+      const createdStr = c.createdAt || c.created?.createdAt;
+      if (!createdStr) return false;
+      const t = new Date(createdStr);
+      if (isNaN(t.getTime())) return false;
 
-    const snapshot = await getDocs(q);
-    const cases: ModerationCase[] = [];
-    
-    snapshot.forEach(doc => {
-      cases.push({ id: doc.id, ...doc.data() } as ModerationCase);
+      const dateOk = t >= startDate && t <= endDate;
+      if (!dateOk) return false;
+
+      const mod = c.authorName || c.author?.displayName || 'Unknown';
+      if (moderatorId && moderatorId !== 'all') {
+        return mod === moderatorId;
+      }
+      return true;
     });
 
     // Aggregate Data
     const aggregator: Record<string, { totalCases: number; totalPT: number; ruleCounts: Record<string, number> }> = {};
 
     cases.forEach(c => {
-      if (!aggregator[c.moderatorId]) {
-        aggregator[c.moderatorId] = { totalCases: 0, totalPT: 0, ruleCounts: {} };
+      const mod = c.authorName || c.author?.displayName || 'Unknown';
+      const ruleId = c.reason?.category || c.reasonCategory || 'unknown';
+
+      if (!aggregator[mod]) {
+        aggregator[mod] = { totalCases: 0, totalPT: 0, ruleCounts: {} };
       }
       
-      aggregator[c.moderatorId].totalCases += 1;
-      aggregator[c.moderatorId].totalPT += getPTValueForRule(c.ruleId);
+      aggregator[mod].totalCases += 1;
+      aggregator[mod].totalPT += getPTValueForRule(ruleId);
       
-      if (!aggregator[c.moderatorId].ruleCounts[c.ruleId]) {
-        aggregator[c.moderatorId].ruleCounts[c.ruleId] = 0;
+      if (!aggregator[mod].ruleCounts[ruleId]) {
+        aggregator[mod].ruleCounts[ruleId] = 0;
       }
-      aggregator[c.moderatorId].ruleCounts[c.ruleId] += 1;
+      aggregator[mod].ruleCounts[ruleId] += 1;
     });
 
     const results: PointTrainResult[] = Object.keys(aggregator).map(modId => {

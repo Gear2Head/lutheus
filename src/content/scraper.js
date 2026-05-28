@@ -55,6 +55,12 @@ window.GearTech.Scraper = {
 
     findCaseRows: function () {
         const selectors = [
+            'a[href*="/moderation/cases/"]',
+            'a[href*="/cases/"]',
+            '[data-case-id]',
+            '[data-row-key]',
+            '[class*="case"]',
+            '[class*="table-row"]',
             'tr[class*="row"]',
             'div[role="row"]',
             'tbody tr',
@@ -64,14 +70,29 @@ window.GearTech.Scraper = {
         const rows = [];
         
         selectors.forEach((selector) => {
-            document.querySelectorAll(selector).forEach((row) => {
-                if (!rows.includes(row)) {
+            document.querySelectorAll(selector).forEach((element) => {
+                const row = element.matches('a[href]')
+                    ? element.closest('tr, [role="row"], li, article, [class*="row"], [class*="item"], [class*="card"]') || element.parentElement || element
+                    : element;
+                const text = row.innerText || row.textContent || '';
+                const hasCaseLink = row.querySelector?.('a[href*="/cases/"], a[href*="/moderation/cases/"]') || row.matches?.('a[href*="/cases/"], a[href*="/moderation/cases/"]');
+                if ((hasCaseLink || this.extractCaseIdFromText(text)) && !rows.includes(row)) {
                     rows.push(row);
                 }
             });
         });
 
         return rows;
+    },
+
+    getRowColumns: function (row) {
+        if (!row) return [];
+        const directCells = Array.from(row.querySelectorAll(':scope > td, :scope > th, :scope > [role="cell"], :scope > [role="gridcell"], :scope > div'));
+        if (directCells.length >= 2) return directCells;
+        const cells = Array.from(row.querySelectorAll('td, th, [role="cell"], [role="gridcell"], [class*="cell"], [class*="column"]'));
+        if (cells.length) return cells;
+        const links = Array.from(row.querySelectorAll('a[href*="/cases/"], a[href*="/moderation/cases/"]'));
+        return links.length ? links : [row];
     },
 
     /**
@@ -135,7 +156,7 @@ window.GearTech.Scraper = {
 
         // Extract ID
         const idCol = columns[0 + colOffset] || columns[0];
-        let caseId = this.extractTextFromColumn(idCol, 'id') || '';
+        let caseId = this.extractCaseIdFromElement(row) || this.extractTextFromColumn(idCol, 'id') || '';
 
         if (!caseId || caseId.length < 4) {
             for (let i = 0; i < Math.min(3, columns.length); i++) {
@@ -240,7 +261,7 @@ window.GearTech.Scraper = {
         const rawText = (row.innerText || '').trim();
         if (!rawText) return null;
 
-        const caseId = this.extractCaseIdFromText(rawText);
+        const caseId = this.extractCaseIdFromElement(row) || this.extractCaseIdFromText(rawText);
         if (!caseId) return null;
 
         const lines = rawText.split('\n').map((line) => line.trim()).filter(Boolean);
@@ -334,6 +355,34 @@ window.GearTech.Scraper = {
         return candidates.find((candidate) => this.isLikelyCaseId(candidate)) || '';
     },
 
+    extractCaseIdFromElement: function (element) {
+        if (!element) return '';
+        const attrId = element.getAttribute?.('data-case-id') || element.getAttribute?.('data-row-key') || '';
+        if (this.isLikelyCaseId(attrId, { tagged: true })) return attrId;
+        const link = element.matches?.('a[href*="/cases/"], a[href*="/moderation/cases/"]')
+            ? element
+            : element.querySelector?.('a[href*="/cases/"], a[href*="/moderation/cases/"]');
+        const href = link?.getAttribute?.('href') || '';
+        const match = href.match(/\/cases\/([^/?#]+)/) || href.match(/\/moderation\/cases\/([^/?#]+)/);
+        const fromHref = match ? decodeURIComponent(match[1]) : '';
+        return this.isLikelyCaseId(fromHref, { tagged: true }) ? fromHref : '';
+    },
+
+    extractTextFromColumn: function (col, type = 'text') {
+        if (!col) return '';
+        if (type === 'id') {
+            const elementId = this.extractCaseIdFromElement(col);
+            if (elementId) return elementId;
+        }
+        const text = (col.innerText || col.textContent || '').trim();
+        if (type === 'id') return this.extractCaseIdFromText(text);
+        if (type === 'name') {
+            return text.split('\n').map((line) => line.trim()).filter(Boolean)
+                .find((line) => !/^\d{17,20}$/.test(line) && !this.isLikelyCaseId(line)) || '';
+        }
+        return text;
+    },
+
     buildCaseUrl: function (caseId) {
         if (!caseId) return window.location.href;
         const match = window.location.href.match(/https:\/\/dashboard\.sapph\.xyz\/(\d+)/);
@@ -390,34 +439,6 @@ window.GearTech.Scraper = {
         return match ? match[0] : '';
     },
 
-    getRowColumns: function (row) {
-        if (!row) return [];
-        const tds = Array.from(row.querySelectorAll('td'));
-        if (tds.length > 0) return tds;
-        return Array.from(row.children);
-    },
-
-    /**
-     * Extract specific text from a column
-     */
-    extractTextFromColumn: function (col, type) {
-        if (!col) return '';
-        const span = col.querySelector(`span[class*="${type}"]`);
-        if (span) return span.innerText.trim();
-
-        if (type === 'name') {
-            const lines = col.innerText.trim().split('\n');
-            return lines[0] || '';
-        }
-
-        if (type === 'id') {
-            const span = col.querySelector('span[class*="id"]');
-            if (span) return span.innerText.trim();
-            const firstLine = col.innerText.trim().split('\n')[0];
-            if (/^[a-zA-Z0-9]{4,15}$/.test(firstLine)) return firstLine;
-        }
-        return '';
-    },
 
     /**
      * Debug page structure
@@ -442,6 +463,71 @@ window.GearTech.Scraper = {
         // Check for Svelte classes
         const svelteElements = document.querySelectorAll('[class*="svelte-"]');
         console.log('Svelte elements:', svelteElements.length);
+    },
+
+    // SECTION: PAGINATION_EXTRACTION
+    // PURPOSE: Extract live pagination totals, current page, size and language (EN/TR) from Sapphire pagination controls.
+    getPaginationInfo: function () {
+        try {
+            const container = document.querySelector('.pagination-controls') || document.querySelector('div[class*="pagination"]');
+            if (!container) {
+                console.warn('GearTech Scraper: Pagination container not found!');
+                return null;
+            }
+
+            const leftLabel = container.querySelector('.pagination-left label') || container.querySelector('label');
+            const labelText = leftLabel ? leftLabel.innerText : '';
+
+            const selectEl = container.querySelector('select');
+            const pageSize = selectEl ? parseInt(selectEl.value) : null;
+
+            const parsed = this.parsePaginationLabel(labelText);
+            const totalCases = parsed.totalCases;
+            const actualPageSize = pageSize || parsed.pageSize;
+
+            const centerDiv = container.querySelector('.pagination-center') || container;
+            const pageText = centerDiv ? centerDiv.innerText || '' : '';
+            const totalPagesMatch = pageText.match(/of\s+(\d+)/i) || pageText.match(/\/\s*(\d+)/) || pageText.match(/(\d+)\s*sayfa/i);
+            const totalPages = totalPagesMatch ? parseInt(totalPagesMatch[1]) : null;
+
+            const inputEl = container.querySelector('input[type="number"]');
+            const currentPage = inputEl ? parseInt(inputEl.value) : 1;
+
+            return {
+                totalCases: totalCases,
+                pageSize: actualPageSize,
+                totalPages: totalPages,
+                currentPage: currentPage,
+                language: parsed.language
+            };
+        } catch (e) {
+            console.error('GearTech Scraper: Error parsing pagination', e);
+            return null;
+        }
+    },
+
+    parsePaginationLabel: function(labelText) {
+        const normalized = labelText.replace(/\s+/g, ' ').trim();
+
+        const english = normalized.match(/showing\s+(\d+)\s+cases\s+of\s+(\d+)/i);
+        if (english) {
+            return {
+                pageSize: Number(english[1]),
+                totalCases: Number(english[2]),
+                language: "en",
+            };
+        }
+
+        const turkish = normalized.match(/(\d+)\s*(ceza|kayıt).*?(\d+)/i);
+        if (turkish) {
+            return {
+                pageSize: Number(turkish[1]),
+                totalCases: Number(turkish[3]),
+                language: "tr",
+            };
+        }
+
+        return { pageSize: null, totalCases: null, language: "unknown" };
     }
 };
 

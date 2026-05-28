@@ -1,8 +1,9 @@
-import { SlashCommandBuilder, ChatInputCommandInteraction, EmbedBuilder, PermissionFlagsBits, GuildMember } from 'discord.js';
-import { db } from '../../botConfig.js';
+// SECTION: BOT_COMMANDS
+// PURPOSE: Kick command with audit logging to Supabase.
 
-// SECTION: KICK_COMMAND
-// PURPOSE: Kullanıcıyı sunucudan atar (ban değil, geri gelebilir).
+import { SlashCommandBuilder, ChatInputCommandInteraction, EmbedBuilder, PermissionFlagsBits, GuildMember } from 'discord.js';
+import { supabase } from '../../botConfig.js';
+
 export const KickCommand = {
     data: new SlashCommandBuilder()
         .setName('kick')
@@ -26,11 +27,19 @@ export const KickCommand = {
 
             await member.kick(`${interaction.user.tag}: ${reason}`);
 
-            await db.collection('auditLogs').add({
-                action: 'kick', targetId: target.id, targetTag: target.tag,
-                actorId: interaction.user.id, actorTag: interaction.user.tag,
-                reason, guildId: guild.id, createdAt: new Date().toISOString(),
-            });
+            await supabase.from('audit_logs').insert([{
+                action: 'kick',
+                target_type: 'member',
+                actor_discord_id: interaction.user.id,
+                metadata: {
+                    targetId: target.id,
+                    targetTag: target.tag,
+                    actorTag: interaction.user.tag,
+                    reason,
+                    guildId: guild.id
+                },
+                created_at: new Date().toISOString()
+            }]);
 
             const embed = new EmbedBuilder()
                 .setTitle('👢 Kullanıcı Atıldı')

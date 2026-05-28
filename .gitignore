@@ -157,3 +157,19 @@ scripts
 C:\Projects\lutheus\.ai context
 content.md
 master_prompt.md
+.test
+tests/
+/tests
+.npm-cache
+\tests
+tests/unit
+tests/integration
+tests/e2e   
+Supabase
+tests
+docs
+.ai
+.agent  
+.ai context 
+
+

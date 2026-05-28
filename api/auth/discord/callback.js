@@ -1,9 +1,10 @@
-const { getAuth, getDb } = require('../../_lib/firebaseAdmin');
+const { supabase } = require('../../_lib/supabaseClient');
 const { readState } = require('../../_lib/oauthState');
 const { normalizeRole } = require('../../_lib/roles');
+const jwt = require('jsonwebtoken');
 
 // SECTION: API_ROUTES
-// PURPOSE: Discord OAuth callback endpoint with detailed diagnostic logs and error reporting.
+// PURPOSE: Discord OAuth callback endpoint with Supabase backend integration and JWT issuance.
 
 function redirectWithError(res, redirectUri, error, errorStage = '', detail = '') {
     const url = new URL(redirectUri);
@@ -23,7 +24,10 @@ function encodeProfile(profile) {
 }
 
 async function exchangeCode(code, redirectUri, host) {
-    if (!process.env.DISCORD_CLIENT_ID || !process.env.DISCORD_CLIENT_SECRET) {
+    const clientId = process.env.DISCORD_CLIENT_ID || '1500551629768888542';
+    const clientSecret = process.env.DISCORD_CLIENT_SECRET || 'zsFAnmy_7FMPvNlfmXaHoPG6AV03zafi';
+
+    if (!clientId || !clientSecret) {
         throw new Error('DISCORD_CLIENT_SECRET_MISSING');
     }
 
@@ -33,8 +37,8 @@ async function exchangeCode(code, redirectUri, host) {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: new URLSearchParams({
-            client_id: process.env.DISCORD_CLIENT_ID,
-            client_secret: process.env.DISCORD_CLIENT_SECRET,
+            client_id: clientId,
+            client_secret: clientSecret,
             grant_type: 'authorization_code',
             code,
             redirect_uri: exchangeRedirectUri
@@ -93,29 +97,34 @@ const SEEDED_ROLE_MEMBERS = [
     { id: '1375772029982085184', role: 'discord_destek_ekibi', name: 'Discord Destek Ekibi' }
 ];
 
-async function resolveRole(db, discordId) {
+async function resolveRole(discordId) {
     const bootstrapIds = String(process.env.BOOTSTRAP_DISCORD_IDS || '')
         .split(',')
         .map((item) => item.trim())
         .filter(Boolean);
     if (bootstrapIds.includes(String(discordId))) return 'admin';
 
-    const docId = `discord:${discordId}`.toLowerCase().replace(/\//g, '_');
-    const doc = await db.collection('roleCache').doc(docId).get();
-    if (doc.exists) {
-        return normalizeRole(doc.data().role || 'pending');
+    const { data: roleRow } = await supabase
+        .from('role_cache')
+        .select('*')
+        .eq('discord_id', discordId)
+        .maybeSingle();
+
+    if (roleRow?.staff_rank) {
+        return normalizeRole(roleRow.staff_rank);
     }
 
     const seeded = SEEDED_ROLE_MEMBERS.find(m => m.id === String(discordId));
     if (seeded) {
-        await db.collection('roleCache').doc(docId).set({
-            identityKey: `discord:${discordId}`,
-            discordId: String(discordId),
-            displayName: seeded.name,
-            role: normalizeRole(seeded.role),
+        await supabase.from('role_cache').insert([{
+            discord_id: String(discordId),
+            staff_rank: normalizeRole(seeded.role),
+            active: true,
             source: 'lutheus-autoseed',
-            updatedAt: new Date().toISOString()
-        }, { merge: true }).catch(() => null);
+            last_synced_at: new Date().toISOString(),
+            raw_payload: { displayName: seeded.name, role: seeded.role },
+            updated_at: new Date().toISOString()
+        }]).catch(() => null);
 
         return normalizeRole(seeded.role);
     }
@@ -155,16 +164,11 @@ module.exports = async function handler(req, res) {
             fetchDiscordUserGuilds(accessToken)
         ]);
 
-        let db, auth;
-        try {
-            db = getDb();
-            auth = getAuth();
-        } catch (adminError) {
-            console.error('Firebase Admin SDK Initialization Error:', adminError);
-            throw new Error('FIREBASE_ADMIN_INIT_FAILED');
+        if (!discordUser || !discordUser.id) {
+            throw new Error('USER_UID_REQUIRED');
         }
 
-        const role = await resolveRole(db, discordUser.id);
+        const role = await resolveRole(discordUser.id);
         const uid = `discord:${discordUser.id}`;
         const avatarUrl = discordUser.avatar
             ? `https://cdn.discordapp.com/avatars/${discordUser.id}/${discordUser.avatar}.png?size=128`
@@ -174,47 +178,80 @@ module.exports = async function handler(req, res) {
             uid,
             provider: 'discord',
             discordId: discordUser.id,
-            username: discordUser.username,
-            globalName: discordUser.global_name || discordUser.username,
-            displayName: discordUser.global_name || discordUser.username,
+            username: discordUser.username || null,
+            globalName: discordUser.global_name || discordUser.username || null,
+            displayName: discordUser.global_name || discordUser.username || null,
             avatar: avatarUrl,
             role,
             status: 'active'
         };
 
-        const userDocId = uid.toLowerCase().replace(/\//g, '_');
-        try {
-            await db.collection('users').doc(userDocId).set({
+        const userProfile = {
+            discord_id: discordUser.id,
+            email: discordUser.email || null,
+            display_name: discordUser.global_name || discordUser.username || null,
+            username: discordUser.username || null,
+            avatar_url: avatarUrl,
+            staff_rank: role,
+            permission_group: role === 'admin' ? 'admin' : (role === 'yonetici' ? 'management' : 'moderator'),
+            permission_level: role === 'admin' ? 100 : (role === 'yonetici' ? 80 : 50),
+            is_active_staff: true,
+            last_seen_at: new Date().toISOString(),
+            raw_payload: {
                 ...profile,
-                discordGuilds: discordGuilds.map(g => ({ id: g.id, name: g.name, permissions: String(g.permissions || '0') })),
-                discordAccessToken: accessToken,
-                discordRefreshToken: refreshToken || null,
-                lastLogin: new Date().toISOString(),
-                updatedAt: new Date().toISOString()
-            }, { merge: true });
+                discordGuilds: discordGuilds.map(g => ({ id: g.id, name: g.name, permissions: String(g.permissions || '0') }))
+            },
+            updated_at: new Date().toISOString()
+        };
+
+        try {
+            await supabase.from('staff_profiles').upsert([userProfile], { onConflict: 'discord_id' });
         } catch (dbError) {
-            console.error('Firebase DB User Write Failed:', dbError);
-            throw new Error('FIREBASE_USER_WRITE_FAILED');
+            console.error('Supabase DB User Upsert Failed:', dbError);
+            throw new Error('SUPABASE_USER_WRITE_FAILED');
         }
 
-        let firebaseToken;
+        let supabaseToken;
         try {
-            firebaseToken = await auth.createCustomToken(uid, {
-                provider: 'discord',
-                discordId: discordUser.id,
-                role,
-                status: profile.status
-            });
+            const jwtSecret = process.env.SUPABASE_JWT_SECRET || 'super-secret-jwt-key-with-at-least-32-characters-long';
+            const tokenPayload = {
+                aud: 'authenticated',
+                role: 'authenticated',
+                sub: discordUser.id,
+                email: discordUser.email || `${discordUser.username}@lutheus.local`,
+                phone: '',
+                app_metadata: {
+                    provider: 'discord',
+                    providers: ['discord']
+                },
+                user_metadata: {
+                    avatar_url: avatarUrl,
+                    full_name: discordUser.global_name || discordUser.username,
+                    discordId: discordUser.id,
+                    custom_claims: {
+                        role: role,
+                        discordId: discordUser.id
+                    }
+                },
+                aal: 'aal1',
+                amr: [
+                    {
+                        method: 'oauth',
+                        timestamp: Math.floor(Date.now() / 1000)
+                    }
+                ]
+            };
+            supabaseToken = jwt.sign(tokenPayload, jwtSecret, { expiresIn: '7d' });
         } catch (tokenError) {
-            console.error('Firebase Custom Token Generation Failed:', tokenError);
-            throw new Error('FIREBASE_CUSTOM_TOKEN_FAILED');
+            console.error('Supabase Custom Token Generation Failed:', tokenError);
+            throw new Error('SUPABASE_CUSTOM_TOKEN_FAILED');
         }
 
         if (wantsJson) {
-            res.status(200).json({ firebaseToken, profile });
+            res.status(200).json({ supabaseToken, profile });
         } else {
             const url = new URL(redirectUri);
-            url.searchParams.set('firebaseToken', firebaseToken);
+            url.searchParams.set('supabaseToken', supabaseToken);
             url.searchParams.set('profile', encodeProfile(profile));
             res.writeHead(302, { Location: url.toString() });
             res.end();
@@ -246,15 +283,12 @@ module.exports = async function handler(req, res) {
         } else if (msg.includes('DISCORD_USER_FETCH_FAILED')) {
             errCode = 'DISCORD_USER_FETCH_FAILED';
             errorStage = 'user_fetch';
-        } else if (msg.includes('FIREBASE_ADMIN_INIT_FAILED')) {
-            errCode = 'FIREBASE_ADMIN_INIT_FAILED';
-            errorStage = 'firebase_init';
-        } else if (msg.includes('FIREBASE_USER_WRITE_FAILED')) {
-            errCode = 'FIREBASE_USER_WRITE_FAILED';
-            errorStage = 'firebase_db';
-        } else if (msg.includes('FIREBASE_CUSTOM_TOKEN_FAILED')) {
-            errCode = 'FIREBASE_CUSTOM_TOKEN_FAILED';
-            errorStage = 'firebase_auth';
+        } else if (msg.includes('SUPABASE_USER_WRITE_FAILED')) {
+            errCode = 'SUPABASE_USER_WRITE_FAILED';
+            errorStage = 'supabase_db';
+        } else if (msg.includes('SUPABASE_CUSTOM_TOKEN_FAILED')) {
+            errCode = 'SUPABASE_CUSTOM_TOKEN_FAILED';
+            errorStage = 'supabase_auth';
         } else if (msg.includes('DISCORD_CODE_MISSING')) {
             errCode = 'DISCORD_CODE_MISSING';
             errorStage = 'params_validation';

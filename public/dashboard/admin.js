@@ -84,9 +84,12 @@ const DOM_RAW = {
     pageSubtitle: document.getElementById('pageSubtitle'),
     dashboardView: document.getElementById('page-dashboard'),
     managementView: document.getElementById('page-management'),
+    yetkililerView: document.getElementById('page-yetkililer'),
+    cezalarView: document.getElementById('page-cezalar'),
     rulesView: document.getElementById('page-cuk'),
     pointtrainView: document.getElementById('page-pointtrain'),
     authView: document.getElementById('page-auth'),
+    settingsView: document.getElementById('page-settings'),
     adminProfileAvatar: document.getElementById('userAvatar'),
     adminProfileName: document.getElementById('userName'),
     adminProfileRole: document.getElementById('userRole'),
@@ -186,6 +189,22 @@ const DOM_RAW = {
     btnSaveBotConfig: document.getElementById('btnSaveBotConfig'),
     btnSyncProfiles: document.getElementById('btnSyncProfiles'),
     btnTestBotLog: document.getElementById('btnTestBotLog'),
+    settingsGuildId: document.getElementById('settingsGuildId'),
+    settingsTheme: document.getElementById('settingsTheme'),
+    settingsScanDelay: document.getElementById('settingsScanDelay'),
+    settingsApiBaseUrl: document.getElementById('settingsApiBaseUrl'),
+    settingsAutoSaveWeekly: document.getElementById('settingsAutoSaveWeekly'),
+    settingsCukEnabled: document.getElementById('settingsCukEnabled'),
+    settingsAutoValidate: document.getElementById('settingsAutoValidate'),
+    settingsPointDatePreset: document.getElementById('settingsPointDatePreset'),
+    settingsPointDiscordGuildId: document.getElementById('settingsPointDiscordGuildId'),
+    settingsPointStartDate: document.getElementById('settingsPointStartDate'),
+    settingsPointEndDate: document.getElementById('settingsPointEndDate'),
+    settingsPointChannels: document.getElementById('settingsPointChannels'),
+    settingsApiStatus: document.getElementById('settingsApiStatus'),
+    btnSettingsOpenAccess: document.getElementById('btnSettingsOpenAccess'),
+    btnSaveSettings: document.getElementById('btnSaveSettings'),
+    btnResetSettings: document.getElementById('btnResetSettings'),
     profileView: document.getElementById('page-profile'),
     profileSearchInput: document.getElementById('profileSearchInput'),
     profileStaffList: document.getElementById('profileStaffList'),
@@ -222,9 +241,9 @@ const DOM = new Proxy(DOM_RAW, {
         if (!el && prop !== 'navBtns' && prop !== 'pages') {
             return {
                 textContent: '', innerHTML: '', value: '', dataset: {}, style: {},
-                classList: { add: () => {}, remove: () => {}, toggle: () => {}, contains: () => false },
-                querySelectorAll: () => [], appendChild: () => {}, addEventListener: () => {},
-                querySelector: () => null, insertBefore: () => {}, removeAttribute: () => {}, setAttribute: () => {}
+                classList: { add: () => { }, remove: () => { }, toggle: () => { }, contains: () => false },
+                querySelectorAll: () => [], appendChild: () => { }, addEventListener: () => { },
+                querySelector: () => null, insertBefore: () => { }, removeAttribute: () => { }, setAttribute: () => { }
             };
         }
         return el;
@@ -244,7 +263,7 @@ const state = {
     authData: { allowlist: [], roleCache: [], policy: {}, audit: [] }
 };
 
-let updateBulkActionsToolbar = () => {};
+let updateBulkActionsToolbar = () => { };
 
 // SECTION: TOAST_SOUNDS
 // PURPOSE: Synthesize ambient UI sounds using Web Audio API.
@@ -402,6 +421,7 @@ function isManagementRole(role) {
 function isGenericProfileName(name) {
     if (!name) return true;
     const lower = String(name).toLowerCase().trim();
+    if (/^\d{17,20}$/.test(lower) || /^user\s+\d+$/i.test(lower) || /^yetkili\s+\d+$/i.test(lower)) return true;
     return lower === 'discord desteg ekibi' || lower === 'discord destek ekibi'
         || lower === 'discord moderator' || lower === 'discord moderatoru'
         || lower === 'discord yoneticisi' || lower === 'genel sorumlu'
@@ -503,7 +523,8 @@ function resolveStaffProfile(source = {}) {
         });
         return result;
     };
-    const profile = mergeProfile(nameEntry, directoryEntry, registryEntry, roleEntry);
+    // Merge directoryEntry first so that nameEntry, registryEntry, and roleEntry take precedence and overwrite generic values
+    const profile = mergeProfile(directoryEntry, nameEntry, registryEntry, roleEntry);
 
     const scrapedName = cleanStaffName(rawName, id);
     let displayName = profile.displayName || profile.name;
@@ -769,9 +790,12 @@ function switchTab(tabId, options = {}) {
     [
         ['dashboard', DOM.dashboardView],
         ['management', DOM.managementView],
+        ['yetkililer', DOM.yetkililerView],
+        ['cezalar', DOM.cezalarView],
         ['cuk', DOM.rulesView],
         ['pointtrain', DOM.pointtrainView],
         ['auth', DOM.authView],
+        ['settings', DOM.settingsView],
         ['profile', DOM.profileView]
     ].forEach(([id, view]) => {
         if (!view) return;
@@ -782,30 +806,117 @@ function switchTab(tabId, options = {}) {
     const subtitles = {
         dashboard: 'admin :: dashboard',
         management: 'admin :: yönetim',
+        yetkililer: 'admin :: yetkili listesi',
+        cezalar: 'admin :: son cezalar',
         cuk: 'admin :: cuk rule editor',
         pointtrain: 'admin :: pointtrain',
         auth: 'admin :: erişim yönetimi',
+        settings: 'admin :: ayarlar',
         profile: 'admin :: yetkili profilleri'
     };
     if (DOM.pageSubtitle) DOM.pageSubtitle.textContent = subtitles[tabId] || subtitles.dashboard;
     if (tabId === 'auth') loadAuthAdminData();
+    if (tabId === 'settings') renderSettingsPage();
     if (tabId === 'profile') renderProfilePage();
+}
+
+function channelsToText(channels = []) {
+    return channels.map((channel) => {
+        if (typeof channel === 'string') return channel;
+        return [channel.id, channel.label, channel.weight].filter((value) => value !== undefined && value !== '').join('|');
+    }).join('\n');
+}
+
+function textToChannels(text) {
+    return String(text || '').split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .map((line) => {
+            const [id, label, weight] = line.split('|').map((part) => part.trim());
+            return {
+                id,
+                label: label || id,
+                weight: Number(weight) || 1
+            };
+        });
+}
+
+// SECTION: SETTINGS_PANEL
+// PURPOSE: Load and persist all dashboard-local configuration from a single admin page.
+async function renderSettingsPage() {
+    const [settings, pointSettings] = await Promise.all([
+        Storage.getSettings().catch(() => ({})),
+        Storage.getPointtrainSettings().catch(() => ({}))
+    ]);
+    DOM.settingsGuildId.value = settings.guildId || APP_CONFIG.guildId || '';
+    DOM.settingsTheme.value = settings.theme || 'lutheus';
+    DOM.settingsScanDelay.value = Number(settings.scanDelay || 1500);
+    DOM.settingsApiBaseUrl.value = APP_CONFIG.vercelAuthBaseUrl || '';
+    DOM.settingsAutoSaveWeekly.checked = Boolean(settings.autoSaveWeekly);
+    DOM.settingsCukEnabled.checked = settings.cukEnabled !== false;
+    DOM.settingsAutoValidate.checked = settings.autoValidate !== false;
+    DOM.settingsPointDatePreset.value = pointSettings.datePreset || 'last7';
+    DOM.settingsPointDiscordGuildId.value = pointSettings.discordGuildId || pointSettings.guildId || settings.guildId || APP_CONFIG.guildId || '';
+    DOM.settingsPointStartDate.value = pointSettings.startDate || '';
+    DOM.settingsPointEndDate.value = pointSettings.endDate || '';
+    DOM.settingsPointChannels.value = channelsToText(pointSettings.channels || []);
+    DOM.settingsApiStatus.textContent = 'Local ayarlar hazir';
+}
+
+async function saveSettingsPage() {
+    const current = await Storage.getSettings().catch(() => ({}));
+    const currentPoint = await Storage.getPointtrainSettings().catch(() => ({}));
+    const scanDelay = Number(DOM.settingsScanDelay.value);
+    await Storage.saveSettings({
+        ...current,
+        guildId: DOM.settingsGuildId.value.trim() || APP_CONFIG.guildId,
+        theme: DOM.settingsTheme.value || 'lutheus',
+        scanDelay: Number.isFinite(scanDelay) && scanDelay >= 250 ? scanDelay : 1500,
+        autoSaveWeekly: Boolean(DOM.settingsAutoSaveWeekly.checked),
+        cukEnabled: Boolean(DOM.settingsCukEnabled.checked),
+        autoValidate: Boolean(DOM.settingsAutoValidate.checked)
+    });
+    await Storage.savePointtrainSettings({
+        ...currentPoint,
+        guildId: DOM.settingsGuildId.value.trim() || currentPoint.guildId || APP_CONFIG.guildId,
+        datePreset: DOM.settingsPointDatePreset.value || 'last7',
+        startDate: DOM.settingsPointStartDate.value || '',
+        endDate: DOM.settingsPointEndDate.value || '',
+        discordGuildId: DOM.settingsPointDiscordGuildId.value.trim() || DOM.settingsGuildId.value.trim() || APP_CONFIG.guildId,
+        channels: textToChannels(DOM.settingsPointChannels.value)
+    });
+    DOM.settingsApiStatus.textContent = 'Kaydedildi';
+    Toast.success('Ayarlar', 'Ayarlar kaydedildi');
+}
+
+async function resetSettingsPage() {
+    await Storage.saveSettings({
+        guildId: APP_CONFIG.guildId || '',
+        autoSaveWeekly: true,
+        scanDelay: 1500,
+        theme: 'lutheus',
+        cukEnabled: true,
+        autoValidate: false
+    });
+    await Storage.savePointtrainSettings({});
+    await renderSettingsPage();
+    Toast.info('Ayarlar', 'Varsayilan ayarlar yuklendi');
 }
 
 function renderAuthTables({ allowlist = [], roleCache = [], policy = {}, audit = [] } = {}) {
     state.authData = { allowlist, roleCache, policy, audit };
-    
+
     // Bind search and filter events once if not already bound
     if (!state.authEventsBound) {
         state.authEventsBound = true;
-        
+
         const triggerFilter = () => filterAndRenderAuthTables();
-        
+
         DOM.allowlistSearch?.addEventListener('input', triggerFilter);
         DOM.allowlistFilter?.addEventListener('change', triggerFilter);
         DOM.roleCacheSearch?.addEventListener('input', triggerFilter);
         DOM.roleCacheFilter?.addEventListener('change', triggerFilter);
-        
+
         DOM.allowlistSelectAll?.addEventListener('change', (e) => {
             DOM.allowlistTableBody.querySelectorAll('.allowlist-row-checkbox').forEach(cb => {
                 cb.checked = e.target.checked;
@@ -816,7 +927,7 @@ function renderAuthTables({ allowlist = [], roleCache = [], policy = {}, audit =
                 cb.checked = e.target.checked;
             });
         });
-        
+
         DOM.allowlistBatchDeleteBtn?.addEventListener('click', async () => {
             if (!requireUiPermission(PERMISSIONS.GOOGLE_ALLOWLIST_UPDATE, 'google_allowlist:batch_delete')) return;
             const checked = Array.from(DOM.allowlistTableBody.querySelectorAll('.allowlist-row-checkbox:checked')).map(cb => cb.dataset.email);
@@ -827,7 +938,7 @@ function renderAuthTables({ allowlist = [], roleCache = [], policy = {}, audit =
             await loadAuthAdminData();
             Toast.success('Toplu Sil', 'Seçilen erisim kayitlari silindi');
         });
-        
+
         DOM.roleCacheBatchDeleteBtn?.addEventListener('click', async () => {
             if (!requireUiPermission(PERMISSIONS.STAFF_ASSIGN_ROLE, 'role_cache:batch_delete')) return;
             const checked = Array.from(DOM.roleCacheTableBody.querySelectorAll('.rolecache-row-checkbox:checked')).map(cb => cb.dataset.key);
@@ -839,7 +950,7 @@ function renderAuthTables({ allowlist = [], roleCache = [], policy = {}, audit =
             Toast.success('Toplu Sil', 'Seçilen rol kayitlari silindi');
         });
     }
-    
+
     // Handle Policy discord bot channel
     if (DOM.botLogChannelId && policy.discordBot) {
         DOM.botLogChannelId.value = policy.discordBot.logChannelId || '';
@@ -867,7 +978,7 @@ function renderAuthTables({ allowlist = [], roleCache = [], policy = {}, audit =
             </div>
         `).join('') + `</div>`
         : '<div class="empty-cell"><strong>Audit log yok</strong><small>Henüz kayıt oluşmadı</small></div>';
-        
+
     filterAndRenderAuthTables();
 }
 
@@ -875,17 +986,17 @@ function filterAndRenderAuthTables() {
     const { allowlist = [], roleCache = [] } = state.authData || {};
     const canEditAllowlist = canCurrentUser(PERMISSIONS.GOOGLE_ALLOWLIST_UPDATE);
     const canAssignRoles = canCurrentUser(PERMISSIONS.STAFF_ASSIGN_ROLE);
-    
+
     // 1. Filter Google Allowlist
     const qAllow = (DOM.allowlistSearch?.value || '').trim().toLowerCase();
     const fAllow = DOM.allowlistFilter?.value || 'all';
-    
+
     const filteredAllow = allowlist.filter(entry => {
         const matchesQuery = !qAllow || (entry.email || entry.id || '').toLowerCase().includes(qAllow);
         const matchesRole = fAllow === 'all' || canonicalRole(entry.role) === canonicalRole(fAllow);
         return matchesQuery && matchesRole;
     });
-    
+
     DOM.allowlistTableBody.innerHTML = filteredAllow.length
         ? filteredAllow.map((entry) => `
             <tr class="data-row auth-card-row">
@@ -905,19 +1016,19 @@ function filterAndRenderAuthTables() {
             </tr>
         `).join('')
         : '<tr><td colspan="5" class="empty-cell">Allowlist kaydi yok</td></tr>';
-        
+
     // 2. Filter Discord Role Cache
     const qRole = (DOM.roleCacheSearch?.value || '').trim().toLowerCase();
     const fRole = DOM.roleCacheFilter?.value || 'all';
-    
+
     const filteredRole = roleCache.filter(entry => {
-        const matchesQuery = !qRole || 
+        const matchesQuery = !qRole ||
             (entry.identityKey || entry.id || '').toLowerCase().includes(qRole) ||
             (entry.displayName || '').toLowerCase().includes(qRole);
         const matchesRole = fRole === 'all' || canonicalRole(entry.role) === canonicalRole(fRole);
         return matchesQuery && matchesRole;
     });
-    
+
     DOM.roleCacheTableBody.innerHTML = filteredRole.length
         ? filteredRole.map((entry) => `
             <tr class="data-row auth-card-row">
@@ -945,7 +1056,7 @@ function filterAndRenderAuthTables() {
     DOM.roleCacheTableBody.querySelectorAll('.btn-del-cache').forEach(btn => {
         btn.addEventListener('click', () => deleteRoleCache(btn.dataset.key));
     });
-    
+
     // Bind quick role updates
     DOM.allowlistTableBody.querySelectorAll('.allowlist-quick-role').forEach(select => {
         select.addEventListener('change', async () => {
@@ -957,7 +1068,7 @@ function filterAndRenderAuthTables() {
             await loadAuthAdminData();
         });
     });
-    
+
     DOM.roleCacheTableBody.querySelectorAll('.rolecache-quick-role').forEach(select => {
         select.addEventListener('change', async () => {
             if (!requireUiPermission(PERMISSIONS.STAFF_ASSIGN_ROLE, 'role_cache:quick_role_update')) return;
@@ -1105,7 +1216,10 @@ function calculateStats() {
             return rcId === profile.id;
         });
 
-        if (!isInRoleCache || !isValidDiscordId(profile.id) || String(profile.id).startsWith('unknown-author') || String(profile.id).includes('unknown')) {
+        // SECTION: UNRESOLVED_PENALTY_CLASSIFICATION
+        // PURPOSE: Separates cases where the moderator cannot be identified or is invalid.
+        // We only require a valid Discord ID to display on the dashboard; if it is missing from roleCache, it can still show up.
+        if (!isValidDiscordId(profile.id) || String(profile.id).startsWith('unknown-author') || String(profile.id).includes('unknown')) {
             unresolved.push({
                 caseId: entry.id || entry.caseId || '',
                 reason,
@@ -1173,10 +1287,11 @@ function updateSidebarBadges({ staffCount = 0, unresolvedCount = 0 } = {}) {
         }
         badge.textContent = String(value);
         badge.title = label;
-        badge.classList.toggle('warning', unresolvedCount > 0 && page === 'management');
+        badge.classList.toggle('warning', unresolvedCount > 0 && page === 'cezalar');
     };
     setBadge('dashboard', staffCount, 'Aktif yetkili');
-    setBadge('management', unresolvedCount, 'Cozumlenmemis ceza kaydi');
+    setBadge('yetkililer', staffCount, 'Aktif yetkili listesi');
+    setBadge('cezalar', unresolvedCount, 'Cozumlenmemis ceza kaydi');
     setBadge('profile', staffCount, 'Profil sayisi');
 }
 
@@ -1215,7 +1330,7 @@ function renderStats() {
                   <span style="color:var(--text-3);font-family:var(--font-mono);">${count}</span>
                 </div>
                 <div style="height:4px;background:var(--border);border-radius:2px;overflow:hidden;">
-                  <div style="width:${Math.round(count/maxC*100)}%;height:100%;background:var(--purple-hi);border-radius:2px;"></div>
+                  <div style="width:${Math.round(count / maxC * 100)}%;height:100%;background:var(--purple-hi);border-radius:2px;"></div>
                 </div>
               </div>
             </div>
@@ -1466,7 +1581,7 @@ function renderManagement() {
     document.querySelectorAll('.btn-open-role').forEach((button) => {
         button.addEventListener('click', () => openRoleModal(button.dataset.id));
     });
-    
+
     // Satır bazlı veya case-link bazlı tıklamada ceza detaylarını (Sapphire URL) aç
     DOM.mgmtCaseList.querySelectorAll('.case-row').forEach((tr) => {
         tr.addEventListener('click', (e) => {
@@ -1500,6 +1615,7 @@ function renderManagement() {
             if (DOM.caseSearch) {
                 DOM.caseSearch.value = filterId;
                 DOM.caseSearch.dispatchEvent(new Event('input'));
+                switchTab('cezalar');
                 Toast.info('Filtrelendi', `Cezalar ${filterId} için listeleniyor`);
             }
         });
@@ -1843,7 +1959,7 @@ function renderRuleCategories() {
     DOM.ruleCategoriesList.innerHTML = categories.map((category, i) => {
         const catData = state.dynamicRules.categories[category];
         const stepCount = Object.keys(catData.repeats || {}).length;
-        const colors = ['c-purple','c-blue','c-emerald','c-amber','c-red','c-cyan','c-pink','c-orange'];
+        const colors = ['c-purple', 'c-blue', 'c-emerald', 'c-amber', 'c-red', 'c-cyan', 'c-pink', 'c-orange'];
         const colorClass = colors[i % colors.length];
         return `
             <div class="cuk-cat-item ${state.selectedRuleCategory === category ? 'active' : ''}" data-category="${escapeHtml(category)}" style="animation-delay: ${i * 40}ms">
@@ -2161,21 +2277,29 @@ async function startSapphireScanFromAdmin() {
 }
 
 async function loadData() {
-    if (state.session?.profile) {
+    if (state.session?.profile && ['auth', 'settings'].includes(state.activeTab)) {
         await FirebaseRepository.ensureRolePolicy(state.session.profile).catch(() => null);
-        await FirebaseRepository.seedGoogleAllowlist(state.session.profile).catch(() => null);
     }
 
-    const [cases, registry, remoteRegistry, staffDirectory, rules, pointtrainRun, userInfo] = await Promise.all([
+    const [cases, registry, remoteRegistry, staffDirectory, rules, pointtrainRun, userInfo, roleCache] = await Promise.all([
         Storage.getCases(),
         Storage.getUserRegistry(),
         FirebaseRepository.listUserRegistry().catch(() => []),
         Storage.getStaffDirectory(),
         Storage.getDynamicRules(),
         Storage.getLatestPointtrainRun(),
-        Storage.getUserInfo()
+        Storage.getUserInfo(),
+        FirebaseRepository.listRoleCache().catch(() => [])
     ]);
 
+    let roleCacheList = roleCache;
+    if (Array.isArray(roleCacheList) && roleCacheList.length === 0) {
+        // Auto-seed roleCache in Supabase if completely empty
+        await FirebaseRepository.seedRoleCacheMembers(state.session?.profile).catch(() => null);
+        roleCacheList = await FirebaseRepository.listRoleCache().catch(() => []);
+    }
+
+    state.roleCache = roleCacheList;
     state.allCases = cases;
     state.userRegistry = {
         ...registry,
@@ -2183,7 +2307,27 @@ async function loadData() {
             .filter((entry) => entry.discordId || entry.id)
             .map((entry) => [entry.discordId || entry.id, entry]))
     };
-    state.staffDirectory = staffDirectory;
+    const remoteStaffDirectory = Object.fromEntries((remoteRegistry || [])
+        .filter((entry) => entry.discordId || entry.discordUserId || entry.id)
+        .map((entry) => {
+            const id = entry.discordId || entry.discordUserId || entry.id;
+            return [id, {
+                ...entry,
+                discordUserId: id,
+                sapphireAuthorId: entry.sapphireAuthorId || id,
+                displayName: entry.displayName || entry.name || entry.username || `Yetkili ${String(id).slice(-4)}`,
+                avatar: entry.avatar || entry.avatarUrl || null,
+                role: normalizeRole(entry.role || 'pending'),
+                source: entry.source || 'supabase'
+            }];
+        }));
+    state.staffDirectory = { ...staffDirectory, ...remoteStaffDirectory };
+    // SECTION: STAFF_DIRECTORY_SYNC
+    // PURPOSE: Hydrate staff directory from loaded Sapphire cases so new moderators aren't lost or marked unresolved
+    await Storage.upsertStaffDirectoryFromCases(cases).catch(() => null);
+    const updatedDirectory = await Storage.getStaffDirectory().catch(() => ({}));
+    state.staffDirectory = { ...updatedDirectory, ...state.staffDirectory };
+    await Storage.saveStaffDirectory(state.staffDirectory).catch(() => null);
     state.dynamicRules = rules;
     CUKEngine.setRules(state.dynamicRules);
     state.latestPointtrainRun = pointtrainRun;
@@ -2198,7 +2342,7 @@ async function loadData() {
         state.selectedRuleCategory = Object.keys(state.dynamicRules.categories || {})[0] || '';
     }
 
-    if (canAccessRoute(state.session?.role, 'auth')) {
+    if (state.activeTab === 'auth' && canAccessRoute(state.session?.role, 'auth')) {
         await loadAuthAdminData().catch(() => null);
     }
 
@@ -2214,6 +2358,7 @@ async function loadData() {
             loadProfileDetails(state.selectedProfileId);
         }
     }
+    if (state.activeTab === 'settings') renderSettingsPage();
     bindAvatarFallbacks();
 }
 
@@ -2501,6 +2646,9 @@ function bindEvents() {
         if (requireUiPermission(PERMISSIONS.PENALTY_ACCURACY_UPDATE, 'cuk_rules:add_step')) addRepeatRow();
     });
     DOM.btnBackToDashboard?.addEventListener('click', () => switchTab('dashboard'));
+    DOM.btnSettingsOpenAccess?.addEventListener('click', () => switchTab('auth'));
+    DOM.btnSaveSettings?.addEventListener('click', saveSettingsPage);
+    DOM.btnResetSettings?.addEventListener('click', resetSettingsPage);
     DOM.btnStartSapphireScan?.addEventListener('click', startSapphireScanFromAdmin);
     DOM.pointtrainRefreshBtn?.addEventListener('click', loadData);
     DOM.pointtrainCopyBtn?.addEventListener('click', async () => {
@@ -2597,6 +2745,23 @@ function renderProfilePage() {
             }
         });
 
+        Object.values(state.staffDirectory || {}).forEach(entry => {
+            const profile = resolveStaffProfile(entry);
+            const id = profile.id;
+            if (isValidDiscordId(id) && !merged.has(id) && isDisplayableStaffEntry(profile)) {
+                merged.set(id, {
+                    id,
+                    name: profile.name,
+                    role: profile.role,
+                    avatar: profile.avatar,
+                    totalCases: 0,
+                    validCases: 0,
+                    invalidCases: 0,
+                    pendingCases: 0
+                });
+            }
+        });
+
         // Add everyone from roleCache that might not have processed stats in this period
         (state.roleCache || []).forEach(entry => {
             const cacheId = entry.discordId || String(entry.identityKey || entry.id || '').replace(/^discord:/, '');
@@ -2620,12 +2785,12 @@ function renderProfilePage() {
             .filter(entry => {
                 if (!query) return true;
                 return entry.name.toLowerCase().includes(query) ||
-                       entry.id.includes(query) ||
-                       getRoleLabel(entry.role).toLowerCase().includes(query);
+                    entry.id.includes(query) ||
+                    getRoleLabel(entry.role).toLowerCase().includes(query);
             })
             .sort((left, right) => getRoleLevel(right.role) - getRoleLevel(left.role) || left.name.localeCompare(right.name, 'tr'));
 
-        const emptyMessage = (!state.allCases.length && !(state.roleCache || []).length)
+        const emptyMessage = (!state.allCases.length && !(state.roleCache || []).length && !Object.keys(state.staffDirectory || {}).length)
             ? 'Veri henuz yuklenmedi veya ceza kaydi bulunamadi'
             : 'Yetkili bulunamadi';
 
@@ -2698,7 +2863,7 @@ async function loadProfileDetails(userId) {
         DOM.profHeaderCard.style.setProperty('--role-color', roleColor);
         DOM.profAvatarGlow.style.setProperty('--role-color', roleColor);
         DOM.profAvatar.src = isBarisYilmaz ? "https://cdn.discordapp.com/avatars/202889333563195402/a_25e2d194ffecf3d7e250cd495798ef60.webp?size=80" : profile.avatar;
-        
+
         if (isBarisYilmaz) {
             DOM.profHeaderCard.classList.add('god-mode');
             DOM.profAvatarGlow.classList.add('god-mode');
@@ -2873,8 +3038,8 @@ async function loadProfileDetails(userId) {
 
         // Set form values
         DOM.profFormJoinDate.value = joinDate || '';
-        DOM.profFormNotes.value = isBarisYilmaz 
-            ? 'O sunucunun TANRISIDIR! Sonsuz güç, mutlak adalet ve kusursuz bilgiye sahiptir. Her şeyi görür, her şeyi bilir. Kararları sorgulanamaz.' 
+        DOM.profFormNotes.value = isBarisYilmaz
+            ? 'O sunucunun TANRISIDIR! Sonsuz güç, mutlak adalet ve kusursuz bilgiye sahiptir. Her şeyi görür, her şeyi bilir. Kararları sorgulanamaz.'
             : (cachedRoleEntry.performanceNotes || '');
         DOM.profFormWarns.value = isBarisYilmaz ? '0' : String(currentWarns);
         DOM.profFormIkaz.value = isBarisYilmaz ? '0' : String(currentIkaz);

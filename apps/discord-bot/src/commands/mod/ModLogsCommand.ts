@@ -1,8 +1,9 @@
-import { SlashCommandBuilder, ChatInputCommandInteraction, EmbedBuilder, PermissionFlagsBits, AuditLogEvent } from 'discord.js';
-import { db } from '../../botConfig.js';
+// SECTION: BOT_COMMANDS
+// PURPOSE: Fetches recent moderation audit logs from Supabase.
 
-// SECTION: MOD_LOGS_COMMAND
-// PURPOSE: Son moderasyon eylemlerini Firestore'dan çekip Discord'a listeler.
+import { SlashCommandBuilder, ChatInputCommandInteraction, EmbedBuilder, PermissionFlagsBits } from 'discord.js';
+import { supabase } from '../../botConfig.js';
+
 export const ModLogsCommand = {
     data: new SlashCommandBuilder()
         .setName('mod-log')
@@ -25,22 +26,20 @@ export const ModLogsCommand = {
         await interaction.deferReply({ ephemeral: true });
 
         try {
-            let query = db.collection('auditLogs')
-                .where('guildId', '==', interaction.guild!.id)
-                .orderBy('createdAt', 'desc')
+            let queryBuilder = supabase
+                .from('audit_logs')
+                .select('*')
+                .order('created_at', { ascending: false })
                 .limit(limit);
 
             if (actionFilter) {
-                query = db.collection('auditLogs')
-                    .where('guildId', '==', interaction.guild!.id)
-                    .where('action', '==', actionFilter)
-                    .orderBy('createdAt', 'desc')
-                    .limit(limit) as any;
+                queryBuilder = queryBuilder.eq('action', actionFilter);
             }
 
-            const snap = await query.get();
+            const { data: rows, error } = await queryBuilder;
 
-            if (snap.empty) {
+            if (error) throw error;
+            if (!rows || rows.length === 0) {
                 await interaction.editReply({ content: '📋 Kayıt bulunamadı.' });
                 return;
             }
@@ -50,19 +49,19 @@ export const ModLogsCommand = {
                 discord_profiles_synced: '🔄', emergency_lockdown: '🚨'
             };
 
-            const lines = snap.docs.map(doc => {
-                const d = doc.data();
+            const lines = rows.map((d: any) => {
+                const meta = d.metadata || {};
                 const emoji = actionEmoji[d.action] || '📌';
-                const date = d.createdAt ? `<t:${Math.floor(new Date(d.createdAt).getTime() / 1000)}:R>` : 'Bilinmiyor';
-                const target = d.targetTag ? `**${d.targetTag}**` : d.channelName ? `#${d.channelName}` : '–';
-                return `${emoji} \`${d.action}\` ${target} — *${d.actorTag || 'sistem'}* ${date}`;
+                const date = d.created_at ? `<t:${Math.floor(new Date(d.created_at).getTime() / 1000)}:R>` : 'Bilinmiyor';
+                const target = meta.targetTag ? `**${meta.targetTag}**` : meta.channelName ? `#${meta.channelName}` : '–';
+                return `${emoji} \`${d.action}\` ${target} — *${meta.actorTag || d.actor_email || 'sistem'}* ${date}`;
             }).join('\n');
 
             const embed = new EmbedBuilder()
                 .setTitle(`📋 Mod Kayıtları${actionFilter ? ` (${actionFilter})` : ''}`)
                 .setColor(0x7c5af5)
                 .setDescription(lines)
-                .setFooter({ text: `Son ${snap.size} kayıt • Lutheus Mod Sistemi` })
+                .setFooter({ text: `Son ${rows.length} kayıt • Lutheus Mod Sistemi` })
                 .setTimestamp();
 
             await interaction.editReply({ embeds: [embed] });

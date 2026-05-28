@@ -1,8 +1,9 @@
-import { SlashCommandBuilder, ChatInputCommandInteraction, EmbedBuilder, PermissionFlagsBits } from 'discord.js';
-import { db } from '../../botConfig.js';
+// SECTION: BOT_COMMANDS
+// PURPOSE: Warn command with tracking in Supabase app_settings and audit logging.
 
-// SECTION: WARN_COMMAND
-// PURPOSE: Kullanıcıya uyarı verir, Firestore'a kaydeder ve uyarı sayısını takip eder.
+import { SlashCommandBuilder, ChatInputCommandInteraction, EmbedBuilder, PermissionFlagsBits } from 'discord.js';
+import { supabase } from '../../botConfig.js';
+
 export const WarnCommand = {
     data: new SlashCommandBuilder()
         .setName('uyar')
@@ -19,27 +20,46 @@ export const WarnCommand = {
 
         try {
             const guild = interaction.guild!;
+            const key = `warns_${guild.id}_${target.id}`;
 
             // Count previous warnings
-            const warnsSnap = await db.collection('warns')
-                .where('targetId', '==', target.id)
-                .where('guildId', '==', guild.id)
-                .get();
-            const warnCount = warnsSnap.size + 1;
+            const { data: row } = await supabase.from('app_settings').select('*').eq('key', key).maybeSingle();
+            const warnsList = row ? (row.value || []) : [];
+            const warnCount = warnsList.length + 1;
 
-            await db.collection('warns').add({
-                targetId: target.id, targetTag: target.tag,
-                actorId: interaction.user.id, actorTag: interaction.user.tag,
-                reason, guildId: guild.id,
+            const newWarn = {
+                targetId: target.id,
+                targetTag: target.tag,
+                actorId: interaction.user.id,
+                actorTag: interaction.user.tag,
+                reason,
+                guildId: guild.id,
                 warnNumber: warnCount,
                 createdAt: new Date().toISOString(),
-            });
+            };
 
-            await db.collection('auditLogs').add({
-                action: 'warn', targetId: target.id, targetTag: target.tag,
-                actorId: interaction.user.id, actorTag: interaction.user.tag,
-                reason, warnCount, guildId: guild.id, createdAt: new Date().toISOString(),
-            });
+            warnsList.push(newWarn);
+
+            await supabase.from('app_settings').upsert([{
+                key,
+                value: warnsList,
+                updated_at: new Date().toISOString()
+            }], { onConflict: 'key' });
+
+            await supabase.from('audit_logs').insert([{
+                action: 'warn',
+                target_type: 'member',
+                actor_discord_id: interaction.user.id,
+                metadata: {
+                    targetId: target.id,
+                    targetTag: target.tag,
+                    actorTag: interaction.user.tag,
+                    reason,
+                    warnCount,
+                    guildId: guild.id
+                },
+                created_at: new Date().toISOString()
+            }]);
 
             // Try to DM the user
             const dmEmbed = new EmbedBuilder()

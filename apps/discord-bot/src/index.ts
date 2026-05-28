@@ -8,7 +8,7 @@ import {
     Partials
 } from 'discord.js';
 import { createServer } from 'node:http';
-import { db, botToken, logChannelId, guildId } from './botConfig.js';
+import { supabase, botToken, logChannelId, guildId } from './botConfig.js';
 import { EmergencyLockdownCommand } from './commands/critical/EmergencyLockdown.js';
 import { QueryCaseCommand } from './commands/queryCase.js';
 import { QueryStaffCommand } from './commands/queryStaff.js';
@@ -146,13 +146,12 @@ async function registerSlashCommands() {
 async function syncModeratorProfiles(actor = 'system') {
     console.log(`Discord Bot: Starting profile synchronization triggered by ${actor}...`);
     try {
-        const snapshot = await db.collection('roleCache').get();
-        if (snapshot.empty) return;
+        const { data: roleCacheRows, error } = await supabase.from('role_cache').select('*');
+        if (error || !roleCacheRows || roleCacheRows.length === 0) return;
 
         let syncCount = 0;
-        for (const doc of snapshot.docs) {
-            const data = doc.data();
-            const discordId = data.discordId || String(data.identityKey || doc.id).replace(/^discord:/, '');
+        for (const row of roleCacheRows) {
+            const discordId = row.discord_id;
             if (!discordId || !/^\d{17,20}$/.test(discordId)) continue;
 
             try {
@@ -160,35 +159,37 @@ async function syncModeratorProfiles(actor = 'system') {
                 const avatarUrl = user.displayAvatarURL({ extension: 'png', size: 256 }) || null;
                 const displayName = user.globalName || user.username;
 
-                await doc.ref.update({
-                    displayName,
-                    avatar: avatarUrl,
-                    avatarUpdatedAt: new Date().toISOString(),
-                    updatedAt: new Date().toISOString(),
-                    updatedBy: 'discord-bot-sync'
-                });
+                await supabase.from('role_cache').update({
+                    raw_payload: {
+                        ...(row.raw_payload || {}),
+                        displayName,
+                        avatar: avatarUrl,
+                        avatarUpdatedAt: new Date().toISOString()
+                    },
+                    updated_at: new Date().toISOString()
+                }).eq('discord_id', discordId);
 
-                const regRef = db.collection('userRegistry').doc(discordId);
-                await regRef.set({
-                    id: discordId,
-                    discordId,
-                    identityKey: `discord:${discordId}`,
-                    name: displayName,
-                    displayName,
-                    avatar: avatarUrl,
-                    source: 'discord-bot-sync',
-                    lastSeen: Date.now(),
-                    updatedAt: new Date().toISOString()
-                }, { merge: true });
+                const { data: existingProfile } = await supabase.from('staff_profiles').select('*').eq('discord_id', discordId).maybeSingle();
 
-                await db.collection('users').doc(`discord:${discordId}`).set({
-                    uid: `discord:${discordId}`,
-                    provider: 'discord',
-                    discordId,
-                    displayName,
-                    avatar: avatarUrl,
-                    updatedAt: new Date().toISOString()
-                }, { merge: true });
+                const profileUpdate = {
+                    discord_id: discordId,
+                    display_name: displayName,
+                    username: user.username,
+                    avatar_url: avatarUrl,
+                    staff_rank: row.staff_rank,
+                    permission_group: row.staff_rank === 'admin' ? 'admin' : (row.staff_rank === 'yonetici' ? 'management' : 'moderator'),
+                    permission_level: row.staff_rank === 'admin' ? 100 : (row.staff_rank === 'yonetici' ? 80 : 50),
+                    is_active_staff: true,
+                    last_seen_at: new Date().toISOString(),
+                    raw_payload: {
+                        ...(existingProfile?.raw_payload || {}),
+                        displayName,
+                        avatar: avatarUrl
+                    },
+                    updated_at: new Date().toISOString()
+                };
+
+                await supabase.from('staff_profiles').upsert([profileUpdate], { onConflict: 'discord_id' });
                 syncCount++;
             } catch (userErr: any) {
                 console.warn(`Discord Bot: Failed to fetch user ${discordId}:`, userErr.message);
@@ -197,11 +198,12 @@ async function syncModeratorProfiles(actor = 'system') {
 
         console.log(`Discord Bot: Successfully synchronized ${syncCount} profiles!`);
 
-        await db.collection('auditLogs').add({
+        await supabase.from('audit_logs').insert([{
             action: 'discord_profiles_synced',
-            details: { syncCount, actor },
-            createdAt: new Date().toISOString()
-        });
+            target_type: 'bot',
+            metadata: { syncCount, actor },
+            created_at: new Date().toISOString()
+        }]);
 
         const targetChannelId = logChannelId;
         if (targetChannelId) {
@@ -224,72 +226,109 @@ async function syncModeratorProfiles(actor = 'system') {
     }
 }
 
-function startFirestoreListeners() {
-    console.log('Discord Bot: Initializing Firestore listeners...');
+let lastProcessedTime = new Date().toISOString();
+let lastTriggerTimestamp = 0;
 
-    let initialized = false;
-    db.collection('cases')
-        .orderBy('scrapedAt', 'desc')
-        .limit(10)
-        .onSnapshot(async (snapshot) => {
-            if (!initialized) {
-                initialized = true;
+function startSupabasePolling() {
+    console.log('Discord Bot: Initializing Supabase polling...');
+
+    // 1. Poll new cases every 10 seconds
+    setInterval(async () => {
+        try {
+            const { data: rows, error } = await supabase
+                .from('sapphire_cases')
+                .select('*')
+                .gt('scraped_at', lastProcessedTime)
+                .order('scraped_at', { ascending: true });
+
+            if (error) {
+                console.error('Discord Bot: Poll cases error:', error.message);
                 return;
             }
 
-            for (const change of snapshot.docChanges()) {
-                if (change.type === 'added') {
-                    const data = change.doc.data();
-                    if (!data) continue;
+            if (rows && rows.length > 0) {
+                for (const row of rows) {
+                    const data = {
+                        caseId: row.case_id,
+                        sourceUrl: row.case_url,
+                        user: row.punished_user_display_name,
+                        userId: row.punished_user_discord_id,
+                        authorName: row.author_display_name,
+                        authorId: row.author_discord_id,
+                        type: row.type,
+                        duration: row.duration_raw || (row.is_permanent ? 'Süresiz' : ''),
+                        reason: row.reason_raw,
+                        scrapedAt: row.scraped_at,
+                        isTest: row.raw_payload?.isTest || row.legacy_payload?.isTest || false,
+                        reviewStatus: row.cuk_verdict || 'pending'
+                    };
 
                     if (data.isTest) {
                         console.log('Discord Bot: Received a test log trigger!');
                         await sendTestCaseLog(data);
-                        await change.doc.ref.delete().catch(() => null);
+                        await supabase.from('sapphire_cases').delete().eq('case_id', row.case_id);
                         continue;
                     }
 
                     await sendCaseEmbedLog(data);
                 }
+                const times = rows.map(r => new Date(r.scraped_at).getTime());
+                const maxTime = new Date(Math.max(...times));
+                lastProcessedTime = maxTime.toISOString();
             }
-        }, (error) => {
-            console.error('Discord Bot: Firestore cases listener error:', error);
-        });
+        } catch (err: any) {
+            console.error('Discord Bot: Poll cases loop failure:', err.message);
+        }
+    }, 10000);
 
-    db.collection('rolePolicy').doc('settings')
-        .onSnapshot(async (docSnap) => {
-            if (docSnap.exists) {
-                const policy = docSnap.data();
-                if (policy && policy.syncTrigger) {
-                    const ts = policy.syncTrigger.timestamp || 0;
-                    if (Date.now() - ts < 15000) {
-                        await syncModeratorProfiles(policy.syncTrigger.actor || 'panel');
-                    }
+    // 2. Poll app settings sync triggers every 15 seconds
+    setInterval(async () => {
+        try {
+            const { data: row, error } = await supabase
+                .from('app_settings')
+                .select('*')
+                .eq('key', 'settings')
+                .maybeSingle();
+
+            if (error) return;
+
+            const policy = row?.value || {};
+            if (policy.syncTrigger) {
+                const ts = policy.syncTrigger.timestamp || 0;
+                if (ts > lastTriggerTimestamp && Date.now() - ts < 60000) {
+                    lastTriggerTimestamp = ts;
+                    await syncModeratorProfiles(policy.syncTrigger.actor || 'panel');
                 }
             }
-        }, (error) => {
-            console.error('Discord Bot: Firestore settings listener error:', error);
-        });
+        } catch (err: any) {
+            console.error('Discord Bot: Poll settings sync trigger failed:', err.message);
+        }
+    }, 15000);
 
-    db.collection('guildModuleConfigs')
-        .onSnapshot((snapshot) => {
-            snapshot.forEach((doc) => {
-                guildConfigsCache[doc.id] = doc.data();
-            });
-            console.log(`Discord Bot: Loaded configs cache for ${snapshot.size} guilds.`);
-        }, (error) => {
-            console.error('Discord Bot: Firestore guildModuleConfigs listener error:', error);
-        });
+    // 3. Poll guild module and settings configs every 30 seconds
+    const pollConfigs = async () => {
+        try {
+            const { data: rows, error } = await supabase
+                .from('app_settings')
+                .select('*')
+                .like('key', 'bot_guild_config_%');
 
-    db.collection('guildConfigs')
-        .onSnapshot((snapshot) => {
-            snapshot.forEach((doc) => {
-                if (!guildConfigsCache[doc.id]) guildConfigsCache[doc.id] = {};
-                guildConfigsCache[doc.id].settings = doc.data();
-            });
-        }, (error) => {
-            console.error('Discord Bot: Firestore guildConfigs listener error:', error);
-        });
+            if (error) return;
+
+            if (rows) {
+                rows.forEach(row => {
+                    const guildId = row.key.replace('bot_guild_config_', '');
+                    const val = row.value || {};
+                    guildConfigsCache[guildId] = val.configs || val;
+                });
+                console.log(`Discord Bot: Loaded configs cache for ${rows.length} guilds.`);
+            }
+        } catch (err: any) {
+            console.error('Discord Bot: Poll configs failed:', err.message);
+        }
+    };
+    pollConfigs();
+    setInterval(pollConfigs, 30000);
 }
 
 async function sendCaseEmbedLog(data: any) {
@@ -361,7 +400,7 @@ client.once('clientReady', async () => {
     client.user?.setActivity('Lutheus SRE Audit', { type: ActivityType.Watching });
 
     await registerSlashCommands();
-    startFirestoreListeners();
+    startSupabasePolling();
     setupAuditLogListeners();
 });
 
@@ -634,19 +673,12 @@ async function handleUserXPGain(message: any) {
     setTimeout(() => xpCooldowns.delete(key), (levels.cooldownSeconds || 60) * 1000);
 
     try {
-        const docRef = db.collection('levelProfiles').doc(`${message.guildId}_${message.author.id}`);
-        const doc = await docRef.get().catch(() => null);
+        const key = `level_profile_${message.guildId}_${message.author.id}`;
+        const { data: row } = await supabase.from('app_settings').select('*').eq('key', key).maybeSingle();
+        const data = row?.value || {};
 
-        let xp = xpGained;
-        let level = 1;
-
-        if (doc?.exists) {
-            const data = doc.data();
-            if (data) {
-                xp = (data.xp || 0) + xpGained;
-                level = data.level || 1;
-            }
-        }
+        let xp = xpGained + Number(data.xp || 0);
+        let level = Number(data.level || 1);
 
         const nextLevelXp = level * 100;
         if (xp >= nextLevelXp) {
@@ -662,13 +694,17 @@ async function handleUserXPGain(message: any) {
             }
         }
 
-        await docRef.set({
-            guildId: message.guildId,
-            userId: message.author.id,
-            xp,
-            level,
-            lastMessageAt: Date.now()
-        }, { merge: true }).catch(() => null);
+        await supabase.from('app_settings').upsert([{
+            key,
+            value: {
+                guildId: message.guildId,
+                userId: message.author.id,
+                xp,
+                level,
+                lastMessageAt: Date.now()
+            },
+            updated_at: new Date().toISOString()
+        }], { onConflict: 'key' });
     } catch (e: any) {
         console.warn('Discord Bot: Levels profile update failed:', e.message);
     }

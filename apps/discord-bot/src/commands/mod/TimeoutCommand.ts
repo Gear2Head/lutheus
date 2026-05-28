@@ -1,8 +1,9 @@
-import { SlashCommandBuilder, ChatInputCommandInteraction, EmbedBuilder, PermissionFlagsBits, GuildMember } from 'discord.js';
-import { db } from '../../botConfig.js';
+// SECTION: BOT_COMMANDS
+// PURPOSE: Timeout command with audit logging to Supabase.
 
-// SECTION: TIMEOUT_COMMAND
-// PURPOSE: Kullanıcıyı belirli süre susturur (Discord native timeout/mute).
+import { SlashCommandBuilder, ChatInputCommandInteraction, EmbedBuilder, PermissionFlagsBits, GuildMember } from 'discord.js';
+import { supabase } from '../../botConfig.js';
+
 export const TimeoutCommand = {
     data: new SlashCommandBuilder()
         .setName('timeout')
@@ -32,12 +33,21 @@ export const TimeoutCommand = {
 
             const label = minutes >= 1440 ? `${Math.floor(minutes / 1440)} gün` : minutes >= 60 ? `${Math.floor(minutes / 60)} saat` : `${minutes} dakika`;
 
-            await db.collection('auditLogs').add({
-                action: 'timeout', targetId: target.id, targetTag: target.tag,
-                actorId: interaction.user.id, actorTag: interaction.user.tag,
-                reason, durationMinutes: minutes, until: until.toISOString(),
-                guildId: guild.id, createdAt: new Date().toISOString(),
-            });
+            await supabase.from('audit_logs').insert([{
+                action: 'timeout',
+                target_type: 'member',
+                actor_discord_id: interaction.user.id,
+                metadata: {
+                    targetId: target.id,
+                    targetTag: target.tag,
+                    actorTag: interaction.user.tag,
+                    reason,
+                    durationMinutes: minutes,
+                    until: until.toISOString(),
+                    guildId: guild.id
+                },
+                created_at: new Date().toISOString()
+            }]);
 
             const embed = new EmbedBuilder()
                 .setTitle('⏱️ Kullanıcı Susturuldu (Timeout)')

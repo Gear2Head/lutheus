@@ -102,16 +102,16 @@ async function init() {
     if (reason === 'forbidden') setStatus('Bu sayfa için yetkiniz yok.', 'error');
     if (reason === 'blocked') setStatus('Hesabınız engellenmiş durumda.', 'error');
 
-    const firebaseToken = params.get('firebaseToken');
+    const supabaseToken = params.get('supabaseToken');
     const profileEncoded = params.get('profile');
     const googleAccessToken = params.get('access_token'); // Google redirects with hash access_token
 
-    if (firebaseToken && profileEncoded) {
+    if (supabaseToken && profileEncoded) {
         setStatus('Giriş tamamlanıyor...');
         setBusy(true);
         try {
             const profile = JSON.parse(decodeURIComponent(atob(profileEncoded)));
-            const session = await AuthService.signInWithCustomToken(firebaseToken, profile);
+            const session = await AuthService.signInWithCustomToken(supabaseToken, profile);
             setStatus(`Giriş başarılı: ${escapeHtml(session.profile?.displayName || session.uid)}`, 'success');
             postLogin(session);
             return;

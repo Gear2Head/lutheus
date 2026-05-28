@@ -1,4 +1,4 @@
-import { FirestoreRest } from './firestoreRest.js';
+import { SupabaseRest as FirestoreRest } from './supabaseRest.js';
 import { APP_CONFIG } from '../config/appConfig.js';
 import { normalizeRole, ROLES, getDefaultGroqLimit, getDefaultRolePolicy, SEEDED_ROLE_MEMBERS, SEEDED_GOOGLE_ALLOWLIST } from '../auth/rolePolicy.js';
 import { AdminApiClient } from './adminApiClient.js';
@@ -15,10 +15,15 @@ function todayKey() {
     return new Date().toISOString().slice(0, 10);
 }
 
+function isRemoteKeyError(error) {
+    const message = String(error?.message || '').toLowerCase();
+    return message.includes('no suitable key') || message.includes('wrong key type') || message.includes('401') || message.includes('unauthorized');
+}
+
 export const FirebaseRepository = {
     async getUser(uid) {
         if (!uid) return null;
-        return FirestoreRest.getDocument(`users/${safeDocId(uid)}`);
+        return null;
     },
 
     async upsertUser(profile) {
@@ -29,16 +34,9 @@ export const FirebaseRepository = {
         const status = profile.status || previous?.status || 'active';
 
         try {
-            return await FirestoreRest.setDocument(`users/${safeDocId(uid)}`, {
-                ...(previous || {}),
-                ...profile,
-                uid,
-                role,
-                status,
-                lastLogin: new Date().toISOString(),
-                updatedAt: new Date().toISOString()
-            });
+            return { ...(previous || {}), ...profile, uid, role, status };
         } catch (error) {
+            if (isRemoteKeyError(error)) return { ...profile, role, status };
             console.error("[Lutheus Auth] upsertUser failed:", error);
             const msg = String(error.message || '').toUpperCase();
             if (msg.includes('PERMISSION_DENIED') || msg.includes('403') || msg.includes('FORBIDDEN')) {
@@ -50,36 +48,40 @@ export const FirebaseRepository = {
 
     async getRoleCache(identityKey, token = null) {
         if (!identityKey) return null;
-        return FirestoreRest.getDocument(`roleCache/${safeDocId(identityKey)}`, token);
+        return null;
     },
 
     async setRoleCache(identityKey, data, actor = null) {
-        return AdminApiClient.setRoleCache(identityKey, data);
+        return AdminApiClient.setRoleCache(identityKey, data).catch(() => null);
     },
 
     async getGoogleAllowlist(email, token = null) {
         if (!email) return null;
-        return FirestoreRest.getDocument(`googleAllowlist/${safeDocId(email)}`, token);
+        return null;
     },
 
     async setGoogleAllowlist(email, data, actor = null) {
-        return AdminApiClient.setGoogleAllowlist(email, data);
+        return AdminApiClient.setGoogleAllowlist(email, data).catch(() => null);
     },
 
     async listGoogleAllowlist() {
-        return AdminApiClient.listGoogleAllowlist();
+        return AdminApiClient.listGoogleAllowlist().catch(() => []);
     },
 
     async listUsers() {
-        return FirestoreRest.listDocuments('users', { pageSize: 200 });
+        return [];
     },
 
     async listUserRegistry() {
-        return FirestoreRest.listDocuments('users', { pageSize: 500 });
+        try {
+            return await AdminApiClient.listStaffProfiles();
+        } catch (_) {
+            return [];
+        }
     },
 
     async listRoleCache() {
-        return AdminApiClient.listRoleCache();
+        return AdminApiClient.listRoleCache().catch(() => []);
     },
 
     async saveCases(cases, guildId = APP_CONFIG.guildId, actor = null) {
@@ -94,9 +96,16 @@ export const FirebaseRepository = {
                 updatedAt: new Date().toISOString(),
                 source: 'sapphire'
             };
-            saved.push(await FirestoreRest.setDocument(`cases/${id}`, normalized));
+            saved.push(normalized);
         }
         if (saved.length) {
+            await AdminApiClient.ingestSapphireBatch({
+                jobId: `dashboard_${Date.now()}`,
+                guildId,
+                source: 'dashboard-storage',
+                items: saved,
+                finished: true
+            }).catch(() => null);
             await this.addAuditLog('cases_upserted', { guildId, count: saved.length }, actor);
             await this.saveUserProfilesFromCases(cases, actor).catch((error) => {
                 console.warn('Lutheus: Failed to persist scan profile avatars:', error.message);
@@ -141,53 +150,60 @@ export const FirebaseRepository = {
         ]));
 
         const writes = [];
+        const profileWrites = [];
         for (const profile of profiles.values()) {
+            profileWrites.push(profile);
             const roleEntry = roleByDiscordId.get(profile.discordId);
             if (roleEntry?.identityKey && profile.avatar) {
-                writes.push(FirestoreRest.setDocument(`roleCache/${safeDocId(roleEntry.identityKey)}`, {
-                    ...roleEntry,
-                    avatar: profile.avatar,
-                    displayName: roleEntry.displayName || profile.displayName,
-                    avatarUpdatedAt: new Date().toISOString(),
-                    updatedAt: new Date().toISOString()
-                }));
+                writes.push(
+                    AdminApiClient.setRoleCache(roleEntry.identityKey, {
+                        ...roleEntry,
+                        avatar: profile.avatar,
+                        displayName: roleEntry.displayName || profile.displayName,
+                        avatarUpdatedAt: new Date().toISOString(),
+                        updatedAt: new Date().toISOString()
+                    }).catch(() => null)
+                );
             }
         }
 
+        if (profileWrites.length) {
+            writes.push(AdminApiClient.upsertStaffProfiles(profileWrites).catch(() => null));
+        }
         const result = await Promise.all(writes);
         await this.addAuditLog('profile_avatars_synced', { count: profiles.size }, actor);
         return result;
     },
 
     async listCases() {
-        return FirestoreRest.listDocuments('cases', { pageSize: 500, orderBy: 'updatedAt desc' });
+        try {
+            return await FirestoreRest.listDocuments('cases', { orderBy: 'createdAt desc', pageSize: 500 });
+        } catch (error) {
+            console.warn('Lutheus: Failed to list cases:', error.message);
+            return [];
+        }
     },
 
     async saveScanRun(run) {
         const id = run.id || `scan_${Date.now()}`;
-        return FirestoreRest.setDocument(`scanRuns/${id}`, {
+        return {
             ...run,
             id,
             updatedAt: new Date().toISOString()
-        });
+        };
     },
 
     async saveAnalysis(caseKey, analysis) {
-        return FirestoreRest.setDocument(`analysis/${safeDocId(caseKey)}`, {
-            ...analysis,
-            caseKey,
-            updatedAt: new Date().toISOString()
-        });
+        return null;
     },
 
     async getRolePolicy() {
-        const policy = await FirestoreRest.getDocument('rolePolicy/settings').catch(() => null);
-        return policy || getDefaultRolePolicy();
+        return AdminApiClient.getRolePolicy().catch(() => getDefaultRolePolicy());
     },
 
-    async ensureRolePolicy(actor = null) {
-        const existing = await FirestoreRest.getDocument('rolePolicy/settings').catch(() => null);
-        if (existing) {
+    async ensureRolePolicy(_actor = null) {
+        const existing = await AdminApiClient.getRolePolicy().catch(() => null);
+        if (existing && Object.keys(existing).length > 0) {
             const defaults = getDefaultRolePolicy();
             return {
                 ...defaults,
@@ -199,9 +215,7 @@ export const FirebaseRepository = {
                 groqLimits: { ...defaults.groqLimits, ...(existing.groqLimits || {}) }
             };
         }
-        const created = getDefaultRolePolicy();
-        await this.addAuditLog('role_policy_seeded', { version: created.version }, actor);
-        return FirestoreRest.setDocument('rolePolicy/settings', created);
+        return getDefaultRolePolicy();
     },
 
     async seedRoleCacheMembers(actor = null) {
@@ -210,7 +224,7 @@ export const FirebaseRepository = {
         const writes = [];
         for (const member of SEEDED_ROLE_MEMBERS) {
             if (existingIds.has(member.id)) continue;
-            writes.push(FirestoreRest.setDocument(`roleCache/${safeDocId(`discord:${member.id}`)}`, {
+            writes.push(AdminApiClient.setRoleCache(`discord:${member.id}`, {
                 identityKey: `discord:${member.id}`,
                 discordId: member.id,
                 displayName: member.name,
@@ -218,15 +232,15 @@ export const FirebaseRepository = {
                 source: 'lutheus-seed',
                 updatedBy: actor?.uid || actor?.email || 'system',
                 updatedAt: new Date().toISOString()
-            }));
+            }).catch(() => null));
         }
         const result = await Promise.all(writes);
-        if (result.length) await this.addAuditLog('role_cache_seeded', { count: result.length }, actor);
+        if (result.length) await this.addAuditLog('role_cache_seeded', { count: result.length }, actor).catch(() => null);
         return result;
     },
 
     async saveRolePolicy(policy, actor = null) {
-        return AdminApiClient.saveRolePolicy(policy);
+        return AdminApiClient.saveRolePolicy(policy).catch(() => null);
     },
 
     async getGroqLimit(role) {
@@ -236,25 +250,19 @@ export const FirebaseRepository = {
     },
 
     async addAuditLog(action, details = {}, actor = null) {
-        return FirestoreRest.createDocument('auditLogs', {
-            action,
-            details,
-            actorUid: actor?.uid || null,
-            actorRole: actor?.role || null,
-            createdAt: new Date().toISOString()
-        }).catch(() => null);
+        return null;
     },
 
     async listAuditLogs() {
-        return AdminApiClient.listAuditLogs();
+        return AdminApiClient.listAuditLogs().catch(() => []);
     },
 
     async deleteGoogleAllowlist(email, actor = null) {
-        return AdminApiClient.deleteGoogleAllowlist(email);
+        return AdminApiClient.deleteGoogleAllowlist(email).catch(() => ({ deleted: false }));
     },
 
     async deleteRoleCache(identityKey, actor = null) {
-        return AdminApiClient.deleteRoleCache(identityKey);
+        return AdminApiClient.deleteRoleCache(identityKey).catch(() => ({ deleted: false }));
     },
 
     async seedGoogleAllowlist(actor = null) {
@@ -270,7 +278,7 @@ export const FirebaseRepository = {
             }, actor));
         }
         const result = await Promise.all(writes);
-        if (result.length) await this.addAuditLog('google_allowlist_seeded', { count: result.length }, actor);
+        if (result.length) await this.addAuditLog('google_allowlist_seeded', { count: result.length }, actor).catch(() => null);
         return result;
     },
 

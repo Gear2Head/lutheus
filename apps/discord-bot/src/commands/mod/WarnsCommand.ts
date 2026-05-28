@@ -1,8 +1,9 @@
-import { SlashCommandBuilder, ChatInputCommandInteraction, EmbedBuilder, PermissionFlagsBits } from 'discord.js';
-import { db } from '../../botConfig.js';
+// SECTION: BOT_COMMANDS
+// PURPOSE: Warns list command retrieving data from Supabase app_settings.
 
-// SECTION: WARNS_LIST_COMMAND
-// PURPOSE: Bir kullanıcının tüm uyarı geçmişini listeler.
+import { SlashCommandBuilder, ChatInputCommandInteraction, EmbedBuilder, PermissionFlagsBits } from 'discord.js';
+import { supabase } from '../../botConfig.js';
+
 export const WarnsCommand = {
     data: new SlashCommandBuilder()
         .setName('uyarilar')
@@ -16,22 +17,21 @@ export const WarnsCommand = {
 
         try {
             const guild = interaction.guild!;
-            const snap = await db.collection('warns')
-                .where('targetId', '==', target.id)
-                .where('guildId', '==', guild.id)
-                .orderBy('createdAt', 'desc')
-                .limit(10)
-                .get();
+            const key = `warns_${guild.id}_${target.id}`;
 
-            if (snap.empty) {
+            const { data: row } = await supabase.from('app_settings').select('*').eq('key', key).maybeSingle();
+            const warnsList = row ? (row.value || []) : [];
+
+            if (warnsList.length === 0) {
                 await interaction.editReply({ content: `✅ **${target.tag}** adlı kullanıcının sistemde kayıtlı uyarısı yok.` });
                 return;
             }
 
-            const warnsText = snap.docs.map((doc, i) => {
-                const w = doc.data();
+            const sortedWarns = [...warnsList].sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 10);
+
+            const warnsText = sortedWarns.map((w: any, i: number) => {
                 const date = w.createdAt ? new Date(w.createdAt).toLocaleDateString('tr-TR') : 'Tarih Yok';
-                return `**${i + 1}.** \`${date}\` — ${w.reason} *(${w.actorTag})*`;
+                return `**${i + 1}.** \`${date}\` — ${w.reason} *(${w.actorTag || 'Yetkili'})*`;
             }).join('\n');
 
             const embed = new EmbedBuilder()
@@ -39,7 +39,7 @@ export const WarnsCommand = {
                 .setColor(0xffa502)
                 .setThumbnail(target.displayAvatarURL())
                 .setDescription(warnsText)
-                .addFields({ name: '📊 Toplam Uyarı', value: `**${snap.size}**`, inline: true })
+                .addFields({ name: '📊 Toplam Uyarı', value: `**${warnsList.length}**`, inline: true })
                 .setFooter({ text: 'Lutheus Mod Sistemi' }).setTimestamp();
 
             await interaction.editReply({ embeds: [embed] });

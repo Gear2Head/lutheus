@@ -1,5 +1,8 @@
+// SECTION: BOT_COMMANDS
+// PURPOSE: Queries staff performance statistics from Supabase role_cache and sapphire_cases.
+
 import { SlashCommandBuilder, ChatInputCommandInteraction, EmbedBuilder } from 'discord.js';
-import { db } from '../botConfig.js';
+import { supabase } from '../botConfig.js';
 
 export const QueryStaffCommand = {
     data: new SlashCommandBuilder()
@@ -44,24 +47,34 @@ export const QueryStaffCommand = {
             let roleLabel = 'Moderatör';
             let customName = '';
             if (targetId) {
-                const cacheSnap = await db.collection('roleCache').doc(`discord:${targetId}`).get();
-                if (cacheSnap.exists) {
-                    const cache = cacheSnap.data();
-                    if (cache) {
-                        roleLabel = cache.role || roleLabel;
-                        customName = cache.displayName || '';
-                    }
+                const { data: cache } = await supabase
+                    .from('role_cache')
+                    .select('*')
+                    .eq('discord_id', targetId)
+                    .maybeSingle();
+
+                if (cache) {
+                    roleLabel = cache.staff_rank || roleLabel;
+                    customName = cache.raw_payload?.displayName || '';
                 }
             }
 
-            let snapshot;
+            let rows;
             if (targetId) {
-                snapshot = await db.collection('cases').where('authorId', '==', targetId).get();
+                const { data } = await supabase
+                    .from('sapphire_cases')
+                    .select('*')
+                    .eq('author_discord_id', targetId);
+                rows = data;
             } else {
-                snapshot = await db.collection('cases').where('authorName', '==', targetName).get();
+                const { data } = await supabase
+                    .from('sapphire_cases')
+                    .select('*')
+                    .eq('author_display_name', targetName);
+                rows = data;
             }
 
-            const cases = snapshot.docs.map(doc => doc.data());
+            const cases = rows || [];
             const totalCount = cases.length;
 
             if (totalCount === 0) {
@@ -71,9 +84,9 @@ export const QueryStaffCommand = {
                 return;
             }
 
-            const validCount = cases.filter(c => String(c.reviewStatus || '').toLowerCase() === 'valid').length;
-            const invalidCount = cases.filter(c => String(c.reviewStatus || '').toLowerCase() === 'invalid').length;
-            const pendingCount = cases.filter(c => !c.reviewStatus || String(c.reviewStatus || '').toLowerCase() === 'pending').length;
+            const validCount = cases.filter(c => String(c.cuk_verdict || '').toLowerCase() === 'valid').length;
+            const invalidCount = cases.filter(c => String(c.cuk_verdict || '').toLowerCase() === 'invalid').length;
+            const pendingCount = cases.filter(c => !c.cuk_verdict || String(c.cuk_verdict || '').toLowerCase() === 'pending').length;
             const accuracy = totalCount ? Math.round((validCount / totalCount) * 100) : 0;
 
             const roleLabels: Record<string, string> = {

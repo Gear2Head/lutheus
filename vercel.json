@@ -2,5 +2,15 @@
   "framework": "nextjs",
   "installCommand": "npm install",
   "buildCommand": "npm run build",
-  "cleanUrls": true
+  "cleanUrls": true,
+  "rewrites": [
+    {
+      "source": "/api/admin/:route",
+      "destination": "/api/admin/[route]?route=:route"
+    },
+    {
+      "source": "/api/scan/sapphire/:action",
+      "destination": "/api/scan/sapphire/[action]?action=:action"
+    }
+  ]
 }

@@ -19,9 +19,6 @@
         "https://media.discordapp.net/*",
         "https://lh3.googleusercontent.com/*",
         "https://*.googleusercontent.com/*",
-        "https://identitytoolkit.googleapis.com/*",
-        "https://securetoken.googleapis.com/*",
-        "https://firestore.googleapis.com/*",
         "https://*.sapph.xyz/*",
         "https://*.vercel.app/*"
     ],

@@ -198,6 +198,9 @@ export const SEEDED_GOOGLE_ALLOWLIST = Object.freeze([
     { email: 'gearheadd0@gmail.com', role: ROLES.ADMIN, note: 'Lutheus Admin Seed' }
 ]);
 
+export const OWNER_DISCORD_IDS = Object.freeze(['758769576778661989']);
+export const OWNER_EMAILS = Object.freeze(['gearheadd0@gmail.com']);
+
 export const ROLE_ORDER = Object.freeze([
     ROLES.YONETICI,
     ROLES.GENEL_SORUMLU,
@@ -291,6 +294,12 @@ export function getRoleColor(role) {
 
 export function isPrivilegedRole(role) {
     return ADMIN_ROLES.has(normalizeRole(role));
+}
+
+export function isOwnerIdentity(identity = {}) {
+    const discordId = String(identity.discordId || identity.discord_id || '').trim();
+    const email = String(identity.email || '').trim().toLowerCase();
+    return OWNER_DISCORD_IDS.includes(discordId) || OWNER_EMAILS.includes(email);
 }
 
 export function hasPermission(role, permission) {

@@ -12,6 +12,9 @@ const ROLES = Object.freeze({
     BLOCKED: 'blocked'
 });
 
+const OWNER_DISCORD_IDS = Object.freeze(['758769576778661989']);
+const OWNER_EMAILS = Object.freeze(['gearheadd0@gmail.com']);
+
 const PERMISSIONS = Object.freeze({
     DASHBOARD_VIEW: 'dashboard:view',
     REPORTS_VIEW: 'reports:view',
@@ -129,6 +132,12 @@ function normalizeRole(role) {
     return ROLES.PENDING;
 }
 
+function isOwnerIdentity(identity = {}) {
+    const discordId = String(identity.discordId || identity.discord_id || '').trim();
+    const email = String(identity.email || '').trim().toLowerCase();
+    return OWNER_DISCORD_IDS.includes(discordId) || OWNER_EMAILS.includes(email);
+}
+
 function hasPermission(role, permission) {
     const permissions = ROLE_PERMISSIONS[normalizeRole(role)] || [];
     return permissions.includes('*') || permissions.includes(permission);
@@ -139,5 +148,6 @@ module.exports = {
     PERMISSIONS,
     ROLE_PERMISSIONS,
     normalizeRole,
+    isOwnerIdentity,
     hasPermission
 };

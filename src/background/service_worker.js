@@ -469,7 +469,7 @@ async function storageSaveCases(newCases, append = true) {
         caseMap.set(normalized.id, mergeCaseForStorage(previous, normalized));
     }
 
-    const allCases = Array.from(caseMap.values()).sort(compareStoredCases);
+    const allCases = Array.from(caseMap.values()).sort(compareStoredCases).map(compactCaseForStorage);
     await new Promise((resolve) => chrome.storage.local.set({ cases: allCases }, resolve));
     if (quarantined.length) {
         const current = await getLocal('caseQuarantine') || [];
@@ -480,6 +480,34 @@ async function storageSaveCases(newCases, append = true) {
         await forwardToVercelIngest(newCases, jobId, `https://dashboard.sapph.xyz/${LUTHEUS_GUILD_ID}/moderation/cases`, !activeJobId);
     }
     return allCases.length;
+}
+
+function compactCaseForStorage(entry = {}) {
+    return {
+        id: entry.id,
+        caseId: entry.caseId,
+        guildId: entry.guildId,
+        user: entry.user,
+        userId: entry.userId,
+        authorId: entry.authorId,
+        authorName: entry.authorName,
+        authorAvatar: entry.authorAvatar,
+        userAvatar: entry.userAvatar,
+        reason: entry.reason,
+        duration: entry.duration,
+        durationMs: entry.durationMs,
+        type: entry.type,
+        createdRaw: entry.createdRaw,
+        sourceUrl: entry.sourceUrl,
+        scrapedAt: entry.scrapedAt,
+        lastSeen: entry.lastSeen,
+        source: entry.source,
+        capturedVia: entry.capturedVia,
+        validationStatus: entry.validationStatus,
+        validationReason: entry.validationReason,
+        reviewStatus: entry.reviewStatus,
+        manualOverride: entry.manualOverride
+    };
 }
 
 function normalizeCaseForStorage(entry = {}) {

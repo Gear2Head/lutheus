@@ -94,9 +94,26 @@ export const FirebaseRepository = {
 
     async listRoleCache() {
         try {
-            return await AdminApiClient.listRoleCache();
+            const rows = await AdminApiClient.listRoleCache();
+            return rows.length ? rows : SEEDED_ROLE_MEMBERS.map((member) => ({
+                id: `discord:${member.id}`,
+                identityKey: `discord:${member.id}`,
+                discordId: member.id,
+                displayName: member.name,
+                role: normalizeRole(member.role),
+                isActiveStaff: true,
+                source: 'lutheus-seed'
+            }));
         } catch (_) {
-            return [];
+            return SEEDED_ROLE_MEMBERS.map((member) => ({
+                id: `discord:${member.id}`,
+                identityKey: `discord:${member.id}`,
+                discordId: member.id,
+                displayName: member.name,
+                role: normalizeRole(member.role),
+                isActiveStaff: true,
+                source: 'lutheus-seed'
+            }));
         }
     },
 
@@ -195,7 +212,10 @@ export const FirebaseRepository = {
         try {
             return await FirestoreRest.listDocuments('cases', { orderBy: 'createdAt desc', pageSize: 500 });
         } catch (error) {
-            console.warn('Lutheus: Failed to list cases:', error.message);
+            const prefix = isRemoteKeyError(error)
+                ? 'Lutheus: Failed to list cases due to Supabase auth key mismatch'
+                : 'Lutheus: Failed to list cases';
+            console.warn(`${prefix}:`, error.message);
             return [];
         }
     },

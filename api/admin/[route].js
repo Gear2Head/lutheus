@@ -37,6 +37,26 @@ const DEFAULT_ROLE_CONFIG = Object.freeze([
     { role_key: 'blocked', role_label: 'Engelli', role_order: 99, permission_group: 'blocked', permission_level: -1, is_management: false, visible: false, color_hex: '#52525b' }
 ]);
 
+const SEEDED_ROLE_CACHE = Object.freeze([
+    { discord_id: '770612318689165313', staff_rank: 'yonetici', active: true, source: 'lutheus-seed', raw_payload: { displayName: 'Yagi' } },
+    { discord_id: '202889333563195402', staff_rank: 'yonetici', active: true, source: 'lutheus-seed', raw_payload: { displayName: 'BarisYilmaz' } },
+    { discord_id: '344121374320754709', staff_rank: 'yonetici', active: true, source: 'lutheus-seed', raw_payload: { displayName: 'Rei' } },
+    { discord_id: '1109657614968692840', staff_rank: 'genel_sorumlu', active: true, source: 'lutheus-seed', raw_payload: { displayName: 'Maty' } },
+    { discord_id: '962062500189331506', staff_rank: 'genel_sorumlu', active: true, source: 'lutheus-seed', raw_payload: { displayName: 'Goktug' } },
+    { discord_id: '860192567177773076', staff_rank: 'discord_yoneticisi', active: true, source: 'lutheus-seed', raw_payload: { displayName: 'xGoveer' } },
+    { discord_id: '758769576778661989', staff_rank: 'kurucu', active: true, source: 'lutheus-owner', raw_payload: { displayName: 'Gear_Head' } },
+    { discord_id: '529357404882599966', staff_rank: 'discord_moderatoru', active: true, source: 'lutheus-seed', raw_payload: { displayName: 'Dadlukady' } },
+    { discord_id: '1360069068794626139', staff_rank: 'discord_destek_ekibi', active: true, source: 'lutheus-seed', raw_payload: { displayName: 'Timur3' } },
+    { discord_id: '707582959766732872', staff_rank: 'discord_destek_ekibi', active: true, source: 'lutheus-seed', raw_payload: { displayName: 'Ocean' } },
+    { discord_id: '1135248585802403901', staff_rank: 'discord_destek_ekibi', active: true, source: 'lutheus-seed', raw_payload: { displayName: 'QumruClaus' } },
+    { discord_id: '760895784153251841', staff_rank: 'discord_destek_ekibi', active: true, source: 'lutheus-seed', raw_payload: { displayName: 'Atom' } },
+    { discord_id: '1375772029982085184', staff_rank: 'discord_destek_ekibi', active: true, source: 'lutheus-seed', raw_payload: { displayName: 'Nadoo' } }
+]);
+
+const OWNER_ALLOWLIST = Object.freeze([
+    { id: 'gearheadd0@gmail.com', email: 'gearheadd0@gmail.com', allowed: true, role: 'kurucu' }
+]);
+
 function roleConfigDefaults(role) {
     return DEFAULT_ROLE_CONFIG.find((item) => item.role_key === normalizeRole(role)) || DEFAULT_ROLE_CONFIG.find((item) => item.role_key === 'pending');
 }
@@ -96,6 +116,29 @@ function mapRoleCacheRow(row) {
     };
 }
 
+function seededStaffProfiles() {
+    return SEEDED_ROLE_CACHE.map((row) => ({
+        id: row.discord_id,
+        discordId: row.discord_id,
+        discordUserId: row.discord_id,
+        sapphireAuthorId: row.discord_id,
+        email: row.discord_id === '758769576778661989' ? 'gearheadd0@gmail.com' : null,
+        displayName: row.raw_payload.displayName,
+        name: row.raw_payload.displayName,
+        username: null,
+        avatar: null,
+        avatarUrl: null,
+        role: normalizeRole(row.staff_rank),
+        isActiveStaff: row.active !== false,
+        permissionGroup: profilePermissionForRole(row.staff_rank).permission_group,
+        permissionLevel: profilePermissionForRole(row.staff_rank).permission_level,
+        source: row.source,
+        rawPayload: row.raw_payload,
+        updatedAt: null,
+        lastSeen: null
+    }));
+}
+
 async function addAudit(action, actor, details = {}) {
     return supabase.from('audit_logs').insert([{
         action,
@@ -139,7 +182,10 @@ async function handleGoogleAllowlist(req, res) {
         await requirePermission(req, PERMISSIONS.GOOGLE_ALLOWLIST_VIEW);
 
         const { data: rows, error } = await supabase.from('google_allowlist').select('*').limit(200);
-        if (error) return serverError(res, error);
+        if (error) {
+            console.warn('[admin] google_allowlist read failed:', error.message || error);
+            return ok(res, { items: OWNER_ALLOWLIST, warning: 'GOOGLE_ALLOWLIST_UNAVAILABLE' });
+        }
 
         const items = (rows || []).map((row) => ({
             id: row.email,
@@ -148,7 +194,7 @@ async function handleGoogleAllowlist(req, res) {
             role: normalizeRole(row.dashboard_access_role || 'viewer')
         }));
 
-        return ok(res, { items });
+        return ok(res, { items: [...OWNER_ALLOWLIST, ...items.filter((item) => item.email !== 'gearheadd0@gmail.com')] });
     }
 
     if (req.method === 'POST' || req.method === 'PATCH') {
@@ -197,38 +243,30 @@ async function handleRoleCache(req, res) {
         let { data: rows, error } = await supabase.from('role_cache').select('*').limit(500);
         if (error) {
             console.warn('[admin] role_cache read failed:', error.message || error);
-            return ok(res, { items: [], warning: 'ROLE_CACHE_UNAVAILABLE' });
+            return ok(res, { items: SEEDED_ROLE_CACHE.map(mapRoleCacheRow), warning: 'ROLE_CACHE_UNAVAILABLE' });
         }
 
         if (!rows || rows.length === 0) {
-            const seedPayloads = [
-                { discord_id: '770612318689165313', staff_rank: 'yonetici', active: true, source: 'lutheus-seed', raw_payload: { displayName: 'Yagi' } },
-                { discord_id: '202889333563195402', staff_rank: 'yonetici', active: true, source: 'lutheus-seed', raw_payload: { displayName: 'BarisYilmaz' } },
-                { discord_id: '344121374320754709', staff_rank: 'yonetici', active: true, source: 'lutheus-seed', raw_payload: { displayName: 'Rei' } },
-                { discord_id: '1109657614968692840', staff_rank: 'genel_sorumlu', active: true, source: 'lutheus-seed', raw_payload: { displayName: 'Maty' } },
-                { discord_id: '962062500189331506', staff_rank: 'genel_sorumlu', active: true, source: 'lutheus-seed', raw_payload: { displayName: 'Göktuğ' } },
-                { discord_id: '860192567177773076', staff_rank: 'discord_yoneticisi', active: true, source: 'lutheus-seed', raw_payload: { displayName: 'xGoveer' } },
-                { discord_id: '758769576778661989', staff_rank: 'kidemli_discord_moderatoru', active: true, source: 'lutheus-seed', raw_payload: { displayName: 'Gear_Head' } },
-                { discord_id: '529357404882599966', staff_rank: 'discord_moderatoru', active: true, source: 'lutheus-seed', raw_payload: { displayName: 'Dadlukady' } },
-                { discord_id: '1360069068794626139', staff_rank: 'discord_destek_ekibi', active: true, source: 'lutheus-seed', raw_payload: { displayName: 'Timur3' } },
-                { discord_id: '707582959766732872', staff_rank: 'discord_destek_ekibi', active: true, source: 'lutheus-seed', raw_payload: { displayName: 'Ocean' } },
-                { discord_id: '1135248585802403901', staff_rank: 'discord_destek_ekibi', active: true, source: 'lutheus-seed', raw_payload: { displayName: 'QumruClaus' } },
-                { discord_id: '760895784153251841', staff_rank: 'discord_destek_ekibi', active: true, source: 'lutheus-seed', raw_payload: { displayName: 'Atom' } },
-                { discord_id: '1375772029982085184', staff_rank: 'discord_destek_ekibi', active: true, source: 'lutheus-seed', raw_payload: { displayName: 'Nadoo' } }
-            ];
-
+            const seedPayloads = SEEDED_ROLE_CACHE.map((row) => ({ ...row, last_synced_at: new Date().toISOString(), updated_at: new Date().toISOString() }));
             const staffPayloads = seedPayloads.map(p => ({
                 discord_id: p.discord_id,
                 display_name: p.raw_payload.displayName,
-                permission_group: 'seed',
+                permission_group: profilePermissionForRole(p.staff_rank).permission_group,
+                permission_level: profilePermissionForRole(p.staff_rank).permission_level,
                 staff_rank: p.staff_rank,
                 is_active_staff: true,
                 raw_payload: p.raw_payload,
                 updated_at: new Date().toISOString()
             }));
 
-            await supabase.from('staff_profiles').upsert(staffPayloads, { onConflict: 'discord_id' });
-            await supabase.from('role_cache').upsert(seedPayloads, { onConflict: 'discord_id' });
+            const { error: seedStaffError } = await supabase.from('staff_profiles').upsert(staffPayloads, { onConflict: 'discord_id' });
+            const { error: seedRoleError } = seedStaffError
+                ? { error: seedStaffError }
+                : await supabase.from('role_cache').upsert(seedPayloads, { onConflict: 'discord_id' });
+            if (seedStaffError || seedRoleError) {
+                console.warn('[admin] role cache seed failed:', seedStaffError?.message || seedRoleError?.message || seedStaffError || seedRoleError);
+                return ok(res, { items: seedPayloads.map(mapRoleCacheRow), warning: 'ROLE_CACHE_SEED_FALLBACK' });
+            }
 
             const { data: reRows } = await supabase.from('role_cache').select('*').limit(500);
             rows = reRows || [];
@@ -241,8 +279,10 @@ async function handleRoleCache(req, res) {
         if (profileError) console.warn('[admin] staff profile join failed:', profileError.message || profileError);
         const profileById = new Map((profiles || []).map((profile) => [profile.discord_id, profile]));
         const items = (rows || []).map((row) => mapRoleCacheRow({ ...row, ...(profileById.get(row.discord_id) || {}), active: row.active, raw_payload: row.raw_payload, source: row.source, last_synced_at: row.last_synced_at }));
+        const existingIds = new Set(items.map((item) => item.discordId).filter(Boolean));
+        const seeded = SEEDED_ROLE_CACHE.filter((row) => !existingIds.has(row.discord_id)).map(mapRoleCacheRow);
 
-        return ok(res, { items });
+        return ok(res, { items: [...items, ...seeded] });
     }
 
     if (req.method === 'POST' || req.method === 'PATCH') {
@@ -327,7 +367,10 @@ async function handleRolePolicy(req, res) {
         await requirePermission(req, PERMISSIONS.SYSTEM_SETTINGS_VIEW);
 
         const { data: row, error } = await supabase.from('app_settings').select('*').eq('key', 'settings').maybeSingle();
-        if (error) return serverError(res, error);
+        if (error) {
+            console.warn('[admin] role policy read failed:', error.message || error);
+            return ok(res, { policy: {}, warning: 'ROLE_POLICY_UNAVAILABLE' });
+        }
 
         const policy = row ? row.value : null;
         return ok(res, { policy });
@@ -370,7 +413,7 @@ async function handleStaffProfiles(req, res) {
             .limit(500);
         if (error) {
             console.warn('[admin] staff_profiles read failed:', error.message || error);
-            return ok(res, { items: [], warning: 'STAFF_PROFILES_UNAVAILABLE' });
+            return ok(res, { items: seededStaffProfiles(), warning: 'STAFF_PROFILES_UNAVAILABLE' });
         }
 
         const items = (rows || []).map((row) => ({
@@ -396,7 +439,9 @@ async function handleStaffProfiles(req, res) {
             lastSeen: row.last_seen_at
         }));
 
-        return ok(res, { items });
+        const existingIds = new Set(items.map((item) => item.discordId).filter(Boolean));
+        const seeded = seededStaffProfiles().filter((item) => !existingIds.has(item.discordId));
+        return ok(res, { items: [...items, ...seeded] });
     }
 
     if (req.method === 'POST' || req.method === 'PATCH') {

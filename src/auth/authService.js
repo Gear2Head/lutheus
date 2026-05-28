@@ -5,7 +5,7 @@ import {
     isSessionExpired,
     setStoredSession
 } from './sessionStore.js';
-import { canAccessAdmin, normalizeRole, ROLES } from './rolePolicy.js';
+import { canAccessAdmin, isOwnerIdentity, normalizeRole, ROLES } from './rolePolicy.js';
 import { FirebaseRepository } from '../lib/firebaseRepository.js';
 
 // SECTION: AUTH_SERVICE
@@ -86,6 +86,7 @@ function roleIdentityKeys(profile) {
 }
 
 async function resolveRole(profile, token = null) {
+    if (isOwnerIdentity(profile)) return ROLES.KURUCU;
     if (profile.provider === 'google') {
         const allow = await FirebaseRepository.getGoogleAllowlist(profile.email, token);
         if (!allow?.allowed) {
@@ -127,7 +128,9 @@ async function signInWithCustomToken(customToken, oauthProfile = {}) {
         status: tokenClaims.status || oauthProfile.status || 'active'
     };
     const serverRole = tokenClaims.role || oauthProfile.role || null;
-    const role = serverRole
+    const role = isOwnerIdentity(profile)
+        ? ROLES.KURUCU
+        : serverRole
         ? normalizeRole(serverRole)
         : await resolveRole(profile, customToken).catch((error) => {
             if (error.message === 'GOOGLE_EMAIL_NOT_ALLOWLISTED') throw error;
@@ -187,6 +190,10 @@ export const AuthService = {
     async getSession({ refresh = true } = {}) {
         const session = await getStoredSession();
         if (!session) return null;
+        if (isOwnerIdentity(session.profile)) {
+            session.role = ROLES.KURUCU;
+            session.profile = { ...(session.profile || {}), role: ROLES.KURUCU, status: 'active' };
+        }
         if (refresh && isSessionExpired(session) && session.refreshToken) {
             return refreshSession(session).catch(async () => {
                 await clearStoredSession();
@@ -202,7 +209,7 @@ export const AuthService = {
             redirectToLogin(options.returnTo);
             throw new Error('AUTH_REQUIRED');
         }
-        if (session.profile?.status === 'blocked' || session.role === ROLES.BLOCKED) {
+        if (!isOwnerIdentity(session.profile) && (session.profile?.status === 'blocked' || session.role === ROLES.BLOCKED)) {
             redirectToLogin(options.returnTo, 'blocked');
             throw new Error('AUTH_BLOCKED');
         }

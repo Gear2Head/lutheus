@@ -1,6 +1,6 @@
 const { supabase } = require('../../_lib/supabaseClient');
 const { readState } = require('../../_lib/oauthState');
-const { normalizeRole } = require('../../_lib/roles');
+const { isOwnerIdentity, normalizeRole } = require('../../_lib/roles');
 const jwt = require('jsonwebtoken');
 
 // SECTION: API_ROUTES
@@ -64,6 +64,7 @@ async function fetchGoogleUser(accessToken) {
 }
 
 async function resolveRole(email) {
+    if (isOwnerIdentity({ email })) return 'kurucu';
     const { data: allowRow } = await supabase
         .from('google_allowlist')
         .select('*')

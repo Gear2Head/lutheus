@@ -1,5 +1,5 @@
 const { supabase } = require('./supabaseClient');
-const { normalizeRole, hasPermission } = require('./roles');
+const { normalizeRole, isOwnerIdentity, hasPermission } = require('./roles');
 const jwt = require('jsonwebtoken');
 
 // SECTION: SERVER_AUTH
@@ -59,8 +59,13 @@ async function resolveActorFromToken(req) {
     let role = null;
     let source = 'none';
 
+    if (isOwnerIdentity({ email, discordId })) {
+        role = 'kurucu';
+        source = 'ownerIdentity';
+    }
+
     // 2. googleAllowlist check
-    if (email) {
+    if (!role && email) {
         const allowRow = await maybeSingleSafe(supabase
             .from('google_allowlist')
             .select('*')

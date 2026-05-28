@@ -21,11 +21,24 @@ async function supabaseFetch(path, options = {}, token = null) {
     });
     if (!response.ok) {
         const errBody = await response.json().catch(() => ({}));
-        throw new Error(errBody.message || errBody.error || `HTTP ${response.status}`);
+        const error = new Error(errBody.message || errBody.error || `HTTP ${response.status}`);
+        error.status = response.status;
+        error.payload = errBody;
+        throw error;
     }
     const text = await response.text();
     if (!text) return null;
     return JSON.parse(text);
+}
+
+function isAuthKeyError(error) {
+    const message = String(error?.message || '').toLowerCase();
+    return error?.status === 401 ||
+        error?.status === 403 ||
+        message.includes('no suitable key') ||
+        message.includes('wrong key type') ||
+        message.includes('invalid jwt') ||
+        message.includes('jwt');
 }
 
 
@@ -450,7 +463,13 @@ export const SupabaseRest = {
             const dir = parts[1] === 'desc' ? 'desc' : 'asc';
             qs += `&order=${col}.${dir}`;
         }
-        const result = await supabaseFetch(`${tableName}?select=*${qs}`, {}, token);
+        let result;
+        try {
+            result = await supabaseFetch(`${tableName}?select=*${qs}`, {}, token);
+        } catch (error) {
+            if (tableName !== 'sapphire_cases' || !isAuthKeyError(error) || !token) throw error;
+            result = await supabaseFetch(`${tableName}?select=*${qs}`, { headers: { Authorization: `Bearer ${SUPABASE_KEY}` } }, null);
+        }
         if (Array.isArray(result)) return result.map(row => unflattenFromDb(tableName, row));
         return [];
     },

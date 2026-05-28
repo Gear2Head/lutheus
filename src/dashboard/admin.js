@@ -20,7 +20,8 @@ import {
     getRoleLabel as getBaseRoleLabel,
     getRoleLevel,
     hasPermission,
-    normalizeRole
+    normalizeRole,
+    SEEDED_ROLE_MEMBERS
 } from '../auth/rolePolicy.js';
 import { analyzeCaseWithGroq } from '../lib/aiAnalysisClient.js';
 import { bindAvatarFallbacks, resolveAvatar } from '../lib/avatar.js';
@@ -118,6 +119,7 @@ const DOM_RAW = {
     roleUserId: document.getElementById('roleUserId'),
     roleDisplayName: document.getElementById('roleDisplayName'),
     roleSelect: document.getElementById('roleSelect'),
+    roleInactiveStaff: document.getElementById('roleInactiveStaff'),
     manualAccuracy: document.getElementById('manualAccuracy'),
     roleUserNameHint: document.getElementById('roleUserNameHint'),
     roleBtn: document.getElementById('roleBtn'),
@@ -811,6 +813,35 @@ function refreshRoleSelectOptions() {
         DOM.roleCacheFilter.innerHTML = `<option value="all">TÃ¼m Roller</option>${roleOptionsHtml(options, selected)}`;
         DOM.roleCacheFilter.value = selected;
     }
+}
+
+function seededRoleCacheFallback() {
+    return SEEDED_ROLE_MEMBERS.map((member) => ({
+        id: `discord:${member.id}`,
+        identityKey: `discord:${member.id}`,
+        discordId: member.id,
+        displayName: member.name,
+        role: normalizeRole(member.role),
+        isActiveStaff: true,
+        source: 'lutheus-seed'
+    }));
+}
+
+function normalizeRoleCacheList(entries = []) {
+    const map = new Map();
+    [...seededRoleCacheFallback(), ...(entries || [])].forEach((entry) => {
+        const id = entry.discordId || String(entry.identityKey || entry.id || '').replace(/^discord:/, '');
+        if (!isValidDiscordId(id)) return;
+        map.set(id, {
+            ...entry,
+            id: `discord:${id}`,
+            identityKey: `discord:${id}`,
+            discordId: id,
+            role: normalizeRole(entry.role || entry.staffRank || 'pending'),
+            isActiveStaff: entry.isActiveStaff !== false && entry.active !== false
+        });
+    });
+    return Array.from(map.values());
 }
 
 function switchTab(tabId, options = {}) {
@@ -1529,11 +1560,14 @@ function renderManagement() {
         if (!isValidDiscordId(id)) return;
         roleCacheIds.add(id);
         const profile = resolveStaffProfile({ id, discordId: id, displayName: entry.displayName, role: entry.role });
+        const isFormer = entry.isActiveStaff === false || entry.active === false || normalizeRole(entry.role) === 'blocked';
         merged.set(id, {
             id,
             name: entry.displayName || profile.name || id,
             avatar: entry.avatar || profile.avatar || null,
             role: entry.role ? normalizeRole(entry.role) : normalizeRole(profile.role),
+            isActiveStaff: !isFormer,
+            formerStaff: isFormer,
             aliases: entry.aliases || [],
             source: 'roleCache'
         });
@@ -1566,7 +1600,8 @@ function renderManagement() {
         const profile = entry;
         const role = profile.role || entry.role || 'pending';
         const roleColor = getAdminRoleColor(role);
-        const roleLabel = getAdminRoleLabel(role);
+        const isFormer = profile.formerStaff || profile.isActiveStaff === false;
+        const roleLabel = isFormer ? 'Eski Yetkili' : getAdminRoleLabel(role);
         const id = profile.id || entry.id || '';
         return `
         <div class="mod-card animate-in" style="--role-color: ${escapeHtml(roleColor)}; cursor: pointer;" data-filter-id="${escapeHtml(id || profile.name)}" title="Bu yetkilinin attığı cezaları listele">
@@ -1578,7 +1613,7 @@ function renderManagement() {
                     <div class="mod-info">
                         <span class="mod-name copy-id-btn" data-id="${escapeHtml(id)}" style="cursor: copy; font-weight: bold; text-decoration: underline dotted rgba(255,255,255,0.3);" title="Tıkla: ID Kopyala">${escapeHtml(profile.name)}</span>
                         ${id ? `<span class="mod-id" style="font-size:10px; opacity:0.6;">Discord ID: ${escapeHtml(id)}</span>` : ''}
-                        <span class="mod-role-badge" style="color: ${escapeHtml(roleColor)}; font-size:11px;">${escapeHtml(roleLabel)}</span>
+                        <span class="mod-role-badge" style="color: ${escapeHtml(isFormer ? 'var(--amber)' : roleColor)}; font-size:11px;">${escapeHtml(roleLabel)}</span>
                     </div>
                 </div>
             </div>
@@ -1792,9 +1827,14 @@ function openRoleModal(userId = '') {
     if (!requireUiPermission(PERMISSIONS.STAFF_ASSIGN_ROLE, 'staff:assign_role')) return;
     if (!DOM.roleModal) return;
     const entry = state.userRegistry[userId] || {};
+    const roleEntry = (state.roleCache || []).find((item) => {
+        const cacheId = item.discordId || String(item.identityKey || item.id || '').replace(/^discord:/, '');
+        return cacheId === userId;
+    }) || {};
     if (DOM.roleUserId) DOM.roleUserId.value = userId || '';
-    if (DOM.roleDisplayName) DOM.roleDisplayName.value = entry.name || '';
-    if (DOM.roleSelect) DOM.roleSelect.value = normalizeRole(entry.role || 'discord_moderatoru');
+    if (DOM.roleDisplayName) DOM.roleDisplayName.value = entry.name || roleEntry.displayName || '';
+    if (DOM.roleSelect) DOM.roleSelect.value = normalizeRole(roleEntry.role || entry.role || 'discord_moderatoru');
+    if (DOM.roleInactiveStaff) DOM.roleInactiveStaff.checked = roleEntry.isActiveStaff === false || roleEntry.active === false;
     if (DOM.manualAccuracy) DOM.manualAccuracy.value = entry.manualAccuracy ?? '';
     if (DOM.roleUserNameHint) DOM.roleUserNameHint.textContent = entry.name ? `${entry.name} bulundu` : 'Kullanıcı seçin';
 
@@ -1987,7 +2027,8 @@ async function saveRoleAssignment() {
         id,
         canonicalRole(DOM.roleSelect.value),
         DOM.manualAccuracy.value ? Number(DOM.manualAccuracy.value) : null,
-        DOM.roleDisplayName.value.trim() || null
+        DOM.roleDisplayName.value.trim() || null,
+        { isActiveStaff: DOM.roleInactiveStaff?.checked ? false : true }
     );
 
     await loadData();
@@ -2345,11 +2386,11 @@ async function loadData() {
         FirebaseRepository.listRoleCache().catch(() => [])
     ]);
 
-    let roleCacheList = roleCache;
+    let roleCacheList = normalizeRoleCacheList(roleCache);
     if (Array.isArray(roleCacheList) && roleCacheList.length === 0) {
         // Auto-seed roleCache in Supabase if completely empty
         await FirebaseRepository.seedRoleCacheMembers(state.session?.profile).catch(() => null);
-        roleCacheList = await FirebaseRepository.listRoleCache().catch(() => []);
+        roleCacheList = normalizeRoleCacheList(await FirebaseRepository.listRoleCache().catch(() => []));
     }
 
     state.roleCache = roleCacheList;
@@ -2825,6 +2866,8 @@ function renderProfilePage() {
                     name: profile.name,
                     role: profile.role,
                     avatar: profile.avatar,
+                    isActiveStaff: entry.isActiveStaff !== false && entry.active !== false,
+                    formerStaff: entry.isActiveStaff === false || entry.active === false,
                     totalCases: 0,
                     validCases: 0,
                     invalidCases: 0,
@@ -2849,7 +2892,8 @@ function renderProfilePage() {
 
         DOM.profileStaffList.innerHTML = allMods.length ? allMods.map(entry => {
             const roleColor = getAdminRoleColor(entry.role);
-            const roleLabel = getAdminRoleLabel(entry.role);
+            const isFormer = entry.formerStaff || entry.isActiveStaff === false;
+            const roleLabel = isFormer ? 'Eski Yetkili' : getAdminRoleLabel(entry.role);
             const isActive = state.selectedProfileId === entry.id;
             return `
             <div class="mod-card animate-in ${isActive ? 'active-profile-card' : ''}" data-id="${escapeHtml(entry.id)}" style="--role-color: ${escapeHtml(roleColor)}; cursor:pointer; ${isActive ? 'background:var(--bg-hover); border-color:var(--purple);' : ''}">
@@ -2860,7 +2904,7 @@ function renderProfilePage() {
                     <div class="mod-info">
                         <span class="mod-name">${escapeHtml(entry.name)}</span>
                         <span class="mod-id">Discord ID: ${escapeHtml(entry.id)}</span>
-                        <span class="mod-role-badge" style="color: ${escapeHtml(roleColor)}">${escapeHtml(roleLabel)}</span>
+                        <span class="mod-role-badge" style="color: ${escapeHtml(isFormer ? 'var(--amber)' : roleColor)}">${escapeHtml(roleLabel)}</span>
                     </div>
                 </div>
             </div>

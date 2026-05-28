@@ -1,6 +1,6 @@
 const { supabase } = require('../../_lib/supabaseClient');
 const { readState } = require('../../_lib/oauthState');
-const { normalizeRole } = require('../../_lib/roles');
+const { resolveDiscordRole } = require('../../_lib/discordRoleResolver');
 const jwt = require('jsonwebtoken');
 
 // SECTION: API_ROUTES
@@ -97,41 +97,6 @@ const SEEDED_ROLE_MEMBERS = [
     { id: '1375772029982085184', role: 'discord_destek_ekibi', name: 'Discord Destek Ekibi' }
 ];
 
-async function resolveRole(discordId) {
-    const bootstrapIds = String(process.env.BOOTSTRAP_DISCORD_IDS || '')
-        .split(',')
-        .map((item) => item.trim())
-        .filter(Boolean);
-    if (bootstrapIds.includes(String(discordId))) return 'admin';
-
-    const { data: roleRow } = await supabase
-        .from('role_cache')
-        .select('*')
-        .eq('discord_id', discordId)
-        .maybeSingle();
-
-    if (roleRow?.staff_rank) {
-        return normalizeRole(roleRow.staff_rank);
-    }
-
-    const seeded = SEEDED_ROLE_MEMBERS.find(m => m.id === String(discordId));
-    if (seeded) {
-        await supabase.from('role_cache').insert([{
-            discord_id: String(discordId),
-            staff_rank: normalizeRole(seeded.role),
-            active: true,
-            source: 'lutheus-autoseed',
-            last_synced_at: new Date().toISOString(),
-            raw_payload: { displayName: seeded.name, role: seeded.role },
-            updated_at: new Date().toISOString()
-        }]).catch(() => null);
-
-        return normalizeRole(seeded.role);
-    }
-
-    return 'pending';
-}
-
 module.exports = async function handler(req, res) {
     let redirectUri = '';
     let oauthRedirectUri = '';
@@ -168,11 +133,12 @@ module.exports = async function handler(req, res) {
             throw new Error('USER_UID_REQUIRED');
         }
 
-        const role = await resolveRole(discordUser.id);
-        const uid = `discord:${discordUser.id}`;
         const avatarUrl = discordUser.avatar
             ? `https://cdn.discordapp.com/avatars/${discordUser.id}/${discordUser.avatar}.png?size=128`
             : `https://cdn.discordapp.com/embed/avatars/${Number(discordUser.id) % 5}.png`;
+        const roleInfo = await resolveDiscordRole(discordUser, avatarUrl);
+        const role = roleInfo.role;
+        const uid = `discord:${discordUser.id}`;
 
         const profile = {
             uid,
@@ -193,9 +159,9 @@ module.exports = async function handler(req, res) {
             username: discordUser.username || null,
             avatar_url: avatarUrl,
             staff_rank: role,
-            permission_group: role === 'admin' ? 'admin' : (role === 'yonetici' ? 'management' : 'moderator'),
-            permission_level: role === 'admin' ? 100 : (role === 'yonetici' ? 80 : 50),
-            is_active_staff: true,
+            permission_group: roleInfo.permissionGroup,
+            permission_level: roleInfo.permissionLevel,
+            is_active_staff: role !== 'pending' && role !== 'blocked',
             last_seen_at: new Date().toISOString(),
             raw_payload: {
                 ...profile,

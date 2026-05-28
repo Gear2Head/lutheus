@@ -17,7 +17,83 @@ function normalizeIdentityKey(value) {
 function getRoute(req) {
     const route = req.query?.route;
     if (Array.isArray(route)) return String(route[0] || '').replace(/^\/+|\/+$/g, '');
-    return String(route || '').replace(/^\/+|\/+$/g, '');
+    const normalized = String(route || '').replace(/^\/+|\/+$/g, '');
+    if (normalized) return normalized;
+    const match = String(req.url || '').match(/\/api\/admin\/([^/?#]+)/);
+    return match ? decodeURIComponent(match[1]) : '';
+}
+
+const DEFAULT_ROLE_CONFIG = Object.freeze([
+    { role_key: 'kurucu', role_label: 'Kurucu', role_order: 0, permission_group: 'owner', permission_level: 100, is_management: true, visible: true, color_hex: '#7f1d1d' },
+    { role_key: 'admin', role_label: 'Admin', role_order: 1, permission_group: 'admin', permission_level: 100, is_management: true, visible: true, color_hex: '#b91c1c' },
+    { role_key: 'yonetici', role_label: 'Yonetici', role_order: 2, permission_group: 'management', permission_level: 90, is_management: true, visible: true, color_hex: '#dc2626' },
+    { role_key: 'genel_sorumlu', role_label: 'Genel Sorumlu', role_order: 3, permission_group: 'management', permission_level: 80, is_management: true, visible: true, color_hex: '#ea580c' },
+    { role_key: 'discord_yoneticisi', role_label: 'Discord Yoneticisi', role_order: 4, permission_group: 'management', permission_level: 75, is_management: true, visible: true, color_hex: '#db2777' },
+    { role_key: 'kidemli_discord_moderatoru', role_label: 'Kidemli Discord Moderatoru', role_order: 5, permission_group: 'moderation', permission_level: 65, is_management: true, visible: true, color_hex: '#c2410c' },
+    { role_key: 'discord_moderatoru', role_label: 'Discord Moderatoru', role_order: 6, permission_group: 'moderation', permission_level: 50, is_management: false, visible: true, color_hex: '#fb923c' },
+    { role_key: 'discord_destek_ekibi', role_label: 'Discord Destek Ekibi', role_order: 7, permission_group: 'support', permission_level: 25, is_management: false, visible: true, color_hex: '#be185d' },
+    { role_key: 'viewer', role_label: 'Viewer', role_order: 8, permission_group: 'viewer', permission_level: 10, is_management: false, visible: true, color_hex: '#64748b' },
+    { role_key: 'pending', role_label: 'Beklemede', role_order: 98, permission_group: 'pending', permission_level: 0, is_management: false, visible: false, color_hex: '#71717a' },
+    { role_key: 'blocked', role_label: 'Engelli', role_order: 99, permission_group: 'blocked', permission_level: -1, is_management: false, visible: false, color_hex: '#52525b' }
+]);
+
+function roleConfigDefaults(role) {
+    return DEFAULT_ROLE_CONFIG.find((item) => item.role_key === normalizeRole(role)) || DEFAULT_ROLE_CONFIG.find((item) => item.role_key === 'pending');
+}
+
+async function listRoleConfigRows() {
+    const { data: rows, error } = await supabase
+        .from('staff_role_config')
+        .select('*')
+        .order('role_order', { ascending: true });
+    if (error) {
+        console.warn('[admin] staff_role_config read failed:', error.message || error);
+        return DEFAULT_ROLE_CONFIG;
+    }
+    return rows?.length ? rows : DEFAULT_ROLE_CONFIG;
+}
+
+function normalizeRoleConfigRow(row) {
+    const roleKey = normalizeRole(row.role_key || row.role_name || row.role || row.name);
+    const defaults = roleConfigDefaults(roleKey);
+    return {
+        roleKey,
+        roleName: roleKey,
+        roleLabel: row.role_label || row.role_name || defaults.role_label,
+        label: row.role_label || row.role_name || defaults.role_label,
+        roleOrder: Number(row.role_order ?? defaults.role_order),
+        permissionGroup: row.permission_group || defaults.permission_group,
+        permissionLevel: Number(row.permission_level ?? defaults.permission_level),
+        isManagement: row.is_management ?? defaults.is_management,
+        visible: row.visible !== false,
+        colorHex: row.color_hex || defaults.color_hex,
+        updatedAt: row.updated_at || null
+    };
+}
+
+function profilePermissionForRole(role) {
+    const defaults = roleConfigDefaults(role);
+    return {
+        permission_group: defaults.permission_group,
+        permission_level: defaults.permission_level
+    };
+}
+
+function mapRoleCacheRow(row) {
+    const payload = row.raw_payload || {};
+    return {
+        id: `discord:${row.discord_id}`,
+        identityKey: `discord:${row.discord_id}`,
+        discordId: row.discord_id,
+        displayName: row.display_name || payload.displayName || payload.name || `User ${row.discord_id}`,
+        avatar: row.avatar_url || payload.avatar || payload.avatarUrl || null,
+        role: normalizeRole(row.staff_rank || 'pending'),
+        isActiveStaff: row.is_active_staff !== false && row.active !== false,
+        source: row.source || payload.source || 'supabase',
+        permissionGroup: row.permission_group || null,
+        permissionLevel: row.permission_level ?? null,
+        updatedAt: row.updated_at || row.last_synced_at || null
+    };
 }
 
 async function addAudit(action, actor, details = {}) {
@@ -119,7 +195,10 @@ async function handleRoleCache(req, res) {
         await requirePermission(req, PERMISSIONS.STAFF_VIEW);
 
         let { data: rows, error } = await supabase.from('role_cache').select('*').limit(500);
-        if (error) return serverError(res, error);
+        if (error) {
+            console.warn('[admin] role_cache read failed:', error.message || error);
+            return ok(res, { items: [], warning: 'ROLE_CACHE_UNAVAILABLE' });
+        }
 
         if (!rows || rows.length === 0) {
             const seedPayloads = [
@@ -155,16 +234,13 @@ async function handleRoleCache(req, res) {
             rows = reRows || [];
         }
 
-        const items = (rows || []).map((row) => {
-            const payload = row.raw_payload || {};
-            return {
-                id: `discord:${row.discord_id}`,
-                identityKey: `discord:${row.discord_id}`,
-                discordId: row.discord_id,
-                displayName: payload.displayName || payload.name || `User ${row.discord_id}`,
-                role: normalizeRole(row.staff_rank || 'pending')
-            };
-        });
+        const ids = (rows || []).map((row) => row.discord_id).filter(Boolean);
+        const { data: profiles, error: profileError } = ids.length
+            ? await supabase.from('staff_profiles').select('*').in('discord_id', ids)
+            : { data: [], error: null };
+        if (profileError) console.warn('[admin] staff profile join failed:', profileError.message || profileError);
+        const profileById = new Map((profiles || []).map((profile) => [profile.discord_id, profile]));
+        const items = (rows || []).map((row) => mapRoleCacheRow({ ...row, ...(profileById.get(row.discord_id) || {}), active: row.active, raw_payload: row.raw_payload, source: row.source, last_synced_at: row.last_synced_at }));
 
         return ok(res, { items });
     }
@@ -177,18 +253,24 @@ async function handleRoleCache(req, res) {
 
         const discordId = req.body?.discordId || String(identityKey).replace(/^discord:/, '');
         const role = normalizeRole(req.body?.role || 'pending');
+        const active = req.body?.isActiveStaff !== undefined ? req.body.isActiveStaff !== false : role !== 'blocked';
+        const permission = profilePermissionForRole(role);
 
         const payload = {
             discord_id: discordId,
             staff_rank: role,
-            active: true,
-            source: 'manual_or_cache',
+            active,
+            source: req.body?.source || 'manual_or_cache',
             raw_payload: {
                 identityKey,
                 discordId,
                 displayName: req.body?.displayName || '',
+                username: req.body?.username || null,
+                avatar: req.body?.avatar || req.body?.avatarUrl || null,
                 role,
+                isActiveStaff: active,
                 manualAccuracy: req.body?.manualAccuracy !== undefined ? Number(req.body.manualAccuracy) : null,
+                notes: req.body?.notes || null,
                 updatedAt: new Date().toISOString()
             },
             last_synced_at: new Date().toISOString(),
@@ -199,12 +281,15 @@ async function handleRoleCache(req, res) {
         const staffPayload = {
             discord_id: discordId,
             display_name: req.body?.displayName || `User ${discordId}`,
-            permission_group: ['admin', 'yonetici', 'genel_sorumlu', 'discord_yoneticisi', 'senior_moderator', 'kidemli_discord_moderatoru'].includes(role) ? 'management' :
-                              (['discord_destek_ekibi', 'destek'].includes(role) ? 'support' : 'moderation'),
-            permission_level: ['admin', 'yonetici', 'genel_sorumlu', 'discord_yoneticisi', 'senior_moderator', 'kidemli_discord_moderatoru'].includes(role) ? 100 :
-                              (['discord_destek_ekibi', 'destek'].includes(role) ? 25 : 50),
+            username: req.body?.username || null,
+            avatar_url: req.body?.avatar || req.body?.avatarUrl || null,
+            permission_group: req.body?.permissionGroup || permission.permission_group,
+            permission_level: req.body?.permissionLevel !== undefined ? Number(req.body.permissionLevel) : permission.permission_level,
             staff_rank: role,
-            is_active_staff: role !== 'pending' && role !== 'blocked',
+            is_active_staff: active && role !== 'pending',
+            removal_reason: active ? null : (req.body?.removalReason || 'manual_inactive'),
+            removed_from_staff_at: active ? null : new Date().toISOString(),
+            raw_payload: payload.raw_payload,
             updated_at: new Date().toISOString()
         };
         const { error: staffError } = await supabase.from('staff_profiles').upsert([staffPayload], { onConflict: 'discord_id' });
@@ -215,7 +300,7 @@ async function handleRoleCache(req, res) {
 
         await addAudit('role_cache_updated', actor, payload.raw_payload);
 
-        return ok(res, { item: { id: identityKey, ...payload.raw_payload } });
+        return ok(res, { item: mapRoleCacheRow({ ...payload, ...staffPayload, active }) });
     }
 
     if (req.method === 'DELETE') {
@@ -283,7 +368,10 @@ async function handleStaffProfiles(req, res) {
             .select('*')
             .order('updated_at', { ascending: false })
             .limit(500);
-        if (error) return serverError(res, error);
+        if (error) {
+            console.warn('[admin] staff_profiles read failed:', error.message || error);
+            return ok(res, { items: [], warning: 'STAFF_PROFILES_UNAVAILABLE' });
+        }
 
         const items = (rows || []).map((row) => ({
             id: row.discord_id || row.id,
@@ -298,6 +386,11 @@ async function handleStaffProfiles(req, res) {
             avatarUrl: row.avatar_url || row.raw_payload?.avatar || row.raw_payload?.avatarUrl || null,
             role: normalizeRole(row.staff_rank || row.raw_payload?.role || 'pending'),
             isActiveStaff: row.is_active_staff !== false,
+            permissionGroup: row.permission_group,
+            permissionLevel: row.permission_level,
+            removalReason: row.removal_reason || null,
+            removedFromStaffAt: row.removed_from_staff_at || null,
+            rawPayload: row.raw_payload || {},
             source: row.permission_group || row.raw_payload?.source || 'supabase',
             updatedAt: row.updated_at,
             lastSeen: row.last_seen_at
@@ -313,16 +406,21 @@ async function handleStaffProfiles(req, res) {
             .map((profile) => {
                 const discordId = String(profile.discordId || profile.discordUserId || profile.id || '').replace(/^discord:/, '').trim();
                 if (!/^\d{17,20}$/.test(discordId)) return null;
+                const role = profile.role ? normalizeRole(profile.role) : normalizeRole(profile.staffRank || 'pending');
+                const permission = profilePermissionForRole(role);
+                const active = profile.isActiveStaff !== false && role !== 'blocked';
                 return {
                     discord_id: discordId,
                     email: profile.email || null,
                     display_name: profile.displayName || profile.name || profile.username || null,
                     username: profile.username || null,
                     avatar_url: profile.avatar || profile.avatarUrl || null,
-                    staff_rank: profile.role ? normalizeRole(profile.role) : null,
-                    permission_group: profile.source || 'extension',
-                    permission_level: Number(profile.permissionLevel || 0),
-                    is_active_staff: profile.isActiveStaff !== false,
+                    staff_rank: role,
+                    permission_group: profile.permissionGroup || profile.source || permission.permission_group,
+                    permission_level: profile.permissionLevel !== undefined ? Number(profile.permissionLevel) : permission.permission_level,
+                    is_active_staff: active,
+                    removed_from_staff_at: active ? null : (profile.removedFromStaffAt || new Date().toISOString()),
+                    removal_reason: active ? null : (profile.removalReason || 'manual_inactive'),
                     last_seen_at: profile.lastSeen || profile.updatedAt || new Date().toISOString(),
                     raw_payload: profile,
                     updated_at: new Date().toISOString()
@@ -335,8 +433,67 @@ async function handleStaffProfiles(req, res) {
         const { error } = await supabase.from('staff_profiles').upsert(rows, { onConflict: 'discord_id' });
         if (error) return serverError(res, error);
 
+        const roleRows = rows
+            .filter((row) => row.discord_id && row.staff_rank)
+            .map((row) => ({
+                discord_id: row.discord_id,
+                staff_rank: row.staff_rank,
+                rank_color: row.rank_color || null,
+                source: row.permission_group || 'staff_profiles',
+                active: row.is_active_staff,
+                raw_payload: row.raw_payload || {},
+                last_synced_at: new Date().toISOString(),
+                updated_at: new Date().toISOString()
+            }));
+        if (roleRows.length) {
+            const { error: roleError } = await supabase.from('role_cache').upsert(roleRows, { onConflict: 'discord_id' });
+            if (roleError) console.warn('[admin] role_cache mirror failed:', roleError.message || roleError);
+        }
+
         await addAudit('staff_profiles_upserted', actor, { count: rows.length });
         return ok(res, { items: rows });
+    }
+
+    res.setHeader('Allow', 'GET,POST,PATCH');
+    return res.status(405).json({ ok: false, error: 'METHOD_NOT_ALLOWED' });
+}
+
+async function handleStaffRoleConfig(req, res) {
+    if (req.method === 'GET') {
+        await requirePermission(req, PERMISSIONS.STAFF_VIEW);
+        const rows = await listRoleConfigRows();
+        return ok(res, { items: rows.map(normalizeRoleConfigRow) });
+    }
+
+    if (req.method === 'PATCH' || req.method === 'POST') {
+        const actor = await requirePermission(req, PERMISSIONS.STAFF_ASSIGN_ROLE);
+        const incoming = Array.isArray(req.body?.roles) ? req.body.roles : [req.body || {}];
+        const rows = incoming
+            .map((role) => {
+                const roleKey = normalizeRole(role.roleKey || role.role_key || role.roleName || role.role_name);
+                if (!roleKey || roleKey === 'pending') return null;
+                const defaults = roleConfigDefaults(roleKey);
+                return {
+                    role_key: roleKey,
+                    role_label: role.roleLabel || role.role_label || role.label || defaults.role_label,
+                    role_name: role.roleLabel || role.role_label || role.label || defaults.role_label,
+                    role_order: Number(role.roleOrder ?? role.role_order ?? defaults.role_order),
+                    permission_group: role.permissionGroup || role.permission_group || defaults.permission_group,
+                    permission_level: Number(role.permissionLevel ?? role.permission_level ?? defaults.permission_level),
+                    is_management: role.isManagement ?? role.is_management ?? defaults.is_management,
+                    visible: role.visible !== false,
+                    color_hex: role.colorHex || role.color_hex || defaults.color_hex,
+                    updated_at: new Date().toISOString()
+                };
+            })
+            .filter(Boolean);
+
+        if (!rows.length) return badRequest(res, 'ROLE_CONFIG_REQUIRED');
+
+        const { error } = await supabase.from('staff_role_config').upsert(rows, { onConflict: 'role_key' });
+        if (error) return serverError(res, error);
+        await addAudit('staff_role_config_updated', actor, { count: rows.length });
+        return ok(res, { items: rows.map(normalizeRoleConfigRow) });
     }
 
     res.setHeader('Allow', 'GET,POST,PATCH');
@@ -636,6 +793,7 @@ module.exports = async function handler(req, res) {
         if (route === 'google-allowlist') return handleGoogleAllowlist(req, res);
         if (route === 'role-cache') return handleRoleCache(req, res);
         if (route === 'role-policy') return handleRolePolicy(req, res);
+        if (route === 'staff-role-config') return handleStaffRoleConfig(req, res);
         if (route === 'staff-profiles') return handleStaffProfiles(req, res);
         if (route === 'discord-bot-guilds') return handleDiscordBotGuilds(req, res);
         if (route === 'discord-bot-dashboard') return handleDiscordBotDashboard(req, res);

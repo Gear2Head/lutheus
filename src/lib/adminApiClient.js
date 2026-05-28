@@ -131,6 +131,19 @@ export const AdminApiClient = {
         return payload.items || [];
     },
 
+    async listStaffRoleConfig() {
+        const payload = await request('/api/admin/staff-role-config');
+        return payload.items || [];
+    },
+
+    async saveStaffRoleConfig(roles) {
+        const payload = await request('/api/admin/staff-role-config', {
+            method: 'PATCH',
+            body: JSON.stringify({ roles })
+        });
+        return payload.items || [];
+    },
+
     async setRoleCache(identityKey, data) {
         const payload = await request('/api/admin/role-cache', {
             method: 'POST',

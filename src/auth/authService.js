@@ -171,6 +171,15 @@ async function refreshSession(session) {
     return session;
 }
 
+// SECTION: AUTH_SERVICE
+// PURPOSE: Session guards and auth redirects shared by web and extension contexts.
+function redirectToLogin(returnTo = null, reason = null) {
+    const url = new URL(getURL('src/auth/login.html'));
+    if (returnTo) url.searchParams.set('returnTo', returnTo);
+    if (reason) url.searchParams.set('reason', reason);
+    window.location.href = url.toString();
+}
+
 export const AuthService = {
     signInWithCustomToken,
     signInWithGoogleAccessToken,
@@ -190,15 +199,15 @@ export const AuthService = {
     async requireSession(options = {}) {
         const session = await AuthService.getSession();
         if (!session) {
-            AuthService.redirectToLogin(options.returnTo);
+            redirectToLogin(options.returnTo);
             throw new Error('AUTH_REQUIRED');
         }
         if (session.profile?.status === 'blocked' || session.role === ROLES.BLOCKED) {
-            AuthService.redirectToLogin(options.returnTo, 'blocked');
+            redirectToLogin(options.returnTo, 'blocked');
             throw new Error('AUTH_BLOCKED');
         }
         if (options.admin && !canAccessAdmin(session.role)) {
-            AuthService.redirectToLogin(options.returnTo, 'forbidden');
+            redirectToLogin(options.returnTo, 'forbidden');
             throw new Error('AUTH_FORBIDDEN');
         }
         return session;
@@ -316,12 +325,7 @@ export const AuthService = {
         await clearStoredSession();
     },
 
-    redirectToLogin(returnTo = null, reason = null) {
-        const url = new URL(getURL('src/auth/login.html'));
-        if (returnTo) url.searchParams.set('returnTo', returnTo);
-        if (reason) url.searchParams.set('reason', reason);
-        window.location.href = url.toString();
-    },
+    redirectToLogin,
 
     getPostLoginUrl(session) {
         if (canAccessAdmin(session?.role)) {

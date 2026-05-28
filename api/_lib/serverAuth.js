@@ -27,6 +27,15 @@ function extractDiscordId(decoded) {
     return candidates.find((value) => /^\d{17,20}$/.test(String(value))) || '';
 }
 
+async function maybeSingleSafe(builder, source) {
+    const { data, error } = await builder.maybeSingle();
+    if (error) {
+        console.warn(`[serverAuth] ${source} lookup failed:`, error.message || error);
+        return null;
+    }
+    return data || null;
+}
+
 async function resolveActorFromToken(req) {
     const token = getBearerToken(req);
     if (!token) {
@@ -52,12 +61,11 @@ async function resolveActorFromToken(req) {
 
     // 2. googleAllowlist check
     if (email) {
-        const { data: allowRow } = await supabase
+        const allowRow = await maybeSingleSafe(supabase
             .from('google_allowlist')
             .select('*')
             .eq('email', email)
-            .eq('active', true)
-            .maybeSingle();
+            .eq('active', true), 'google_allowlist');
 
         if (allowRow?.dashboard_access_role) {
             role = allowRow.dashboard_access_role;
@@ -67,12 +75,11 @@ async function resolveActorFromToken(req) {
 
     // 3. roleCache check
     if (!role && discordId) {
-        const { data: roleRow } = await supabase
+        const roleRow = await maybeSingleSafe(supabase
             .from('role_cache')
             .select('*')
             .eq('discord_id', discordId)
-            .eq('active', true)
-            .maybeSingle();
+            .eq('active', true), 'role_cache');
 
         if (roleRow?.staff_rank) {
             role = roleRow.staff_rank;
@@ -82,12 +89,11 @@ async function resolveActorFromToken(req) {
 
     // 4. staff_profiles check
     if (!role && discordId) {
-        const { data: profileRow } = await supabase
+        const profileRow = await maybeSingleSafe(supabase
             .from('staff_profiles')
             .select('*')
             .eq('discord_id', discordId)
-            .eq('is_active_staff', true)
-            .maybeSingle();
+            .eq('is_active_staff', true), 'staff_profiles');
 
         if (profileRow?.staff_rank) {
             role = profileRow.staff_rank;

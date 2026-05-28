@@ -188,17 +188,17 @@ export const AuthService = {
     },
 
     async requireSession(options = {}) {
-        const session = await this.getSession();
+        const session = await AuthService.getSession();
         if (!session) {
-            this.redirectToLogin(options.returnTo);
+            AuthService.redirectToLogin(options.returnTo);
             throw new Error('AUTH_REQUIRED');
         }
         if (session.profile?.status === 'blocked' || session.role === ROLES.BLOCKED) {
-            this.redirectToLogin(options.returnTo, 'blocked');
+            AuthService.redirectToLogin(options.returnTo, 'blocked');
             throw new Error('AUTH_BLOCKED');
         }
         if (options.admin && !canAccessAdmin(session.role)) {
-            this.redirectToLogin(options.returnTo, 'forbidden');
+            AuthService.redirectToLogin(options.returnTo, 'forbidden');
             throw new Error('AUTH_FORBIDDEN');
         }
         return session;

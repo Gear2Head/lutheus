@@ -118,22 +118,26 @@ async function requirePermission(req, permission) {
     const actor = await requireUser(req);
 
     if (!hasPermission(actor.role, permission)) {
-        await supabase.from('audit_logs').insert([{
-            action: 'unauthorized_access_attempt',
-            target_type: 'api',
-            actor_email: actor.email || null,
-            actor_discord_id: actor.discordId || null,
-            metadata: {
-                resource: req.url || 'api',
-                permission: permission,
-                uid: actor.uid,
-                role: actor.role,
-                roleSource: actor.roleSource,
-                method: req.method,
-                path: req.url,
-                userAgent: req.headers['user-agent'] || null
-            }
-        }]).catch(() => null);
+        try {
+            await supabase.from('audit_logs').insert([{
+                action: 'unauthorized_access_attempt',
+                target_type: 'api',
+                actor_email: actor.email || null,
+                actor_discord_id: actor.discordId || null,
+                metadata: {
+                    resource: req.url || 'api',
+                    permission: permission,
+                    uid: actor.uid,
+                    role: actor.role,
+                    roleSource: actor.roleSource,
+                    method: req.method,
+                    path: req.url,
+                    userAgent: req.headers['user-agent'] || null
+                }
+            }]);
+        } catch (auditError) {
+            // ignore database audit log errors to prevent blocking the response
+        }
 
         throw Object.assign(new Error('FORBIDDEN'), { statusCode: 403 });
     }

@@ -51,9 +51,10 @@ export const LUTHEUS_RANKS = {
 
 // Süre çevirici (string -> dakika)
 export function parseDuration(durationStr) {
-    if (!durationStr) return null;
+    if (durationStr === null || durationStr === undefined || durationStr === '') return null;
+    if (typeof durationStr === 'number') return durationStr;
 
-    const str = durationStr.toLowerCase().trim();
+    const str = String(durationStr).toLowerCase().trim();
 
     // Özel durum: Süresiz / Ban
     if (str.includes('süresiz') || str.includes('perma') || str.includes('sonsuz') || str.includes('perm') || str.includes('belirsiz')) {

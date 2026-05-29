@@ -31,9 +31,10 @@ export const LUTHEUS_RANKS = {
 
 // Süre çevirici (string -> dakika)
 export function parseDuration(durationStr) {
-    if (!durationStr) return null;
+    if (durationStr === null || durationStr === undefined || durationStr === '') return null;
+    if (typeof durationStr === 'number') return durationStr;
 
-    let str = durationStr.toLowerCase().trim();
+    let str = String(durationStr).toLowerCase().trim();
 
     // Strip out remaining time indicator like "in 3 hours" or "kalan 5 dk" or "(in 3 hours)"
     const index = str.search(/\b(in|kalan)\b/i);

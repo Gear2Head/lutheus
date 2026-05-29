@@ -458,7 +458,8 @@ function isDisplayableStaffEntry(entry, { requireCases = false } = {}) {
 }
 
 function cleanReason(value) {
-    const text = String(value || '').trim();
+    const rawVal = typeof value === 'object' && value ? (value.raw || value.normalized || '') : value;
+    const text = String(rawVal || '').trim();
     if (!text || /^\d{4,20}$/.test(text)) return 'Bilinmiyor';
     return text;
 }
@@ -1640,7 +1641,7 @@ function renderManagement() {
         const profile = resolveStaffProfile(entry);
         return fuzzyMatch(entry.id, search)
             || fuzzyMatch(entry.caseId, search)
-            || fuzzyMatch(entry.reason, search)
+            || fuzzyMatch(cleanReason(entry.reason), search)
             || fuzzyMatch(profile.name, search)
             || fuzzyMatch(profile.id, search);
     }).filter((entry) => isCaseInPeriod(entry, period)).sort((left, right) => compareCasesForAdmin(left, right, sort));
@@ -1805,7 +1806,7 @@ function openModal(moderator) {
                         <strong>${escapeHtml(entry.createdRaw || '-')}</strong>
                     </div>
                 </div>
-                <div class="case-history-reason">${escapeHtml(entry.reason || 'Sebep yok')}</div>
+                <div class="case-history-reason">${escapeHtml(cleanReason(entry.reason) || 'Sebep yok')}</div>
                 <div class="case-history-validation">${escapeHtml(validation.reason || 'CUK değerlendirmesi yok')}</div>
                 <div class="case-history-actions">
                         <select data-status-for="${escapeHtml(String(entry.id || ''))}" ${canUpdatePenalty ? '' : 'disabled'}>
@@ -2523,7 +2524,7 @@ async function exportAll() {
     filteredCases.slice(0, 100).forEach((entry) => {
         const validation = getValidation(entry);
         const profile = resolveStaffProfile(entry);
-        txt += `#${entry.id || entry.caseId || '-'} | Yetkili: ${profile.name} | Sebep: ${entry.reason || '-'} | Durum: ${validation.status || 'unknown'}\n`;
+        txt += `#${entry.id || entry.caseId || '-'} | Yetkili: ${profile.name} | Sebep: ${cleanReason(entry.reason) || '-'} | Durum: ${validation.status || 'unknown'}\n`;
     });
 
     downloadFile(`lutheus-rapor-${Date.now()}.txt`, txt, 'text/plain;charset=utf-8');

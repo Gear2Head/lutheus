@@ -34,6 +34,13 @@ function getSafeReturnTo() {
     }
 }
 
+function redirectToLogin(returnTo = null, reason = null) {
+    const url = new URL(getURL('src/auth/login.html'));
+    if (returnTo) url.searchParams.set('returnTo', returnTo);
+    if (reason) url.searchParams.set('reason', reason);
+    window.location.href = url.toString();
+}
+
 function parseHashOrQuery(url) {
     const parsed = new URL(url);
     const params = new URLSearchParams(parsed.search);
@@ -174,6 +181,7 @@ async function refreshSession(session) {
 export const AuthService = {
     signInWithCustomToken,
     signInWithGoogleAccessToken,
+    redirectToLogin,
 
     async getSession({ refresh = true } = {}) {
         const session = await getStoredSession();

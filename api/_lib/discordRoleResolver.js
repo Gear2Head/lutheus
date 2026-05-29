@@ -23,9 +23,10 @@ const SEEDED_ROLE_MEMBERS = Object.freeze([
 const DEFAULT_ROLE_CONFIG = Object.freeze({
     kurucu: { permissionGroup: 'owner', permissionLevel: 100 },
     admin: { permissionGroup: 'admin', permissionLevel: 100 },
-    yonetici: { permissionGroup: 'management', permissionLevel: 90 },
-    genel_sorumlu: { permissionGroup: 'management', permissionLevel: 80 },
-    discord_yoneticisi: { permissionGroup: 'management', permissionLevel: 75 },
+    yonetici: { permissionGroup: 'management', permissionLevel: 100 },
+    genel_sorumlu: { permissionGroup: 'management', permissionLevel: 100 },
+    discord_yoneticisi: { permissionGroup: 'management', permissionLevel: 100 },
+    senior_moderator: { permissionGroup: 'management', permissionLevel: 100 },
     kidemli_discord_moderatoru: { permissionGroup: 'management', permissionLevel: 100 },
     discord_moderatoru: { permissionGroup: 'moderation', permissionLevel: 50 },
     discord_destek_ekibi: { permissionGroup: 'support', permissionLevel: 25 },

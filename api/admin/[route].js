@@ -26,10 +26,11 @@ function getRoute(req) {
 const DEFAULT_ROLE_CONFIG = Object.freeze([
     { role_key: 'kurucu', role_label: 'Kurucu', role_order: 0, permission_group: 'owner', permission_level: 100, is_management: true, visible: true, color_hex: '#7f1d1d' },
     { role_key: 'admin', role_label: 'Admin', role_order: 1, permission_group: 'admin', permission_level: 100, is_management: true, visible: true, color_hex: '#b91c1c' },
-    { role_key: 'yonetici', role_label: 'Yonetici', role_order: 2, permission_group: 'management', permission_level: 90, is_management: true, visible: true, color_hex: '#dc2626' },
-    { role_key: 'genel_sorumlu', role_label: 'Genel Sorumlu', role_order: 3, permission_group: 'management', permission_level: 80, is_management: true, visible: true, color_hex: '#ea580c' },
-    { role_key: 'discord_yoneticisi', role_label: 'Discord Yoneticisi', role_order: 4, permission_group: 'management', permission_level: 75, is_management: true, visible: true, color_hex: '#db2777' },
-    { role_key: 'kidemli_discord_moderatoru', role_label: 'Kidemli Discord Moderatoru', role_order: 5, permission_group: 'moderation', permission_level: 65, is_management: true, visible: true, color_hex: '#c2410c' },
+    { role_key: 'yonetici', role_label: 'Yonetici', role_order: 2, permission_group: 'management', permission_level: 100, is_management: true, visible: true, color_hex: '#dc2626' },
+    { role_key: 'genel_sorumlu', role_label: 'Genel Sorumlu', role_order: 3, permission_group: 'management', permission_level: 100, is_management: true, visible: true, color_hex: '#ea580c' },
+    { role_key: 'discord_yoneticisi', role_label: 'Discord Yoneticisi', role_order: 4, permission_group: 'management', permission_level: 100, is_management: true, visible: true, color_hex: '#db2777' },
+    { role_key: 'senior_moderator', role_label: 'Senior Moderator', role_order: 5, permission_group: 'management', permission_level: 100, is_management: true, visible: true, color_hex: '#3498db' },
+    { role_key: 'kidemli_discord_moderatoru', role_label: 'Kidemli Discord Moderatoru', role_order: 6, permission_group: 'management', permission_level: 100, is_management: true, visible: true, color_hex: '#c2410c' },
     { role_key: 'discord_moderatoru', role_label: 'Discord Moderatoru', role_order: 6, permission_group: 'moderation', permission_level: 50, is_management: false, visible: true, color_hex: '#fb923c' },
     { role_key: 'discord_destek_ekibi', role_label: 'Discord Destek Ekibi', role_order: 7, permission_group: 'support', permission_level: 25, is_management: false, visible: true, color_hex: '#be185d' },
     { role_key: 'viewer', role_label: 'Viewer', role_order: 8, permission_group: 'viewer', permission_level: 10, is_management: false, visible: true, color_hex: '#64748b' },
@@ -332,15 +333,22 @@ async function handleRoleCache(req, res) {
             raw_payload: payload.raw_payload,
             updated_at: new Date().toISOString()
         };
+        let warning = null;
         const { error: staffError } = await supabase.from('staff_profiles').upsert([staffPayload], { onConflict: 'discord_id' });
-        if (staffError) return serverError(res, staffError);
+        if (staffError) {
+            console.warn('[admin] staff profile mirror failed:', staffError.message || staffError);
+            warning = 'STAFF_PROFILE_MIRROR_FAILED';
+        }
 
         const { error } = await supabase.from('role_cache').upsert([payload], { onConflict: 'discord_id' });
-        if (error) return serverError(res, error);
+        if (error) {
+            console.warn('[admin] role cache upsert failed:', error.message || error);
+            return ok(res, { item: mapRoleCacheRow({ ...payload, ...staffPayload, active }), warning: 'ROLE_CACHE_WRITE_FALLBACK' });
+        }
 
         await addAudit('role_cache_updated', actor, payload.raw_payload);
 
-        return ok(res, { item: mapRoleCacheRow({ ...payload, ...staffPayload, active }) });
+        return ok(res, { item: mapRoleCacheRow({ ...payload, ...staffPayload, active }), ...(warning ? { warning } : {}) });
     }
 
     if (req.method === 'DELETE') {
@@ -416,6 +424,13 @@ async function handleStaffProfiles(req, res) {
             return ok(res, { items: seededStaffProfiles(), warning: 'STAFF_PROFILES_UNAVAILABLE' });
         }
 
+        const { data: authorRows, error: authorError } = await supabase
+            .from('sapphire_cases')
+            .select('author_discord_id, author_display_name, author_avatar_url, created_at_sapphire')
+            .not('author_discord_id', 'is', null)
+            .limit(1000);
+        if (authorError) console.warn('[admin] sapphire author read failed:', authorError.message || authorError);
+
         const items = (rows || []).map((row) => ({
             id: row.discord_id || row.id,
             discordId: row.discord_id,
@@ -440,8 +455,34 @@ async function handleStaffProfiles(req, res) {
         }));
 
         const existingIds = new Set(items.map((item) => item.discordId).filter(Boolean));
+        const authorItems = [];
+        for (const row of authorRows || []) {
+            const discordId = row.author_discord_id;
+            if (!discordId || existingIds.has(discordId)) continue;
+            existingIds.add(discordId);
+            authorItems.push({
+                id: discordId,
+                discordId,
+                discordUserId: discordId,
+                sapphireAuthorId: discordId,
+                email: null,
+                displayName: row.author_display_name || `User ${discordId}`,
+                name: row.author_display_name || `User ${discordId}`,
+                username: null,
+                avatar: row.author_avatar_url || null,
+                avatarUrl: row.author_avatar_url || null,
+                role: 'discord_destek_ekibi',
+                isActiveStaff: true,
+                permissionGroup: 'support',
+                permissionLevel: 25,
+                rawPayload: { source: 'sapphire-author' },
+                source: 'sapphire-author',
+                updatedAt: row.created_at_sapphire,
+                lastSeen: row.created_at_sapphire
+            });
+        }
         const seeded = seededStaffProfiles().filter((item) => !existingIds.has(item.discordId));
-        return ok(res, { items: [...items, ...seeded] });
+        return ok(res, { items: [...items, ...authorItems, ...seeded] });
     }
 
     if (req.method === 'POST' || req.method === 'PATCH') {
@@ -475,8 +516,12 @@ async function handleStaffProfiles(req, res) {
 
         if (!rows.length) return badRequest(res, 'STAFF_PROFILES_REQUIRED');
 
+        let warning = null;
         const { error } = await supabase.from('staff_profiles').upsert(rows, { onConflict: 'discord_id' });
-        if (error) return serverError(res, error);
+        if (error) {
+            console.warn('[admin] staff_profiles write failed:', error.message || error);
+            warning = 'STAFF_PROFILES_WRITE_FALLBACK';
+        }
 
         const roleRows = rows
             .filter((row) => row.discord_id && row.staff_rank)
@@ -495,8 +540,8 @@ async function handleStaffProfiles(req, res) {
             if (roleError) console.warn('[admin] role_cache mirror failed:', roleError.message || roleError);
         }
 
-        await addAudit('staff_profiles_upserted', actor, { count: rows.length });
-        return ok(res, { items: rows });
+        await addAudit('staff_profiles_upserted', actor, { count: rows.length, warning });
+        return ok(res, { items: rows, ...(warning ? { warning } : {}) });
     }
 
     res.setHeader('Allow', 'GET,POST,PATCH');

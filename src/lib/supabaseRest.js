@@ -38,6 +38,7 @@ function isAuthKeyError(error) {
         message.includes('no suitable key') ||
         message.includes('wrong key type') ||
         message.includes('invalid jwt') ||
+        message.includes('expired') ||
         message.includes('jwt');
 }
 

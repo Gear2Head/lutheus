@@ -82,7 +82,14 @@ function syncGet(key) {
 function syncSet(key, value) {
     return new Promise((resolve) => {
         if (!hasChromeSync()) return resolve(storageSet(key, value));
-        chrome.storage.sync.set({ [key]: value }, resolve);
+        chrome.storage.sync.set({ [key]: value }, () => {
+            if (chrome.runtime?.lastError) {
+                console.warn(`Lutheus: chrome.storage.sync write skipped for ${key}:`, chrome.runtime.lastError.message);
+                storageSet(key, value).then(resolve);
+                return;
+            }
+            resolve();
+        });
     });
 }
 
@@ -133,6 +140,19 @@ function isCaseIdLike(value) {
     return /[A-Za-z]/.test(text) && /\d/.test(text);
 }
 
+function isDiscordId(value) {
+    return /^\d{17,20}$/.test(String(value || '').trim());
+}
+
+function isReasonLike(value) {
+    const text = String(value || '').trim();
+    if (!text) return false;
+    if (isDiscordId(text) || isCaseIdLike(text)) return false;
+    if (/^\d{1,2}\.\d{1,2}\.\d{4}/.test(text)) return false;
+    if (/^(mute|ban|warn|kick|timeout|permanent|süresiz|suresiz)$/i.test(text)) return false;
+    return true;
+}
+
 function normalizeDurationMs(value) {
     const text = String(value || '').trim().toLowerCase();
     if (!text) return null;
@@ -179,6 +199,9 @@ function validateCaseEntry(entry = {}) {
     if (!entry.userId && !entry.user && !entry.authorId && !entry.authorName) {
         return { valid: false, reason: 'missing_identity' };
     }
+    if (entry.reason && !isReasonLike(entry.reason)) return { valid: false, reason: 'shifted_reason' };
+    if (entry.userId && !isDiscordId(entry.userId)) return { valid: false, reason: 'invalid_user_id' };
+    if (entry.authorId && !isDiscordId(entry.authorId)) return { valid: false, reason: 'invalid_author_id' };
     return { valid: true };
 }
 
@@ -196,10 +219,11 @@ function buildSourceMismatch(previous, next) {
 function normalizeCaseEntry(entry = {}, previous = null) {
     const id = String(entry.id || entry.caseId || '').trim();
     const embeddedAuthorId = String(entry.authorId || entry.moderatorId || entry.authorName || '').match(/\d{17,20}/)?.[0] || '';
-    const authorId = String(entry.authorId || entry.moderatorId || previous?.authorId || embeddedAuthorId || '').trim();
+    const rawAuthorId = String(entry.authorId || entry.moderatorId || embeddedAuthorId || '').trim();
+    const authorId = isDiscordId(rawAuthorId) ? rawAuthorId : (previous?.authorId || '');
     const cleanedAuthorName = String(entry.authorName || entry.moderator || '').replace(authorId, '').trim();
     const incomingReason = String(entry.reason || '').trim();
-    const safeReason = isCaseIdLike(incomingReason) ? '' : incomingReason;
+    const safeReason = isReasonLike(incomingReason) ? incomingReason : '';
     const duration = entry.duration || previous?.duration || '';
     const durationMs = Number.isFinite(Number(entry.durationMs))
         ? Number(entry.durationMs)
@@ -211,7 +235,7 @@ function normalizeCaseEntry(entry = {}, previous = null) {
         caseId: id,
         guildId: String(entry.guildId || previous?.guildId || LUTHEUS_GUILD_ID),
         authorId,
-        userId: String(entry.userId || previous?.userId || '').trim(),
+        userId: isDiscordId(entry.userId) ? String(entry.userId).trim() : (previous?.userId || ''),
         authorName: cleanedAuthorName || previous?.authorName || (entry.authorMissing ? 'Bilinmeyen Yetkili' : 'Bilinmiyor'),
         authorMissing: Boolean(entry.authorMissing || (!authorId && (!cleanedAuthorName || cleanedAuthorName === 'Bilinmeyen Yetkili'))),
         user: entry.user || previous?.user || 'Unknown',
@@ -395,13 +419,10 @@ export const Storage = {
         return new Promise((resolve) => {
             chrome.storage.sync.get(null, (all) => {
                 const keys = Object.keys(all || {}).filter((key) => key.startsWith('cases_'));
-                const writeMeta = () => chrome.storage.sync.set({
-                    cases_chunk_count: 0,
-                    cases_meta: {
-                        count: Array.isArray(cases) ? cases.length : 0,
-                        updatedAt: new Date().toISOString()
-                    }
-                }, resolve);
+                const writeMeta = () => syncSet('cases_meta', {
+                    count: Array.isArray(cases) ? cases.length : 0,
+                    updatedAt: new Date().toISOString()
+                }).then(() => syncSet('cases_chunk_count', 0)).then(resolve);
                 if (keys.length) chrome.storage.sync.remove(keys, writeMeta);
                 else writeMeta();
             });
@@ -799,7 +820,7 @@ export const Storage = {
     },
 
     async getStaffDirectory() {
-        const directory = (await this.getSync('staffDirectory')) || {};
+        const directory = (await this.get('staffDirectory')) || (await this.getSync('staffDirectory')) || {};
         const roleCache = await this.getRoleCache();
         let changed = false;
 
@@ -828,7 +849,7 @@ export const Storage = {
     },
 
     async saveStaffDirectory(directory) {
-        await this.setSync('staffDirectory', directory || {});
+        await this.set('staffDirectory', directory || {});
     },
 
     async upsertStaffDirectoryEntry(key, entry) {
@@ -876,7 +897,7 @@ export const Storage = {
                 avatar: hasBetterAvatar(entry.authorAvatar, directory[key]?.avatar)
                     ? entry.authorAvatar
                     : (directory[key]?.avatar || entry.authorAvatar || null),
-                role: directory[key]?.role || 'moderator',
+                role: directory[key]?.role || 'discord_destek_ekibi',
                 aliases: Array.from(new Set([...(directory[key]?.aliases || []), ...aliases])),
                 source: directory[key]?.source || 'sapphire-admin-scan',
                 scanCount: Number(directory[key]?.scanCount || 0) + 1,

@@ -299,6 +299,7 @@ async function handleIngest(req, res) {
     let inserted = 0;
     let updated = 0;
     let skipped = 0;
+    let warning = null;
 
     if (normalizedItems.length > 0) {
         const caseIds = normalizedItems.map(item => item.caseKey);
@@ -338,9 +339,9 @@ async function handleIngest(req, res) {
                     discord_id: item.authorId,
                     display_name: item.authorName || null,
                     avatar_url: item.authorAvatar || null,
-                    staff_rank: null,
-                    permission_group: 'sapphire',
-                    permission_level: 0,
+                    staff_rank: 'discord_destek_ekibi',
+                    permission_group: 'support',
+                    permission_level: 25,
                     is_active_staff: true,
                     last_seen_at: new Date().toISOString(),
                     raw_payload: {
@@ -355,10 +356,14 @@ async function handleIngest(req, res) {
         }
         if (staffProfiles.size) {
             const authorIds = Array.from(staffProfiles.keys());
-            const { data: existingProfiles } = await supabase
+            const { data: existingProfiles, error: existingProfilesError } = await supabase
                 .from('staff_profiles')
                 .select('discord_id, staff_rank, permission_group, permission_level')
                 .in('discord_id', authorIds);
+            if (existingProfilesError) {
+                console.warn('[Ingest] Failed to read existing staff profiles:', existingProfilesError.message || existingProfilesError);
+                warning = 'STAFF_PROFILE_READ_SKIPPED';
+            }
             
             const existingMap = new Map((existingProfiles || []).map(p => [p.discord_id, p]));
 
@@ -367,7 +372,7 @@ async function handleIngest(req, res) {
                 if (existing) {
                     return {
                         ...p,
-                        staff_rank: existing.staff_rank || null,
+                        staff_rank: existing.staff_rank || p.staff_rank,
                         permission_group: existing.permission_group || p.permission_group,
                         permission_level: existing.permission_level !== undefined ? existing.permission_level : p.permission_level
                     };
@@ -377,8 +382,8 @@ async function handleIngest(req, res) {
 
             const { error: staffUpsertError } = await supabase.from('staff_profiles').upsert(finalProfiles, { onConflict: 'discord_id' });
             if (staffUpsertError) {
-                console.error('[Ingest] Failed to upsert staff_profiles:', staffUpsertError);
-                return serverError(res, staffUpsertError);
+                console.warn('[Ingest] Failed to upsert staff_profiles:', staffUpsertError.message || staffUpsertError);
+                warning = 'STAFF_PROFILE_SYNC_SKIPPED';
             }
         }
 
@@ -440,7 +445,8 @@ async function handleIngest(req, res) {
         updated,
         skipped,
         incomplete: 0,
-        errors: 0
+        errors: 0,
+        ...(warning ? { warning } : {})
     });
 }
 

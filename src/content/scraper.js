@@ -339,6 +339,8 @@ window.GearTech.Scraper = {
         if (/^\d{4,24}$/.test(text)) return true;
         if (/^\d{17,20}$/.test(text)) return true;
         if (this.isLikelyCaseId(text)) return true;
+        if (/^\d{1,2}\.\d{1,2}\.\d{4}/.test(text)) return true;
+        if (/^(mute|ban|warn|kick|timeout|permanent|süresiz|suresiz)$/i.test(text)) return true;
         return false;
     },
 

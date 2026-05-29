@@ -13,23 +13,42 @@ function calculateContentHash(fields) {
 }
 
 function parseCaseId(value) {
-    const matched = safeString(value).match(/^\d+$/);
+    const matched = safeString(value).match(/^[A-Za-z0-9_-]{4,24}$/);
     return matched ? matched[0] : '';
+}
+
+function isDiscordId(value) {
+    return /^\d{17,20}$/.test(safeString(value));
+}
+
+function isReasonLike(value) {
+    const text = safeString(value);
+    if (!text) return false;
+    if (isDiscordId(text)) return false;
+    if (/^\d{17,20}$/.test(text)) return false;
+    if (/^[A-Za-z0-9_-]{4,24}$/.test(text) && /[A-Za-z]/.test(text) && /\d/.test(text)) return false;
+    if (/^\d{1,2}\.\d{1,2}\.\d{4}/.test(text)) return false;
+    if (/^(mute|ban|warn|kick|timeout|permanent|süresiz|suresiz)$/i.test(text)) return false;
+    return true;
 }
 
 function normalizeCase(item, guildId) {
     const caseId = parseCaseId(item.caseId || item.id);
-    const userId = safeString(item.userId || item.user_id);
-    const authorId = safeString(item.authorId || item.moderatorId || item.moderator_id);
+    const rawUserId = safeString(item.userId || item.user_id);
+    const rawAuthorId = safeString(item.authorId || item.moderatorId || item.moderator_id);
+    const embeddedAuthorId = safeString(item.authorName || item.moderator).match(/\d{17,20}/)?.[0] || '';
+    const userId = isDiscordId(rawUserId) ? rawUserId : '';
+    const authorId = isDiscordId(rawAuthorId) ? rawAuthorId : embeddedAuthorId;
     
     // Ensure essential string fields are parsed safely
     const userName = safeString(item.userName || item.user || item.user_name || 'Unknown');
     const userAvatar = safeString(item.userAvatar || item.avatar || item.user_avatar || null);
-    const authorName = safeString(item.authorName || item.moderator || item.moderator_name || 'Bilinmiyor');
+    const authorName = safeString(item.authorName || item.moderator || item.moderator_name || 'Bilinmiyor').replace(authorId, '').trim();
     const authorAvatar = safeString(item.authorAvatar || item.moderatorAvatar || item.moderator_avatar || null);
     
     const type = safeString(item.type || 'unknown').toLowerCase();
-    const reason = safeString(item.reason || '');
+    const rawReason = safeString(item.reason || '');
+    const reason = isReasonLike(rawReason) ? rawReason : '';
     const duration = safeString(item.duration || '');
     const createdRaw = safeString(item.createdRaw || item.createdAt || item.date || '');
     const sourceUrl = safeString(item.sourceUrl || '');

@@ -16,7 +16,7 @@ export function collectStaffEntries(cases = [], registry = {}, directory = {}) {
                 id: entry.authorId || directoryEntry.discordUserId || key,
                 sapphireAuthorId: entry.authorId || '',
                 displayName: registryEntry.name || directoryEntry.displayName || entry.authorName || 'Bilinmiyor',
-                role: registryEntry.role || directoryEntry.role || 'moderator',
+                role: registryEntry.role || directoryEntry.role || 'discord_destek_ekibi',
                 punishmentCount: 0,
                 aliases: Array.from(
                     new Set([

@@ -101,6 +101,20 @@ function getSync(key) {
     });
 }
 
+function setSync(key, value) {
+    return new Promise((resolve) => {
+        if (!chrome.storage.sync) return setLocal(key, value).then(resolve);
+        chrome.storage.sync.set({ [key]: value }, () => {
+            if (chrome.runtime?.lastError) {
+                console.warn(`[Lutheus SW] chrome.storage.sync write skipped for ${key}:`, chrome.runtime.lastError.message);
+                setLocal(key, value).then(resolve);
+                return;
+            }
+            resolve();
+        });
+    });
+}
+
 function normalizeText(value) {
     return (value || '')
         .toString()
@@ -357,7 +371,6 @@ async function updateRegistryFromCases(cases) {
 
         if (entry.authorId || (entry.authorName && !isUnknownAuthorName(entry.authorName))) {
             const roleEntry = entry.authorId ? findRoleCacheEntry(entry.authorId) : null;
-            if (!roleEntry) continue;
             const key = entry.authorId || `name:${entry.authorName}`;
             const aliases = [entry.authorName].filter(Boolean);
             directory[key] = {
@@ -366,7 +379,7 @@ async function updateRegistryFromCases(cases) {
                 discordUserId: directory[key]?.discordUserId || entry.authorId || '',
                 displayName: entry.authorName || directory[key]?.displayName || 'Bilinmiyor',
                 avatar: entry.authorAvatar || directory[key]?.avatar || null,
-                role: normalizeRole(roleEntry.role || directory[key]?.role || 'moderator'),
+                role: normalizeRole(roleEntry?.role || directory[key]?.role || 'discord_destek_ekibi'),
                 aliases: Array.from(new Set([...(directory[key]?.aliases || []), ...aliases])),
                 source: directory[key]?.source || 'sapphire-intercept-listener',
                 scanCount: Number(directory[key]?.scanCount || 0) + 1,
@@ -393,6 +406,19 @@ function isCaseIdLike(value) {
     if (/^\d{17,20}$/.test(text)) return false;
     if (/^(mute|ban|warn|kick|timeout|user|reason|author|duration|created|bilinmiyor|sunucu|discord|yetkili)$/i.test(text)) return false;
     return /[A-Za-z]/.test(text) && /\d/.test(text);
+}
+
+function isDiscordId(value) {
+    return /^\d{17,20}$/.test(String(value || '').trim());
+}
+
+function isReasonLike(value) {
+    const text = String(value || '').trim();
+    if (!text) return false;
+    if (isDiscordId(text) || isCaseIdLike(text)) return false;
+    if (/^\d{1,2}\.\d{1,2}\.\d{4}/.test(text)) return false;
+    if (/^(mute|ban|warn|kick|timeout|permanent|süresiz|suresiz)$/i.test(text)) return false;
+    return true;
 }
 
 function isUnknownAuthorName(value) {
@@ -437,6 +463,9 @@ function normalizeDurationMs(value) {
 function validateCaseForStorage(entry = {}) {
     if (!String(entry.id || entry.caseId || '').trim()) return { valid: false, reason: 'missing_case_id' };
     if (!entry.userId && !entry.user && !entry.authorId && !entry.authorName) return { valid: false, reason: 'missing_identity' };
+    if (entry.reason && !isReasonLike(entry.reason)) return { valid: false, reason: 'shifted_reason' };
+    if (entry.userId && !isDiscordId(entry.userId)) return { valid: false, reason: 'invalid_user_id' };
+    if (entry.authorId && !isDiscordId(entry.authorId)) return { valid: false, reason: 'invalid_author_id' };
     return { valid: true };
 }
 
@@ -515,10 +544,11 @@ function normalizeCaseForStorage(entry = {}) {
     const urlCaseId = String(sourceUrl.match(/\/cases\/([^/?#]+)/)?.[1] || '');
     const id = String(entry.id || entry.caseId || urlCaseId || '').trim();
     const embeddedAuthorId = String(entry.authorId || entry.moderatorId || entry.authorName || entry.moderator || '').match(/\d{17,20}/)?.[0] || '';
-    const authorId = String(entry.authorId || entry.moderatorId || embeddedAuthorId || '');
+    const rawAuthorId = String(entry.authorId || entry.moderatorId || embeddedAuthorId || '');
+    const authorId = isDiscordId(rawAuthorId) ? rawAuthorId : '';
     const authorName = String(entry.authorName || entry.moderator || '').replace(authorId, '').trim();
     const incomingReason = String(entry.reason || '').trim();
-    const safeReason = isCaseIdLike(incomingReason) ? '' : incomingReason;
+    const safeReason = isReasonLike(incomingReason) ? incomingReason : '';
     const duration = entry.duration || '';
 
     return {
@@ -527,7 +557,7 @@ function normalizeCaseForStorage(entry = {}) {
         caseId: id,
         guildId: String(entry.guildId || entry.rawData?.guildId || entry.rawData?.guild_id || LUTHEUS_GUILD_ID),
         user: entry.user || entry.username || 'Bilinmiyor',
-        userId: String(entry.userId || ''),
+        userId: isDiscordId(entry.userId) ? String(entry.userId) : '',
         authorId,
         authorName: authorName || (entry.authorMissing ? 'Bilinmeyen Yetkili' : 'Bilinmiyor'),
         authorMissing: Boolean(entry.authorMissing || (!authorId && (!authorName || isUnknownAuthorName(authorName)))),
@@ -905,7 +935,7 @@ function buildStaffEntries(cases, registry, directory) {
                 sapphireAuthorId: authorId || '',
                 displayName: registryEntry.name || directoryEntry.displayName || cleanName || entry.authorName || 'Bilinmiyor',
                 avatar: registryEntry.avatar || directoryEntry.avatar || entry.authorAvatar || null,
-                role: registryEntry.role || directoryEntry.role || 'moderator',
+                role: registryEntry.role || directoryEntry.role || 'discord_destek_ekibi',
                 aliases,
                 searchTerm: directoryEntry.searchTerm || aliases[0] || cleanName || authorId || key,
                 sapphirePunishments: 0

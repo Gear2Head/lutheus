@@ -188,6 +188,22 @@ function normalizeDurationMs(value) {
     return Math.round(amount * multipliers[unit]);
 }
 
+function getDurationText(duration) {
+    if (duration == null) return '';
+    if (typeof duration === 'string') return duration.trim();
+    if (typeof duration === 'object') {
+        return String(
+            duration.raw ||
+            duration.normalized ||
+            duration.text ||
+            duration.label ||
+            duration.duration ||
+            ''
+        ).trim();
+    }
+    return String(duration).trim();
+}
+
 function getReasonText(reason) {
     if (reason == null) return '';
 
@@ -247,7 +263,7 @@ function normalizeCaseEntry(entry = {}, previous = null) {
         ? (incomingReasonObj || incomingReasonText)
         : (previous?.reason || '');
 
-    const duration = entry.duration || previous?.duration || '';
+    const duration = getDurationText(entry.duration || previous?.duration || '');
     const durationMs = Number.isFinite(Number(entry.durationMs))
         ? Number(entry.durationMs)
         : (normalizeDurationMs(duration) ?? previous?.durationMs ?? null);

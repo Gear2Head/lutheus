@@ -743,11 +743,20 @@ async function handleDiscordBotGuilds(req, res) {
         let guilds = [];
 
         if (userManageableGuilds.length > 0) {
+            // Fetch guild details for the installed manageable guilds in parallel to get exact member count
+            const installedManageableGuildIds = userManageableGuilds
+                .filter(g => botGuildIds.has(g.id))
+                .map(g => g.id);
+            
+            const detailsPromises = installedManageableGuildIds.map(id => fetchGuildDetails(id).catch(() => null));
+            const detailsList = await Promise.all(detailsPromises);
+            const detailsMap = new Map(detailsList.filter(Boolean).map(g => [g.id, g]));
+
             // Map each user manageable guild
             guilds = userManageableGuilds.map(g => {
                 const botInstalled = botGuildIds.has(g.id);
-                // Try to find the guild in botGuilds to get latest approximate member count if installed
-                const botG = botGuilds.find(bg => bg.id === g.id);
+                // Try to find the guild in detailsMap to get latest approximate member count if installed
+                const botG = detailsMap.get(g.id);
                 const manageable =
                     (Number(g.permissions || 0) & 0x20) !== 0 ||
                     (Number(g.permissions || 0) & 0x8) !== 0 ||

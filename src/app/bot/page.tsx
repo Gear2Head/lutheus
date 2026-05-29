@@ -164,7 +164,7 @@ export default function BotServerSelectionPage() {
 
                   {g.botInstalled ? (
                     <Link
-                      href={`/bot/${g.id}/home`}
+                      href={`/bot/${g.id}`}
                       className="flex items-center justify-center gap-2 w-full py-3 bg-[#66fcf1] text-[#0b0c10] font-bold rounded-xl text-xs uppercase tracking-wider hover:bg-[#45f3ff] transition-all shadow-[0_0_15px_rgba(102,252,241,0.1)] group-hover:shadow-[0_0_20px_rgba(102,252,241,0.25)]"
                     >
                       <Settings className="w-4 h-4" />

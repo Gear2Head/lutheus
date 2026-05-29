@@ -460,6 +460,22 @@ function normalizeDurationMs(value) {
     return Math.round(amount * multipliers[match[2].toLowerCase()]);
 }
 
+function getDurationText(duration) {
+    if (duration == null) return '';
+    if (typeof duration === 'string') return duration.trim();
+    if (typeof duration === 'object') {
+        return String(
+            duration.raw ||
+            duration.normalized ||
+            duration.text ||
+            duration.label ||
+            duration.duration ||
+            ''
+        ).trim();
+    }
+    return String(duration).trim();
+}
+
 function getReasonText(reason) {
     if (reason == null) return '';
 
@@ -587,7 +603,7 @@ function normalizeCaseForStorage(entry = {}) {
     const safeReason = isReasonLike(incomingReasonText)
         ? (incomingReasonObj || incomingReasonText)
         : '';
-    const duration = entry.duration || '';
+    const duration = getDurationText(entry.duration || '');
 
     return {
         ...entry,

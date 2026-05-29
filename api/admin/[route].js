@@ -594,12 +594,15 @@ async function handleStaffRoleConfig(req, res) {
 // PURPOSE: Handles server lists, server configurations, automod, logging, welcome messages and manual testing.
 
 const DISCORD_API = 'https://discord.com/api/v10';
-const BOT_TOKEN = () => process.env.DISCORD_BOT_TOKEN;
+const BOT_TOKEN = () => process.env.DISCORD_BOT_TOKEN || process.env.DISCORD_TOKEN || '';
 
 // Fetch all guilds where bot is installed via bot token
 async function fetchBotGuilds() {
     const token = BOT_TOKEN();
-    if (!token) throw new Error('DISCORD_BOT_TOKEN_MISSING');
+    if (!token) {
+        console.warn('fetchBotGuilds: Both DISCORD_BOT_TOKEN and DISCORD_TOKEN are missing in process.env!');
+        throw new Error('DISCORD_BOT_TOKEN_MISSING');
+    }
 
     const res = await fetch(`${DISCORD_API}/users/@me/guilds`, {
         headers: { Authorization: `Bot ${token}` }

@@ -134,7 +134,7 @@ export const FirebaseRepository = {
         }
         if (saved.length) {
             await AdminApiClient.ingestSapphireBatch({
-                jobId: `dashboard_${Date.now()}`,
+                jobId: generateUUID(),
                 guildId,
                 source: 'dashboard-storage',
                 items: saved,

@@ -478,6 +478,17 @@ function buildSourceMismatch(previous, next) {
         : null;
 }
 
+function generateUUID() {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+        return crypto.randomUUID();
+    }
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+        const r = Math.random() * 16 | 0;
+        const v = c === 'x' ? r : (r & 0x3 | 0x8);
+        return v.toString(16);
+    });
+}
+
 async function storageSaveCases(newCases, append = true) {
     const existing = append
         ? await new Promise((resolve) => chrome.storage.local.get(['cases'], (result) => resolve(result.cases || [])))
@@ -505,7 +516,7 @@ async function storageSaveCases(newCases, append = true) {
         await setLocal('caseQuarantine', [...quarantined, ...current].slice(0, 100));
     }
     if (newCases.length) {
-        const jobId = activeJobId || `extension_${Date.now()}`;
+        const jobId = activeJobId || generateUUID();
         await forwardToVercelIngest(newCases, jobId, `https://dashboard.sapph.xyz/${LUTHEUS_GUILD_ID}/moderation/cases`, !activeJobId);
     }
     return allCases.length;

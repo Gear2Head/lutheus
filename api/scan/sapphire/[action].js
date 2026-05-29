@@ -1,9 +1,20 @@
+const crypto = require('crypto');
 const { supabase } = require('../../_lib/supabaseClient');
 const { requirePermission, requireUser } = require('../../_lib/serverAuth');
 const { PERMISSIONS, normalizeRole } = require('../../_lib/roles');
 const { normalizeCase } = require('../../_lib/sapphireNormalize');
 const { diffCase } = require('../../_lib/sapphireDiff');
 const { ok, forbidden, serverError } = require('../../_lib/apiResponse');
+
+function getSafeJobId(jobId) {
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const clean = String(jobId || '').trim();
+    if (uuidRegex.test(clean)) {
+        return clean;
+    }
+    const hash = crypto.createHash('md5').update(clean).digest('hex');
+    return `${hash.slice(0, 8)}-${hash.slice(8, 12)}-4${hash.slice(12, 15)}-a${hash.slice(15, 18)}-${hash.slice(18, 30)}`;
+}
 
 // SECTION: SCAN_CATCH_ALL
 // PURPOSE: Consolidates scanning APIs (start, ingest, status) into a single route to meet Vercel serverless function allocations limits.
@@ -172,7 +183,11 @@ async function handleStart(req, res) {
     const scanMode = body.scanMode || 'fast';
     const source = body.source || 'web-dashboard';
 
-    const jobId = `sapphire_${Date.now()}`;
+    const jobId = crypto.randomUUID ? crypto.randomUUID() : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+        const r = Math.random() * 16 | 0;
+        const v = c === 'x' ? r : (r & 0x3 | 0x8);
+        return v.toString(16);
+    });
     const job = {
         id: jobId,
         source: source,
@@ -241,13 +256,15 @@ async function handleIngest(req, res) {
 
     const actor = await requirePermission(req, PERMISSIONS.REPORTS_CREATE);
     const body = req.body || {};
-    const jobId = String(body.jobId || '').trim();
+    const rawJobId = String(body.jobId || '').trim();
     const guildId = String(body.guildId || process.env.LUTHEUS_GUILD_ID || '1223431616081166336');
     const items = Array.isArray(body.items) ? body.items : [];
 
-    if (!jobId) {
+    if (!rawJobId) {
         return res.status(400).json({ ok: false, error: 'JOB_ID_REQUIRED' });
     }
+
+    const jobId = getSafeJobId(rawJobId);
 
     let { data: jobData } = await supabase
         .from('scan_sessions')
@@ -451,7 +468,7 @@ async function handleIngest(req, res) {
     return ok(res, {
         ok: true,
         success: true,
-        jobId,
+        jobId: rawJobId,
         received: items.length,
         queuedInsert,
         queuedUpdate,
@@ -469,11 +486,13 @@ async function handleStatus(req, res) {
     }
 
     await requireUser(req);
-    const jobId = String(req.query.jobId || '').trim();
+    const rawJobId = String(req.query.jobId || '').trim();
 
-    if (!jobId) {
+    if (!rawJobId) {
         return res.status(400).json({ ok: false, error: 'JOB_ID_REQUIRED' });
     }
+
+    const jobId = getSafeJobId(rawJobId);
 
     const { data: row } = await supabase
         .from('scan_sessions')
@@ -488,7 +507,7 @@ async function handleStatus(req, res) {
     return ok(res, {
         ok: true,
         job: {
-            id: row.id,
+            id: rawJobId,
             source: row.source,
             guildId: row.guild_id,
             startedAt: row.started_at,

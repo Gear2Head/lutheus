@@ -828,11 +828,11 @@ async function handleDiscordBotDashboard(req, res) {
                 fetchBotCommands(guildId)
             ]);
 
-            const configs = configRow?.data ? configRow.data.value.configs : defaultConfigs();
-            return ok(res, { configs, channels, roles, commands });
+            const configs = configRow?.data ? (configRow.data.value?.configs || configRow.data.value?.config || configRow.data.value) : defaultConfigs();
+            return ok(res, { config: configs, channels, roles, commands });
         } else {
             const actor = await requirePermission(req, 'discord_bot:update');
-            const configs = req.body?.configs;
+            const configs = req.body?.configs || req.body?.config || req.body;
             if (!configs || typeof configs !== 'object') {
                 return badRequest(res, 'CONFIGS_REQUIRED');
             }

@@ -16,11 +16,12 @@ import {
     PERMISSIONS,
     canAccessAdmin,
     canAccessRoute,
-    getRoleColor,
-    getRoleLabel,
+    getRoleColor as getBaseRoleColor,
+    getRoleLabel as getBaseRoleLabel,
     getRoleLevel,
     hasPermission,
-    normalizeRole
+    normalizeRole,
+    SEEDED_ROLE_MEMBERS
 } from '../auth/rolePolicy.js';
 import { analyzeCaseWithGroq } from '../lib/aiAnalysisClient.js';
 import { bindAvatarFallbacks, resolveAvatar } from '../lib/avatar.js';
@@ -118,6 +119,7 @@ const DOM_RAW = {
     roleUserId: document.getElementById('roleUserId'),
     roleDisplayName: document.getElementById('roleDisplayName'),
     roleSelect: document.getElementById('roleSelect'),
+    roleInactiveStaff: document.getElementById('roleInactiveStaff'),
     manualAccuracy: document.getElementById('manualAccuracy'),
     roleUserNameHint: document.getElementById('roleUserNameHint'),
     roleBtn: document.getElementById('roleBtn'),
@@ -258,12 +260,14 @@ const state = {
     userRegistry: {},
     staffDirectory: {},
     roleCache: [],
+    roleConfig: [],
     dynamicRules: { categories: {}, autoInvalid: { keywords: [] } },
     latestPointtrainRun: null,
-    authData: { allowlist: [], roleCache: [], policy: {}, audit: [] }
+    authData: { allowlist: [], roleCache: [], roleConfig: [], policy: {}, audit: [] }
 };
 
 let updateBulkActionsToolbar = () => { };
+let authRefreshTimer = null;
 
 // SECTION: TOAST_SOUNDS
 // PURPOSE: Synthesize ambient UI sounds using Web Audio API.
@@ -395,7 +399,21 @@ async function copyText(text) {
 }
 
 function getRankLevel(role) {
-    return getRoleLevel(role);
+    const normalized = normalizeRole(role);
+    const configured = (state.roleConfig || []).find((item) => canonicalRole(item.roleKey || item.roleName) === normalized);
+    return Number(configured?.permissionLevel ?? getRoleLevel(normalized));
+}
+
+function getAdminRoleLabel(role) {
+    const normalized = normalizeRole(role);
+    const configured = (state.roleConfig || []).find((item) => canonicalRole(item.roleKey || item.roleName) === normalized);
+    return configured?.roleLabel || configured?.label || getBaseRoleLabel(normalized);
+}
+
+function getAdminRoleColor(role) {
+    const normalized = normalizeRole(role);
+    const configured = (state.roleConfig || []).find((item) => canonicalRole(item.roleKey || item.roleName) === normalized);
+    return configured?.colorHex || getBaseRoleColor(normalized);
 }
 
 function getValidation(entry) {
@@ -583,7 +601,7 @@ function bindStaffCopyHandlers(root = document) {
 
 function roleBadge(role) {
     const normalized = normalizeRole(role);
-    return `<span class="role-chip" style="--role-color:${escapeHtml(getRoleColor(normalized))}">${escapeHtml(getRoleLabel(normalized))}</span>`;
+    return `<span class="role-chip" style="--role-color:${escapeHtml(getAdminRoleColor(normalized))}">${escapeHtml(getAdminRoleLabel(normalized))}</span>`;
 }
 
 function sapphireCaseUrl(entry) {
@@ -761,8 +779,9 @@ function applyRbacVisibility() {
 // SECTION: ROLE_CANONICALIZATION
 // PURPOSE: Keeps admin role selects, API payloads, and DB role strings on canonical role values.
 const ALLOWLIST_ROLE_OPTIONS = Object.freeze([
-    ['viewer', 'İzleyici'],
     ['discord_moderatoru', 'Mod'],
+    ['kidemli_discord_moderatoru', 'Senior'],
+    ['yonetici', 'Yönetici'],
     ['admin', 'Admin']
 ]);
 
@@ -777,11 +796,59 @@ function canonicalRole(value) {
     return normalizeRole(value);
 }
 
+function getConfiguredRoleOptions(fallbackOptions = ROLE_CACHE_ROLE_OPTIONS) {
+    const configured = (state.roleConfig || [])
+        .filter((role) => role?.visible !== false)
+        .sort((left, right) => Number(left.roleOrder ?? 999) - Number(right.roleOrder ?? 999))
+        .map((role) => [canonicalRole(role.roleKey || role.roleName), role.roleLabel || role.label || role.roleKey])
+        .filter(([value]) => value && value !== 'blocked' && value !== 'pending');
+    return configured.length ? configured : fallbackOptions;
+}
+
 function roleOptionsHtml(options, selectedRole) {
     const selected = canonicalRole(selectedRole);
     return options.map(([value, label]) => (
         `<option value="${escapeHtml(value)}" ${selected === value ? 'selected' : ''}>${escapeHtml(label)}</option>`
     )).join('');
+}
+
+function refreshRoleSelectOptions() {
+    const options = getConfiguredRoleOptions();
+    if (DOM.roleCacheRole) DOM.roleCacheRole.innerHTML = roleOptionsHtml(options, DOM.roleCacheRole.value || 'discord_moderatoru');
+    if (DOM.roleCacheFilter) {
+        const selected = DOM.roleCacheFilter.value || 'all';
+        DOM.roleCacheFilter.innerHTML = `<option value="all">TÃ¼m Roller</option>${roleOptionsHtml(options, selected)}`;
+        DOM.roleCacheFilter.value = selected;
+    }
+}
+
+function seededRoleCacheFallback() {
+    return SEEDED_ROLE_MEMBERS.map((member) => ({
+        id: `discord:${member.id}`,
+        identityKey: `discord:${member.id}`,
+        discordId: member.id,
+        displayName: member.name,
+        role: normalizeRole(member.role),
+        isActiveStaff: true,
+        source: 'lutheus-seed'
+    }));
+}
+
+function normalizeRoleCacheList(entries = []) {
+    const map = new Map();
+    [...seededRoleCacheFallback(), ...(entries || [])].forEach((entry) => {
+        const id = entry.discordId || String(entry.identityKey || entry.id || '').replace(/^discord:/, '');
+        if (!isValidDiscordId(id)) return;
+        map.set(id, {
+            ...entry,
+            id: `discord:${id}`,
+            identityKey: `discord:${id}`,
+            discordId: id,
+            role: normalizeRole(entry.role || entry.staffRank || 'pending'),
+            isActiveStaff: entry.isActiveStaff !== false && entry.active !== false
+        });
+    });
+    return Array.from(map.values());
 }
 
 function switchTab(tabId, options = {}) {
@@ -910,8 +977,10 @@ async function resetSettingsPage() {
     Toast.info('Ayarlar', 'Varsayilan ayarlar yuklendi');
 }
 
-function renderAuthTables({ allowlist = [], roleCache = [], policy = {}, audit = [] } = {}) {
-    state.authData = { allowlist, roleCache, policy, audit };
+function renderAuthTables({ allowlist = [], roleCache = [], roleConfig = state.roleConfig || [], policy = {}, audit = [] } = {}) {
+    state.roleConfig = roleConfig;
+    state.authData = { allowlist, roleCache, roleConfig, policy, audit };
+    refreshRoleSelectOptions();
 
     // Bind search and filter events once if not already bound
     if (!state.authEventsBound) {
@@ -964,13 +1033,15 @@ function renderAuthTables({ allowlist = [], roleCache = [], policy = {}, audit =
     }
 
     // Handle Limits
-    const limits = { ...DEFAULT_GROQ_LIMITS, ...(policy.groqLimits || {}) };
-    DOM.groqLimitGrid.innerHTML = Object.keys(DEFAULT_GROQ_LIMITS).map((role) => `
-        <label class="role-limit-item">
-            <span>${escapeHtml(getRoleLabel(role))}</span>
-            <input type="number" min="0" step="1" data-role="${escapeHtml(role)}" value="${Number(limits[role] || 0)}">
-        </label>
-    `).join('');
+    if (DOM.groqLimitGrid) {
+        const limits = { ...DEFAULT_GROQ_LIMITS, ...(policy.groqLimits || {}) };
+        DOM.groqLimitGrid.innerHTML = Object.keys(DEFAULT_GROQ_LIMITS).map((role) => `
+            <label class="role-limit-item">
+                <span>${escapeHtml(getAdminRoleLabel(role))}</span>
+                <input type="number" min="0" step="1" data-role="${escapeHtml(role)}" value="${Number(limits[role] || 0)}">
+            </label>
+        `).join('');
+    }
 
     // Handle Audit
     DOM.auditList.innerHTML = audit.length
@@ -1044,7 +1115,7 @@ function filterAndRenderAuthTables() {
                 <td>${escapeHtml(entry.displayName || '-')}</td>
                 <td>
                     <select class="field-input quick-role-select rolecache-quick-role" data-key="${escapeHtml(entry.identityKey || entry.id)}" ${canAssignRoles ? '' : 'disabled'} style="padding: 4px 8px; font-size: 11px; height: 26px; width: auto; background: var(--bg-card); border-radius: var(--radius-sm); border:1px solid var(--border); color:inherit;">
-                        ${roleOptionsHtml(ROLE_CACHE_ROLE_OPTIONS, entry.role)}
+                        ${roleOptionsHtml(getConfiguredRoleOptions(), entry.role)}
                     </select>
                 </td>
                 <td>
@@ -1095,14 +1166,26 @@ function filterAndRenderAuthTables() {
 
 async function loadAuthAdminData() {
     if (!requireUiPermission(PERMISSIONS.GOOGLE_ALLOWLIST_VIEW, 'auth_admin:view')) return;
-    const [allowlist, roleCache, policy, audit] = await Promise.all([
+    const [allowlist, roleCache, roleConfig, policy, audit] = await Promise.all([
         FirebaseRepository.listGoogleAllowlist().catch(() => []),
         FirebaseRepository.listRoleCache().catch(() => []),
+        AdminApiClient.listStaffRoleConfig().catch(() => []),
         FirebaseRepository.ensureRolePolicy(state.session?.profile).catch(() => FirebaseRepository.getRolePolicy().catch(() => null)),
         FirebaseRepository.listAuditLogs().catch(() => [])
     ]);
     state.roleCache = roleCache;
-    renderAuthTables({ allowlist, roleCache, policy: policy || {}, audit });
+    state.roleConfig = roleConfig;
+    renderAuthTables({ allowlist, roleCache, roleConfig, policy: policy || {}, audit });
+}
+
+// SECTION: AUTH_REALTIME_SYNC
+// PURPOSE: Refreshes Supabase-backed staff and role data while the auth panel is open.
+function startAuthRealtimeFallback() {
+    if (authRefreshTimer) return;
+    authRefreshTimer = window.setInterval(() => {
+        if (state.activeTab !== 'auth' || document.hidden) return;
+        loadAuthAdminData().catch(() => null);
+    }, 15000);
 }
 
 async function saveAllowlist() {
@@ -1150,6 +1233,7 @@ async function saveRoleCache() {
 
 async function saveGroqPolicy() {
     if (!requireUiPermission(PERMISSIONS.AI_SETTINGS_UPDATE, 'role_policy:groq_limits')) return;
+    if (!DOM.groqLimitGrid) return;
     const groqLimits = {};
     DOM.groqLimitGrid.querySelectorAll('input[data-role]').forEach((input) => {
         groqLimits[input.dataset.role] = Number(input.value || 0);
@@ -1398,7 +1482,7 @@ function renderModRow(entry, index) {
         <tr class="data-row">
             <td style="color:var(--text-3);font-family:var(--font-mono);font-size:12px;">${index + 1}</td>
             <td>${staffIdentityHtml(entry)}</td>
-            <td><span class="role-chip ${escapeHtml(entry.role)}">${escapeHtml(getRoleLabel(entry.role))}</span></td>
+            <td><span class="role-chip ${escapeHtml(entry.role)}">${escapeHtml(getAdminRoleLabel(entry.role))}</span></td>
             <td style="font-family:var(--font-mono);">${entry.count}</td>
             <td>
                 <div style="display:flex;align-items:center;gap:8px;">
@@ -1423,7 +1507,7 @@ function renderManagementRosterRow(entry) {
         <tr class="data-row management-row">
             <td style="color:var(--text-3);font-family:var(--font-mono);font-size:12px;">-</td>
             <td>${staffIdentityHtml(entry)}</td>
-            <td><span class="role-chip ${escapeHtml(entry.role)}">${escapeHtml(getRoleLabel(entry.role))}</span></td>
+            <td><span class="role-chip ${escapeHtml(entry.role)}">${escapeHtml(getAdminRoleLabel(entry.role))}</span></td>
             <td colspan="3" class="management-note">Yönetim kadrosu performans sıralamasına dahil edilmez</td>
             <td>
                 <button class="btn btn-ghost btn-icon btn-view" type="button" data-id="${escapeHtml(entry.id)}" data-name="${escapeHtml(entry.name)}" style="width:28px;height:28px;font-size:11px;">
@@ -1446,12 +1530,12 @@ function renderTable(search = '') {
 
         if (DOM.modTableBody) {
             const rows = [];
+            rows.push('<tr class="table-section-row"><td colspan="7">Yetkili Performansı</td></tr>');
+            rows.push(...filteredStaff.map((entry, index) => renderModRow(entry, index)));
             if (filteredManagement.length) {
-                rows.push('<tr class="table-section-row"><td colspan="7">Yonetim Kadrosu</td></tr>');
+                rows.push('<tr class="table-section-row"><td colspan="7">Yönetim Kadrosu</td></tr>');
                 rows.push(...filteredManagement.map((entry) => renderManagementRosterRow(entry)));
             }
-            rows.push('<tr class="table-section-row"><td colspan="7">Haftalik Yetkili Performansi</td></tr>');
-            rows.push(...filteredStaff.map((entry, index) => renderModRow(entry, index)));
             if (!filteredStaff.length && !filteredManagement.length) {
                 rows.push('<tr><td colspan="7" style="text-align:center; padding:20px;">Kayit bulunamadi</td></tr>');
             } else if (!filteredStaff.length) {
@@ -1483,11 +1567,14 @@ function renderManagement() {
         if (!isValidDiscordId(id)) return;
         roleCacheIds.add(id);
         const profile = resolveStaffProfile({ id, discordId: id, displayName: entry.displayName, role: entry.role });
+        const isFormer = entry.isActiveStaff === false || entry.active === false || normalizeRole(entry.role) === 'blocked';
         merged.set(id, {
             id,
             name: entry.displayName || profile.name || id,
             avatar: entry.avatar || profile.avatar || null,
             role: entry.role ? normalizeRole(entry.role) : normalizeRole(profile.role),
+            isActiveStaff: !isFormer,
+            formerStaff: isFormer,
             aliases: entry.aliases || [],
             source: 'roleCache'
         });
@@ -1519,8 +1606,9 @@ function renderManagement() {
     DOM.mgmtModList.innerHTML = moderators.length ? moderators.map((entry) => {
         const profile = entry;
         const role = profile.role || entry.role || 'pending';
-        const roleColor = getRoleColor(role);
-        const roleLabel = getRoleLabel(role);
+        const roleColor = getAdminRoleColor(role);
+        const isFormer = profile.formerStaff || profile.isActiveStaff === false;
+        const roleLabel = isFormer ? 'Eski Yetkili' : getAdminRoleLabel(role);
         const id = profile.id || entry.id || '';
         return `
         <div class="mod-card animate-in" style="--role-color: ${escapeHtml(roleColor)}; cursor: pointer;" data-filter-id="${escapeHtml(id || profile.name)}" title="Bu yetkilinin attığı cezaları listele">
@@ -1532,7 +1620,7 @@ function renderManagement() {
                     <div class="mod-info">
                         <span class="mod-name copy-id-btn" data-id="${escapeHtml(id)}" style="cursor: copy; font-weight: bold; text-decoration: underline dotted rgba(255,255,255,0.3);" title="Tıkla: ID Kopyala">${escapeHtml(profile.name)}</span>
                         ${id ? `<span class="mod-id" style="font-size:10px; opacity:0.6;">Discord ID: ${escapeHtml(id)}</span>` : ''}
-                        <span class="mod-role-badge" style="color: ${escapeHtml(roleColor)}; font-size:11px;">${escapeHtml(roleLabel)}</span>
+                        <span class="mod-role-badge" style="color: ${escapeHtml(isFormer ? 'var(--amber)' : roleColor)}; font-size:11px;">${escapeHtml(roleLabel)}</span>
                     </div>
                 </div>
             </div>
@@ -1746,9 +1834,14 @@ function openRoleModal(userId = '') {
     if (!requireUiPermission(PERMISSIONS.STAFF_ASSIGN_ROLE, 'staff:assign_role')) return;
     if (!DOM.roleModal) return;
     const entry = state.userRegistry[userId] || {};
+    const roleEntry = (state.roleCache || []).find((item) => {
+        const cacheId = item.discordId || String(item.identityKey || item.id || '').replace(/^discord:/, '');
+        return cacheId === userId;
+    }) || {};
     if (DOM.roleUserId) DOM.roleUserId.value = userId || '';
-    if (DOM.roleDisplayName) DOM.roleDisplayName.value = entry.name || '';
-    if (DOM.roleSelect) DOM.roleSelect.value = normalizeRole(entry.role || 'discord_moderatoru');
+    if (DOM.roleDisplayName) DOM.roleDisplayName.value = entry.name || roleEntry.displayName || '';
+    if (DOM.roleSelect) DOM.roleSelect.value = normalizeRole(roleEntry.role || entry.role || 'discord_moderatoru');
+    if (DOM.roleInactiveStaff) DOM.roleInactiveStaff.checked = roleEntry.isActiveStaff === false || roleEntry.active === false;
     if (DOM.manualAccuracy) DOM.manualAccuracy.value = entry.manualAccuracy ?? '';
     if (DOM.roleUserNameHint) DOM.roleUserNameHint.textContent = entry.name ? `${entry.name} bulundu` : 'Kullanıcı seçin';
 
@@ -1941,7 +2034,8 @@ async function saveRoleAssignment() {
         id,
         canonicalRole(DOM.roleSelect.value),
         DOM.manualAccuracy.value ? Number(DOM.manualAccuracy.value) : null,
-        DOM.roleDisplayName.value.trim() || null
+        DOM.roleDisplayName.value.trim() || null,
+        { isActiveStaff: DOM.roleInactiveStaff?.checked ? false : true }
     );
 
     await loadData();
@@ -2192,7 +2286,7 @@ function renderPointtrainTab() {
             <tr class="data-row management-row">
                 <td style="color:var(--text-3); font-family:var(--font-mono); font-size:12px;">-</td>
                 <td>${escapeHtml(metric.displayName || 'Bilinmiyor')}</td>
-                <td><span class="role-chip ${escapeHtml(normalizeRole(metric.role))}">${escapeHtml(getRoleLabel(metric.role))}</span></td>
+                <td><span class="role-chip ${escapeHtml(normalizeRole(metric.role))}">${escapeHtml(getAdminRoleLabel(metric.role))}</span></td>
                 <td style="font-family:var(--font-mono);">${metric.sapphirePunishments || 0}</td>
                 <td style="font-family:var(--font-mono);">${metric.discordMessageCount || 0}</td>
                 <td style="font-family:var(--font-mono);">${metric.channelCount || 0}</td>
@@ -2206,7 +2300,7 @@ function renderPointtrainTab() {
         <tr class="data-row">
             <td style="color:var(--text-3); font-family:var(--font-mono); font-size:12px;">${index + 1}</td>
             <td>${escapeHtml(metric.displayName || 'Bilinmiyor')}</td>
-            <td><span class="role-chip ${escapeHtml(normalizeRole(metric.role))}">${escapeHtml(getRoleLabel(metric.role))}</span></td>
+            <td><span class="role-chip ${escapeHtml(normalizeRole(metric.role))}">${escapeHtml(getAdminRoleLabel(metric.role))}</span></td>
             <td style="font-family:var(--font-mono);">${metric.sapphirePunishments || 0}</td>
             <td style="font-family:var(--font-mono);">${metric.discordMessageCount || 0}</td>
             <td style="font-family:var(--font-mono);">${metric.channelCount || 0}</td>
@@ -2299,11 +2393,11 @@ async function loadData() {
         FirebaseRepository.listRoleCache().catch(() => [])
     ]);
 
-    let roleCacheList = roleCache;
+    let roleCacheList = normalizeRoleCacheList(roleCache);
     if (Array.isArray(roleCacheList) && roleCacheList.length === 0) {
         // Auto-seed roleCache in Supabase if completely empty
         await FirebaseRepository.seedRoleCacheMembers(state.session?.profile).catch(() => null);
-        roleCacheList = await FirebaseRepository.listRoleCache().catch(() => []);
+        roleCacheList = normalizeRoleCacheList(await FirebaseRepository.listRoleCache().catch(() => []));
     }
 
     state.roleCache = roleCacheList;
@@ -2400,7 +2494,7 @@ async function exportAll() {
     txt += `YÖNETİM KADROSU\n`;
     txt += `-----------------------------------------\n`;
     management.forEach((entry, index) => {
-        txt += `${index + 1}. ${entry.name} (${getRoleLabel(entry.role)})\n`;
+        txt += `${index + 1}. ${entry.name} (${getAdminRoleLabel(entry.role)})\n`;
     });
     txt += management.length ? `\n` : `Yönetim kaydı yok\n\n`;
 
@@ -2408,7 +2502,7 @@ async function exportAll() {
     txt += `-----------------------------------------\n`;
     staff.forEach((entry, index) => {
         const acc = entry.performance?.validPercent || 0;
-        txt += `${index + 1}. ${entry.name} (${getRoleLabel(entry.role)}) - ${entry.count} işlem, %${acc} Doğruluk\n`;
+        txt += `${index + 1}. ${entry.name} (${getAdminRoleLabel(entry.role)}) - ${entry.count} işlem, %${acc} Doğruluk\n`;
     });
     txt += `\n`;
 
@@ -2454,7 +2548,7 @@ async function copyDiscordReportPremium() {
     md += `*Tarih: ${formatTurkishDate(new Date())}*\n\n`;
     md += `### 🏛️ **Yönetim Kadrosu**\n`;
     md += management.length
-        ? `> ${management.map((entry) => `${entry.name} (${getRoleLabel(entry.role)})`).join(', ')}\n\n`
+        ? `> ${management.map((entry) => `${entry.name} (${getAdminRoleLabel(entry.role)})`).join(', ')}\n\n`
         : `> Kayıt yok\n\n`;
     md += `### 📈 **Genel İstatistikler**\n`;
     md += `> 🔨 Toplam: \`${totalCount}\` | ✅ Doğrulanmış: \`${validCount}\` | ❌ Hatalı: \`${invalidCount}\` | ⏳ Bekleyen: \`${pendingCount}\` | 🎯 Genel Başarı: \`%${efficiency}\`\n\n`;
@@ -2464,7 +2558,7 @@ async function copyDiscordReportPremium() {
     md += `---|---|---|---|---\n`;
     staff.slice(0, 15).forEach((entry, index) => {
         const acc = entry.performance?.validPercent || 0;
-        const roleLabel = getRoleLabel(entry.role);
+        const roleLabel = getAdminRoleLabel(entry.role);
         md += `${String(index + 1).padStart(2, '0')} | ${entry.name.padEnd(16)} | ${roleLabel.padEnd(16)} | ${String(entry.count).padEnd(5)} | %${acc}\n`;
     });
     md += `\`\`\`\n\n`;
@@ -2779,6 +2873,8 @@ function renderProfilePage() {
                     name: profile.name,
                     role: profile.role,
                     avatar: profile.avatar,
+                    isActiveStaff: entry.isActiveStaff !== false && entry.active !== false,
+                    formerStaff: entry.isActiveStaff === false || entry.active === false,
                     totalCases: 0,
                     validCases: 0,
                     invalidCases: 0,
@@ -2793,7 +2889,7 @@ function renderProfilePage() {
                 if (!query) return true;
                 return entry.name.toLowerCase().includes(query) ||
                     entry.id.includes(query) ||
-                    getRoleLabel(entry.role).toLowerCase().includes(query);
+                    getAdminRoleLabel(entry.role).toLowerCase().includes(query);
             })
             .sort((left, right) => getRoleLevel(right.role) - getRoleLevel(left.role) || left.name.localeCompare(right.name, 'tr'));
 
@@ -2802,8 +2898,9 @@ function renderProfilePage() {
             : 'Yetkili bulunamadi';
 
         DOM.profileStaffList.innerHTML = allMods.length ? allMods.map(entry => {
-            const roleColor = getRoleColor(entry.role);
-            const roleLabel = getRoleLabel(entry.role);
+            const roleColor = getAdminRoleColor(entry.role);
+            const isFormer = entry.formerStaff || entry.isActiveStaff === false;
+            const roleLabel = isFormer ? 'Eski Yetkili' : getAdminRoleLabel(entry.role);
             const isActive = state.selectedProfileId === entry.id;
             return `
             <div class="mod-card animate-in ${isActive ? 'active-profile-card' : ''}" data-id="${escapeHtml(entry.id)}" style="--role-color: ${escapeHtml(roleColor)}; cursor:pointer; ${isActive ? 'background:var(--bg-hover); border-color:var(--purple);' : ''}">
@@ -2814,7 +2911,7 @@ function renderProfilePage() {
                     <div class="mod-info">
                         <span class="mod-name">${escapeHtml(entry.name)}</span>
                         <span class="mod-id">Discord ID: ${escapeHtml(entry.id)}</span>
-                        <span class="mod-role-badge" style="color: ${escapeHtml(roleColor)}">${escapeHtml(roleLabel)}</span>
+                        <span class="mod-role-badge" style="color: ${escapeHtml(isFormer ? 'var(--amber)' : roleColor)}">${escapeHtml(roleLabel)}</span>
                     </div>
                 </div>
             </div>
@@ -2843,7 +2940,7 @@ async function loadProfileDetails(userId) {
     try {
         const profile = resolveStaffProfile({ id: userId });
         const role = profile.role || 'moderator';
-        const roleColor = getRoleColor(role);
+        const roleColor = getAdminRoleColor(role);
 
         // Find stats for this user
         const { staff, management } = calculateStats();
@@ -2883,7 +2980,7 @@ async function loadProfileDetails(userId) {
             DOM.profAvatarGlow.classList.remove('god-mode');
             DOM.profName.className = '';
             DOM.profName.textContent = profile.name;
-            DOM.profRoleBadge.textContent = getRoleLabel(role);
+            DOM.profRoleBadge.textContent = getAdminRoleLabel(role);
             DOM.profRoleBadge.className = `role-chip ${role}`;
         }
         DOM.profDiscordId.textContent = `Discord ID: ${userId}`;
@@ -3114,7 +3211,7 @@ async function saveProfileDetails() {
     }
 }
 
-   async function init() {
+async function init() {
     // Initialize Theme
     const savedTheme = localStorage.getItem('lutheus-theme') || 'dark';
     if (savedTheme === 'light') {
@@ -3138,17 +3235,21 @@ async function saveProfileDetails() {
         const code = authError.code || authError.message || 'AUTH_UNKNOWN';
 
         if (code === 'AUTH_MISSING_SESSION' || code === 'AUTH_BLOCKED') {
+            // requireSession already called redirectToLogin — nothing else to do
             console.warn('[admin.init] Redirecting to login:', code);
             return;
         }
 
         if (code === 'AUTH_STAFF_NOT_FOUND' || code === 'AUTH_FORBIDDEN_ROLE') {
+            // User is authenticated but does not have admin access.
+            // Show forbidden state — do NOT redirect to login (avoid loop).
             console.warn('[admin.init] Access denied:', code, authError.message);
             Toast.init();
             Toast.error(
                 'Yetkisiz Erişim',
                 authError.message || 'Bu Discord hesabının admin panel yetkisi yok.'
             );
+            // Optionally show a visible forbidden message in the page body
             const body = document.body;
             if (body) {
                 const banner = document.createElement('div');
@@ -3164,6 +3265,7 @@ async function saveProfileDetails() {
             return;
         }
 
+        // Unknown auth error — show generic error
         console.error('[admin.init] Unexpected auth error:', code, authError);
         Toast.init();
         Toast.error('Başlatma Hatası', authError.message || 'Admin konsolu yüklenemedi');
@@ -3171,6 +3273,7 @@ async function saveProfileDetails() {
     }
 
     if (!canAccessAdmin(state.session.role)) {
+        // Double-check after requireSession (defensive)
         console.warn('[admin.init] canAccessAdmin false after requireSession, role:', state.session.role);
         Toast.init();
         Toast.error('Yetkisiz Erişim', 'Bu Discord hesabının admin panel yetkisi yok.');
@@ -3180,6 +3283,7 @@ async function saveProfileDetails() {
     Toast.init();
     applyRbacVisibility();
     bindEvents();
+    startAuthRealtimeFallback();
     switchTab('dashboard');
     await loadData();
 }

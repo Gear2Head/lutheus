@@ -5,7 +5,7 @@ import {
     isSessionExpired,
     setStoredSession
 } from './sessionStore.js';
-import { canAccessAdmin, normalizeRole, ROLES } from './rolePolicy.js';
+import { canAccessAdmin, isOwnerIdentity, normalizeRole, ROLES } from './rolePolicy.js';
 import { FirebaseRepository } from '../lib/firebaseRepository.js';
 
 // SECTION: AUTH_SERVICE
@@ -32,13 +32,6 @@ function getSafeReturnTo() {
     } catch (_error) {
         return '/';
     }
-}
-
-function redirectToLogin(returnTo = null, reason = null) {
-    const url = new URL(getURL('src/auth/login.html'));
-    if (returnTo) url.searchParams.set('returnTo', returnTo);
-    if (reason) url.searchParams.set('reason', reason);
-    window.location.href = url.toString();
 }
 
 function parseHashOrQuery(url) {
@@ -93,6 +86,7 @@ function roleIdentityKeys(profile) {
 }
 
 async function resolveRole(profile, token = null) {
+    if (isOwnerIdentity(profile)) return ROLES.KURUCU;
     if (profile.provider === 'google') {
         const allow = await FirebaseRepository.getGoogleAllowlist(profile.email, token);
         if (!allow?.allowed) {
@@ -134,7 +128,9 @@ async function signInWithCustomToken(customToken, oauthProfile = {}) {
         status: tokenClaims.status || oauthProfile.status || 'active'
     };
     const serverRole = tokenClaims.role || oauthProfile.role || null;
-    const role = serverRole
+    const role = isOwnerIdentity(profile)
+        ? ROLES.KURUCU
+        : serverRole
         ? normalizeRole(serverRole)
         : await resolveRole(profile, customToken).catch((error) => {
             if (error.message === 'GOOGLE_EMAIL_NOT_ALLOWLISTED') throw error;
@@ -178,14 +174,26 @@ async function refreshSession(session) {
     return session;
 }
 
+// SECTION: AUTH_SERVICE
+// PURPOSE: Session guards and auth redirects shared by web and extension contexts.
+function redirectToLogin(returnTo = null, reason = null) {
+    const url = new URL(getURL('src/auth/login.html'));
+    if (returnTo) url.searchParams.set('returnTo', returnTo);
+    if (reason) url.searchParams.set('reason', reason);
+    window.location.href = url.toString();
+}
+
 export const AuthService = {
     signInWithCustomToken,
     signInWithGoogleAccessToken,
-    redirectToLogin,
 
     async getSession({ refresh = true } = {}) {
         const session = await getStoredSession();
         if (!session) return null;
+        if (isOwnerIdentity(session.profile)) {
+            session.role = ROLES.KURUCU;
+            session.profile = { ...(session.profile || {}), role: ROLES.KURUCU, status: 'active' };
+        }
         if (refresh && isSessionExpired(session) && session.refreshToken) {
             return refreshSession(session).catch(async () => {
                 await clearStoredSession();
@@ -196,23 +204,25 @@ export const AuthService = {
     },
 
     async requireSession(options = {}) {
-        const session = await this.getSession();
+        const session = await AuthService.getSession();
         if (!session) {
-            this.redirectToLogin(options.returnTo);
+            redirectToLogin(options.returnTo);
             const err = new Error('AUTH_MISSING_SESSION');
             err.code = 'AUTH_MISSING_SESSION';
             throw err;
         }
-        if (session.profile?.status === 'blocked' || session.role === ROLES.BLOCKED) {
-            this.redirectToLogin(options.returnTo, 'blocked');
+        if (!isOwnerIdentity(session.profile) && (session.profile?.status === 'blocked' || session.role === ROLES.BLOCKED)) {
+            redirectToLogin(options.returnTo, 'blocked');
             const err = new Error('AUTH_BLOCKED');
             err.code = 'AUTH_BLOCKED';
             throw err;
         }
         if (options.admin && !canAccessAdmin(session.role)) {
+            // Distinguish: pending (never had staff role) vs has role but insufficient
             const code = session.role === ROLES.PENDING
                 ? 'AUTH_STAFF_NOT_FOUND'
                 : 'AUTH_FORBIDDEN_ROLE';
+            // Do NOT redirect to login — show forbidden state in place
             const err = new Error(code);
             err.code = code;
             err.message = code === 'AUTH_STAFF_NOT_FOUND'
@@ -334,5 +344,16 @@ export const AuthService = {
 
     async logout() {
         await clearStoredSession();
+    },
+
+    redirectToLogin,
+
+    getPostLoginUrl(session) {
+        if (canAccessAdmin(session?.role)) {
+            if (typeof chrome === 'undefined' || !chrome.runtime?.getURL) return `${window.location.origin}/`;
+            return getURL('src/dashboard/admin.html');
+        }
+        if (typeof chrome === 'undefined' || !chrome.runtime?.getURL) return `${window.location.origin}/src/sidepanel/sidepanel.html`;
+        return getURL('src/sidepanel/sidepanel.html');
     }
 };

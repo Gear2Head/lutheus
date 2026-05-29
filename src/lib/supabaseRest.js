@@ -4,7 +4,7 @@
 import { getStoredSession, isSessionExpired } from '../auth/sessionStore.js';
 
 const SUPABASE_URL = 'https://jxhzhaqqtlynbnntwpyu.supabase.co';
-const SUPABASE_KEY = 'sb_publishable_O2mC-cIGP8QgPFpT26_akQ_mW26Jfwg';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4aHpoYXFxdGx5bmJubnR3cHl1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk2NjMyMTcsImV4cCI6MjA5NTIzOTIxN30.BrmuT-QX_BkgV6SSlpNThfqSGmUDw0UffUW11agaBzI';
 
 async function supabaseFetch(path, options = {}, token = null) {
     const headers = {
@@ -80,7 +80,7 @@ function mapPathToTable(path) {
 // Data Mappers for Snake/Camel conversions and flattening
 function flattenForDb(tableName, data) {
     if (!data) return {};
-    
+
     if (tableName === 'sapphire_cases') {
         const state = data.state || {};
         const punishedUser = data.punishedUser || {};

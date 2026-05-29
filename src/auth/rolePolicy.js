@@ -117,11 +117,11 @@ export const ROUTE_PERMISSIONS = Object.freeze({
     dashboard: [PERMISSIONS.DASHBOARD_VIEW],
     management: [PERMISSIONS.STAFF_VIEW],
     yetkililer: [PERMISSIONS.STAFF_VIEW],
-    cezalar: [PERMISSIONS.STAFF_VIEW],
+    cezalar: [PERMISSIONS.PENALTIES_VIEW],
     cuk: [PERMISSIONS.PENALTY_ACCURACY_UPDATE],
-    pointtrain: [PERMISSIONS.REPORTS_VIEW],
+    pointtrain: [PERMISSIONS.REPORTS_REVIEW],
     auth: [PERMISSIONS.GOOGLE_ALLOWLIST_VIEW],
-    settings: [PERMISSIONS.DASHBOARD_VIEW],
+    settings: [PERMISSIONS.SYSTEM_SETTINGS_VIEW],
     profile: [PERMISSIONS.DASHBOARD_VIEW]
 });
 
@@ -326,7 +326,8 @@ export function canEditCuk(role) {
 }
 
 export function canAccessAdmin(role) {
-    return hasPermission(role, PERMISSIONS.STAFF_VIEW)
+    return hasPermission(role, PERMISSIONS.DASHBOARD_VIEW)
+        || hasPermission(role, PERMISSIONS.STAFF_VIEW)
         || hasPermission(role, PERMISSIONS.PENALTY_ACCURACY_UPDATE)
         || hasPermission(role, PERMISSIONS.GOOGLE_ALLOWLIST_VIEW)
         || hasPermission(role, PERMISSIONS.SYSTEM_SETTINGS_VIEW)
@@ -347,7 +348,7 @@ export function getVisibleSections(role) {
         return ['home', 'scan', 'stats', 'pointtrain', 'profile', 'settings'];
     }
     if (normalizeRole(role) === ROLES.DISCORD_MODERATORU) {
-        return ['home', 'stats', 'profile'];
+        return ['home', 'stats', 'cezalar', 'profile'];
     }
-    return ['home', 'profile'];
+    return ['home', 'cezalar', 'profile'];
 }

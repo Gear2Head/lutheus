@@ -460,10 +460,33 @@ function normalizeDurationMs(value) {
     return Math.round(amount * multipliers[match[2].toLowerCase()]);
 }
 
+function getReasonText(reason) {
+    if (reason == null) return '';
+
+    if (typeof reason === 'string') {
+        return reason.trim();
+    }
+
+    if (typeof reason === 'object') {
+        return String(
+            reason.raw ||
+            reason.normalized ||
+            reason.text ||
+            reason.label ||
+            reason.category ||
+            reason.reason ||
+            ''
+        ).trim();
+    }
+
+    return String(reason).trim();
+}
+
 function validateCaseForStorage(entry = {}) {
     if (!String(entry.id || entry.caseId || '').trim()) return { valid: false, reason: 'missing_case_id' };
     if (!entry.userId && !entry.user && !entry.authorId && !entry.authorName) return { valid: false, reason: 'missing_identity' };
-    if (entry.reason && !isReasonLike(entry.reason)) return { valid: false, reason: 'shifted_reason' };
+    const reasonText = getReasonText(entry.reason);
+    if (reasonText && !isReasonLike(reasonText)) return { valid: false, reason: 'shifted_reason' };
     if (entry.userId && !isDiscordId(entry.userId)) return { valid: false, reason: 'invalid_user_id' };
     if (entry.authorId && !isDiscordId(entry.authorId)) return { valid: false, reason: 'invalid_author_id' };
     return { valid: true };
@@ -558,8 +581,12 @@ function normalizeCaseForStorage(entry = {}) {
     const rawAuthorId = String(entry.authorId || entry.moderatorId || embeddedAuthorId || '');
     const authorId = isDiscordId(rawAuthorId) ? rawAuthorId : '';
     const authorName = String(entry.authorName || entry.moderator || '').replace(authorId, '').trim();
-    const incomingReason = String(entry.reason || '').trim();
-    const safeReason = isReasonLike(incomingReason) ? incomingReason : '';
+    
+    const incomingReasonObj = typeof entry.reason === 'object' && entry.reason ? entry.reason : null;
+    const incomingReasonText = getReasonText(entry.reason);
+    const safeReason = isReasonLike(incomingReasonText)
+        ? (incomingReasonObj || incomingReasonText)
+        : '';
     const duration = entry.duration || '';
 
     return {
@@ -587,7 +614,6 @@ function normalizeCaseForStorage(entry = {}) {
 }
 
 function mergeCaseForStorage(previous, next) {
-    if (!previous) return next;
 
     const merged = {
         ...previous,

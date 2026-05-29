@@ -748,11 +748,18 @@ async function handleDiscordBotGuilds(req, res) {
                 const botInstalled = botGuildIds.has(g.id);
                 // Try to find the guild in botGuilds to get latest approximate member count if installed
                 const botG = botGuilds.find(bg => bg.id === g.id);
+                const manageable =
+                    (Number(g.permissions || 0) & 0x20) !== 0 ||
+                    (Number(g.permissions || 0) & 0x8) !== 0 ||
+                    g.owner === true;
                 return {
                     id: g.id,
                     name: g.name,
                     memberCount: botG?.approximate_member_count || botG?.member_count || 0,
                     botInstalled: botInstalled,
+                    manageable,
+                    permissions: String(g.permissions || '0'),
+                    owner: Boolean(g.owner),
                     iconUrl: g.icon
                         ? `https://cdn.discordapp.com/icons/${g.id}/${g.icon}.png?size=128`
                         : `https://cdn.discordapp.com/embed/avatars/${Number(g.id) % 5}.png`
@@ -769,6 +776,9 @@ async function handleDiscordBotGuilds(req, res) {
                     name: g.name,
                     memberCount: g.approximate_member_count || g.member_count || 0,
                     botInstalled: true,
+                    manageable: true,
+                    permissions: '0',
+                    owner: false,
                     iconUrl: g.icon
                         ? `https://cdn.discordapp.com/icons/${g.id}/${g.icon}.png?size=128`
                         : `https://cdn.discordapp.com/embed/avatars/${Number(g.id) % 5}.png`

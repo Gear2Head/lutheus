@@ -193,13 +193,36 @@ function normalizeDurationMs(value) {
     return Math.round(amount * multipliers[unit]);
 }
 
+function getReasonText(reason) {
+    if (reason == null) return '';
+
+    if (typeof reason === 'string') {
+        return reason.trim();
+    }
+
+    if (typeof reason === 'object') {
+        return String(
+            reason.raw ||
+            reason.normalized ||
+            reason.text ||
+            reason.label ||
+            reason.category ||
+            reason.reason ||
+            ''
+        ).trim();
+    }
+
+    return String(reason).trim();
+}
+
 function validateCaseEntry(entry = {}) {
     const id = String(entry.id || entry.caseId || '').trim();
     if (!id) return { valid: false, reason: 'missing_case_id' };
     if (!entry.userId && !entry.user && !entry.authorId && !entry.authorName) {
         return { valid: false, reason: 'missing_identity' };
     }
-    if (entry.reason && !isReasonLike(entry.reason)) return { valid: false, reason: 'shifted_reason' };
+    const reasonText = getReasonText(entry.reason);
+    if (reasonText && !isReasonLike(reasonText)) return { valid: false, reason: 'shifted_reason' };
     if (entry.userId && !isDiscordId(entry.userId)) return { valid: false, reason: 'invalid_user_id' };
     if (entry.authorId && !isDiscordId(entry.authorId)) return { valid: false, reason: 'invalid_author_id' };
     return { valid: true };
@@ -222,8 +245,13 @@ function normalizeCaseEntry(entry = {}, previous = null) {
     const rawAuthorId = String(entry.authorId || entry.moderatorId || embeddedAuthorId || '').trim();
     const authorId = isDiscordId(rawAuthorId) ? rawAuthorId : (previous?.authorId || '');
     const cleanedAuthorName = String(entry.authorName || entry.moderator || '').replace(authorId, '').trim();
-    const incomingReason = String(entry.reason || '').trim();
-    const safeReason = isReasonLike(incomingReason) ? incomingReason : '';
+    
+    const incomingReasonObj = typeof entry.reason === 'object' && entry.reason ? entry.reason : null;
+    const incomingReasonText = getReasonText(entry.reason);
+    const safeReason = isReasonLike(incomingReasonText)
+        ? (incomingReasonObj || incomingReasonText)
+        : (previous?.reason || '');
+
     const duration = entry.duration || previous?.duration || '';
     const durationMs = Number.isFinite(Number(entry.durationMs))
         ? Number(entry.durationMs)
@@ -239,7 +267,7 @@ function normalizeCaseEntry(entry = {}, previous = null) {
         authorName: cleanedAuthorName || previous?.authorName || (entry.authorMissing ? 'Bilinmeyen Yetkili' : 'Bilinmiyor'),
         authorMissing: Boolean(entry.authorMissing || (!authorId && (!cleanedAuthorName || cleanedAuthorName === 'Bilinmeyen Yetkili'))),
         user: entry.user || previous?.user || 'Unknown',
-        reason: safeReason || previous?.reason || '',
+        reason: safeReason,
         duration,
         durationMs,
         type: entry.type || previous?.type || 'unknown',
@@ -782,7 +810,7 @@ export const Storage = {
 
             moderatorStats[moderatorKey].count++;
 
-            const reason = entry.reason || 'Bilinmiyor';
+            const reason = getReasonText(entry.reason) || 'Bilinmiyor';
             moderatorStats[moderatorKey].reasons[reason] = (moderatorStats[moderatorKey].reasons[reason] || 0) + 1;
             reasonStats[reason] = (reasonStats[reason] || 0) + 1;
         }

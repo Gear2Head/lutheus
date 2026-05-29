@@ -689,15 +689,49 @@ async function fetchBotCommands(guildId) {
     }));
 }
 
-function defaultConfigs() {
+function defaultConfigs(guildId = '') {
     return {
-        moderation: { enabled: false, moderatorRoles: [], muteRole: '', logChannelId: '', appealLink: '', dmOnAction: true, reasonRequired: true },
-        automod: { enabled: false, antiSpam_enabled: false, antiSpam_threshold: 5, antiSpam_action: 'timeout', antiLink_enabled: false, antiInvite_enabled: false, antiLink_action: 'warn', antiCaps_enabled: false, antiCaps_maxPercent: 70, badWords_enabled: false, badWords_list: '' },
-        logging: { enabled: false, logChannelId: '', events_messageDelete: true, events_messageEdit: true, events_memberJoin: true, events_memberLeave: true, events_roleChange: false, events_channelChange: false, events_voiceState: false, events_modAction: true },
-        welcome: { enabled: false, channelId: '', message: 'Hoş geldin {user}!', embedEnabled: false, embedTitle: 'Hoş Geldin!', embedColor: '#7c5af5', dmEnabled: false, dmMessage: '' },
-        permissions: { adminRoles: [], moderatorRoles: [] },
-        levels: { enabled: false, xpMin: 15, xpMax: 25, cooldownSeconds: 60, rewards: {} },
-        settings: { language: 'tr', timezone: 'Europe/Istanbul', retentionDays: 30 }
+        guildId,
+        language: "tr",
+        timezone: "Europe/Istanbul",
+        prefix: "!",
+        dashboardAccessRole: "",
+        dataRetentionDays: 30,
+        modules: {
+            autoModeration: false,
+            moderation: false,
+            socialNotifications: false,
+            joinRoles: false,
+            reactionRoles: false,
+            welcomeMessages: false,
+            roleConnections: false,
+            logging: false
+        },
+        welcomeSettings: {
+            channelId: "",
+            welcomeMessage: "Sunucumuza hoş geldin {user}!",
+            goodbyeMessage: "{user} sunucudan ayrıldı.",
+            sendDm: false,
+            embedEnabled: false
+        },
+        joinRolesSettings: {
+            roles: [],
+            delayedRoles: [],
+            delaySeconds: 0
+        },
+        loggingSettings: {
+            channelId: "",
+            events: {
+                messageDelete: true,
+                messageEdit: true,
+                memberJoin: true,
+                memberLeave: true,
+                memberBan: true,
+                memberUnban: true,
+                roleUpdate: false,
+                channelUpdate: false
+            }
+        }
     };
 }
 
@@ -828,7 +862,7 @@ async function handleDiscordBotDashboard(req, res) {
                 fetchBotCommands(guildId)
             ]);
 
-            const configs = configRow?.data ? (configRow.data.value?.configs || configRow.data.value?.config || configRow.data.value) : defaultConfigs();
+            const configs = configRow?.data ? (configRow.data.value?.configs || configRow.data.value?.config || configRow.data.value) : defaultConfigs(guildId);
             return ok(res, { config: configs, channels, roles, commands });
         } else {
             const actor = await requirePermission(req, 'discord_bot:update');

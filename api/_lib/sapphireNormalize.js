@@ -21,9 +21,19 @@ function isDiscordId(value) {
     return /^\d{17,20}$/.test(safeString(value));
 }
 
+function isLikelyWrongReason(reason) {
+    const text = String(reason || '').trim();
+    if (!text) return true;
+    if (/\d{17,20}/.test(text)) return true; // Discord ID
+    if (/<@!?\d{17,20}>/.test(text)) return true; // Mention
+    if (/^@?[\w.-]{2,32}#\d{4}$/.test(text)) return true; // User tag (legacy)
+    if (/^\S+\s+\d{17,20}$/.test(text)) return true; // Name + ID pattern
+    return false;
+}
+
 function isReasonLike(value) {
     const text = safeString(value);
-    if (!text) return false;
+    if (!text || isLikelyWrongReason(text)) return false;
     if (isDiscordId(text)) return false;
     if (/^\d{17,20}$/.test(text)) return false;
     if (/^[A-Za-z0-9_-]{4,24}$/.test(text) && /[A-Za-z]/.test(text) && /\d/.test(text)) return false;

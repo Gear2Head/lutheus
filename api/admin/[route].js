@@ -879,15 +879,15 @@ module.exports = async function handler(req, res) {
     try {
         const route = getRoute(req);
 
-        if (route === 'audit-logs') return handleAuditLogs(req, res);
-        if (route === 'google-allowlist') return handleGoogleAllowlist(req, res);
-        if (route === 'role-cache') return handleRoleCache(req, res);
-        if (route === 'role-policy') return handleRolePolicy(req, res);
-        if (route === 'staff-role-config') return handleStaffRoleConfig(req, res);
-        if (route === 'staff-profiles') return handleStaffProfiles(req, res);
-        if (route === 'discord-bot-guilds') return handleDiscordBotGuilds(req, res);
-        if (route === 'discord-bot-dashboard') return handleDiscordBotDashboard(req, res);
-        if (route === 'discord-bot-action') return handleDiscordBotAction(req, res);
+        if (route === 'audit-logs') return await handleAuditLogs(req, res);
+        if (route === 'google-allowlist') return await handleGoogleAllowlist(req, res);
+        if (route === 'role-cache') return await handleRoleCache(req, res);
+        if (route === 'role-policy') return await handleRolePolicy(req, res);
+        if (route === 'staff-role-config') return await handleStaffRoleConfig(req, res);
+        if (route === 'staff-profiles') return await handleStaffProfiles(req, res);
+        if (route === 'discord-bot-guilds') return await handleDiscordBotGuilds(req, res);
+        if (route === 'discord-bot-dashboard') return await handleDiscordBotDashboard(req, res);
+        if (route === 'discord-bot-action') return await handleDiscordBotAction(req, res);
 
         return res.status(404).json({ ok: false, error: 'NOT_FOUND', route });
     } catch (error) {

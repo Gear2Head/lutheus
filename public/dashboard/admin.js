@@ -2378,6 +2378,11 @@ async function startSapphireScanFromAdmin() {
 }
 
 async function loadData() {
+    if (window.LutheusCasesSyncError) {
+        Toast.error('Veritabanı Senkron Hatası', `Supabase verileri yüklenemedi. Cezalar yerel önbellekten gösteriliyor. Hata: ${window.LutheusCasesSyncError}`);
+        window.LutheusCasesSyncError = null;
+    }
+
     if (state.session?.profile && ['auth', 'settings'].includes(state.activeTab)) {
         await FirebaseRepository.ensureRolePolicy(state.session.profile).catch(() => null);
     }

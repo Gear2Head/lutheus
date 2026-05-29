@@ -20,6 +20,7 @@ function isRemoteKeyError(error) {
     return message.includes('no suitable key') || message.includes('wrong key type') || message.includes('401') || message.includes('unauthorized');
 }
 
+// Legacy repository wrapper; currently backed by Supabase REST, not Firebase.
 export const FirebaseRepository = {
     async getUser(uid) {
         if (!uid) return null;
@@ -180,6 +181,7 @@ export const FirebaseRepository = {
             return await FirestoreRest.listDocuments('cases', { orderBy: 'createdAt desc', pageSize: 500 });
         } catch (error) {
             console.warn('Lutheus: Failed to list cases:', error.message);
+            window.LutheusCasesSyncError = error.message; // Propagate warning globally
             return [];
         }
     },

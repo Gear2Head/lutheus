@@ -20,6 +20,7 @@ function isRemoteKeyError(error) {
     return message.includes('no suitable key') || message.includes('wrong key type') || message.includes('401') || message.includes('unauthorized');
 }
 
+// Legacy repository wrapper; currently backed by Supabase REST, not Firebase.
 export const FirebaseRepository = {
     async getUser(uid) {
         if (!uid) return null;
@@ -216,6 +217,7 @@ export const FirebaseRepository = {
                 ? 'Lutheus: Failed to list cases due to Supabase auth key mismatch'
                 : 'Lutheus: Failed to list cases';
             console.warn(`${prefix}:`, error.message);
+            window.LutheusCasesSyncError = error.message; // Propagate warning globally
             return [];
         }
     },

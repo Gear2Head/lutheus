@@ -136,6 +136,58 @@ window.GearTech.Scraper = {
             console.error('Lutheus: Error scraping current user', e);
             return { name: 'Yetkili', avatar: null };
         }
+
+    /**
+     * Scrape the current logged-in user info from the header
+     */
+    scrapeCurrentUser: function () {
+        try {
+            // Find an image that looks like a user profile inside header/nav
+            const allImages = Array.from(document.querySelectorAll('header img, nav img, div[role="navigation"] img, img.avatar, img[alt*="pfp"], img[alt*="Avatar"], img[src*="avatars"]'));
+            
+            // Find one that isn't the logo
+            const avatarImg = allImages.find(img => !img.src.includes('logo') && !img.src.includes('brand') && !img.alt.includes('logo'));
+            
+            if (avatarImg) {
+                // Try to find a nearby text element that might be the username
+                let name = 'Yetkili';
+                let current = avatarImg.parentElement;
+                let depth = 0;
+                
+                while (current && depth < 3) {
+                    const texts = Array.from(current.querySelectorAll('span, p, div')).filter(el => {
+                        const txt = el.innerText?.trim();
+                        return txt && txt.length > 2 && txt.length < 32 && !txt.includes('\n') && el.children.length === 0;
+                    });
+                    
+                    if (texts.length > 0) {
+                        name = texts[texts.length - 1].innerText.trim();
+                        break;
+                    }
+                    current = current.parentElement;
+                    depth++;
+                }
+
+                const info = { name, avatar: avatarImg.src };
+                console.log('Lutheus: Found active user dynamically', info);
+                return info;
+            }
+
+            return { name: 'Yetkili', avatar: null };
+        } catch (e) {
+            console.error('Lutheus: Error scraping current user', e);
+            return { name: 'Yetkili', avatar: null };
+        }
+    },
+
+    isLikelyWrongReason: function (reason) {
+        const text = String(reason || '').trim();
+        if (!text) return true;
+        if (/\d{17,20}/.test(text)) return true; // Discord ID
+        if (/<@!?\d{17,20}>/.test(text)) return true; // Mention
+        if (/^@?[\w.-]{2,32}#\d{4}$/.test(text)) return true; // User tag (legacy)
+        if (/^\S+\s+\d{17,20}$/.test(text)) return true; // Name + ID pattern
+        return false;
     },
 
     /**
@@ -148,6 +200,81 @@ window.GearTech.Scraper = {
 
         if (columns.length < 6) return this.extractCompactRowData(row, rowIdx);
 
+        // Try standard layout parse first if columns.length >= 7
+        if (columns.length >= 7) {
+            try {
+                const typeCol = columns[0];
+                const caseIdCol = columns[1];
+                const userCol = columns[2];
+                const reasonCol = columns[3];
+                const authorCol = columns[4];
+                const durationCol = columns[5];
+                const dateCol = columns[6];
+
+                const caseId = this.extractCaseIdFromElement(caseIdCol) || this.extractCaseIdFromElement(row) || this.extractTextFromColumn(caseIdCol, 'id') || '';
+                const userName = this.extractTextFromColumn(userCol, 'name') || 'Unknown';
+                const userId = this.extractDiscordId(userCol) || this.extractTextFromColumn(userCol, 'id') || '';
+                const userAvatar = this.extractImageFromColumn(userCol);
+
+                const reason = (reasonCol.innerText || reasonCol.textContent || '').trim();
+
+                let authorName = this.extractTextFromColumn(authorCol, 'name') || '';
+                let authorId = this.extractDiscordId(authorCol) || this.extractTextFromColumn(authorCol, 'id') || '';
+                let authorAvatar = this.extractImageFromColumn(authorCol);
+
+                if (authorName.includes('(@')) authorName = authorName.split('(@')[0].trim();
+                if (authorName.includes('(')) authorName = authorName.split('(')[0].trim();
+
+                if (!authorName && authorCol) {
+                    const lines = authorCol.innerText.trim().split('\n').filter(l => l.trim());
+                    if (lines.length >= 1) authorName = lines[0].trim();
+                    if (lines.length >= 2 && !authorId) {
+                        const match = lines[1].match(/\d{17,20}/);
+                        authorId = match ? match[0] : '';
+                    }
+                }
+
+                const spanWithTitle = durationCol.querySelector('[title]');
+                let duration = spanWithTitle ? spanWithTitle.getAttribute('title') : durationCol.innerText.trim();
+                if (!duration || duration === '---') duration = 'Süresiz';
+
+                const dateText = dateCol.innerText.trim();
+                const dateMatch = dateText.match(/(\d{1,2}\.\d{1,2}\.\d{4})/);
+                const createdRaw = dateMatch ? dateMatch[1] : dateText.split('\n')[0];
+
+                const penaltyType = this.extractPenaltyType(typeCol);
+
+                // High confidence metric checks
+                const isCaseIdValid = this.isLikelyCaseId(caseId, { tagged: true });
+                const isUserIdValid = Boolean(userId && /^\d{17,20}$/.test(userId));
+                const isReasonValid = !this.isLikelyWrongReason(reason);
+
+                if (isCaseIdValid && isUserIdValid && isReasonValid) {
+                    return {
+                        id: caseId,
+                        caseId: caseId,
+                        user: userName,
+                        userId: userId,
+                        userAvatar: userAvatar,
+                        reason: this.cleanReasonCandidate(reason) || reason,
+                        authorName: authorName || 'Unknown',
+                        authorId: authorId || '',
+                        authorAvatar: authorAvatar,
+                        duration: duration || '',
+                        createdRaw: createdRaw || '',
+                        type: penaltyType,
+                        sourceUrl: this.buildCaseUrl(caseId),
+                        scrapedAt: Date.now()
+                    };
+                }
+                
+                console.warn(`[GearTech] Standard parse had low confidence (id:${isCaseIdValid}, user:${isUserIdValid}, reason:${isReasonValid}). Falling back to dynamic heuristic.`);
+            } catch (e) {
+                console.error('[GearTech] Standard parse failed. Falling back to dynamic heuristic.', e);
+            }
+        }
+
+        // Dynamic Heuristic Fallback
         const columnMeta = columns.map((col, index) => ({
             col,
             index,
@@ -254,7 +381,6 @@ window.GearTech.Scraper = {
         if (!rawText) return null;
 
         const caseId = this.extractCaseIdFromElement(row) || this.extractCaseIdFromText(rawText);
-        if (!caseId) return null;
 
         const lines = rawText.split('\n').map((line) => line.trim()).filter(Boolean);
         const compactLine = lines.find((line) => line.includes('•')) || rawText.replace(/\n/g, ' • ');

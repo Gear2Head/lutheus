@@ -42,12 +42,17 @@ function extractDiscordId(decoded) {
 }
 
 async function maybeSingleSafe(builder, source) {
-    const { data, error } = await builder.maybeSingle();
-    if (error) {
-        console.warn(`[serverAuth] ${source} lookup failed:`, error.message || error);
+    try {
+        const { data, error } = await builder.maybeSingle();
+        if (error) {
+            console.warn(`[serverAuth] ${source} lookup failed:`, error.message || error);
+            return null;
+        }
+        return data || null;
+    } catch (err) {
+        console.warn(`[serverAuth] ${source} lookup threw exception:`, err.message || err);
         return null;
     }
-    return data || null;
 }
 
 async function resolveActorFromToken(req) {

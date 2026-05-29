@@ -296,9 +296,10 @@ async function handleIngest(req, res) {
 
     const normalizedItems = items.map(item => normalizeCase(item, guildId));
 
-    let inserted = 0;
-    let updated = 0;
+    let queuedInsert = 0;
+    let queuedUpdate = 0;
     let skipped = 0;
+    let invalid = 0;
     let warning = null;
 
     if (normalizedItems.length > 0) {
@@ -318,15 +319,20 @@ async function handleIngest(req, res) {
 
         const upsertRows = [];
         for (const item of normalizedItems) {
+            // Strict ID/Guild validation
+            if (!item.caseId || !item.guildId) {
+                invalid++;
+                continue;
+            }
             const existing = existingMap.get(item.caseKey);
             const decision = diffCase(existing, item);
 
             if (decision.type === 'insert') {
                 upsertRows.push(flattenCaseForDb(decision.data));
-                inserted++;
+                queuedInsert++;
             } else if (decision.type === 'update') {
                 upsertRows.push(flattenCaseForDb(decision.data));
-                updated++;
+                queuedUpdate++;
             } else {
                 skipped++;
             }
@@ -390,10 +396,16 @@ async function handleIngest(req, res) {
         if (upsertRows.length > 0) {
             for (let i = 0; i < upsertRows.length; i += 100) {
                 const chunk = upsertRows.slice(i, i + 100);
-                const { error: caseUpsertError } = await supabase.from('sapphire_cases').upsert(chunk, { onConflict: 'case_id' });
+                const { error: caseUpsertError } = await supabase.from('sapphire_cases').upsert(chunk, { onConflict: 'guild_id,case_id' });
                 if (caseUpsertError) {
                     console.error('[Ingest] Failed to upsert sapphire_cases:', caseUpsertError);
-                    return serverError(res, caseUpsertError);
+                    return res.status(500).json({
+                        ok: false,
+                        error: 'SAPPHIRE_CASES_UPSERT_FAILED',
+                        message: caseUpsertError.message,
+                        details: caseUpsertError.details,
+                        hint: caseUpsertError.hint
+                    });
                 }
             }
         }
@@ -401,8 +413,8 @@ async function handleIngest(req, res) {
 
     const nextStats = {
         received: Number(jobData.rows_read || 0) + items.length,
-        inserted: Number(jobData.new_cases_inserted || 0) + inserted,
-        updated: Number(jobData.cases_updated || 0) + updated,
+        inserted: Number(jobData.new_cases_inserted || 0) + queuedInsert,
+        updated: Number(jobData.cases_updated || 0) + queuedUpdate,
         skipped: Number(jobData.stale_cases_detected || 0) + skipped,
         incomplete: 0,
         errors: 0
@@ -441,11 +453,11 @@ async function handleIngest(req, res) {
         success: true,
         jobId,
         received: items.length,
-        inserted,
-        updated,
+        queuedInsert,
+        queuedUpdate,
         skipped,
-        incomplete: 0,
-        errors: 0,
+        invalid,
+        upserted: queuedInsert + queuedUpdate,
         ...(warning ? { warning } : {})
     });
 }
@@ -504,9 +516,9 @@ module.exports = async function handler(req, res) {
     try {
         const action = getAction(req);
 
-        if (action === 'start') return handleStart(req, res);
-        if (action === 'ingest') return handleIngest(req, res);
-        if (action === 'status') return handleStatus(req, res);
+        if (action === 'start') return await handleStart(req, res);
+        if (action === 'ingest') return await handleIngest(req, res);
+        if (action === 'status') return await handleStatus(req, res);
 
         return res.status(404).json({ ok: false, error: 'NOT_FOUND', action });
     } catch (error) {

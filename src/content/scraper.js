@@ -136,48 +136,6 @@ window.GearTech.Scraper = {
             console.error('Lutheus: Error scraping current user', e);
             return { name: 'Yetkili', avatar: null };
         }
-
-    /**
-     * Scrape the current logged-in user info from the header
-     */
-    scrapeCurrentUser: function () {
-        try {
-            // Find an image that looks like a user profile inside header/nav
-            const allImages = Array.from(document.querySelectorAll('header img, nav img, div[role="navigation"] img, img.avatar, img[alt*="pfp"], img[alt*="Avatar"], img[src*="avatars"]'));
-            
-            // Find one that isn't the logo
-            const avatarImg = allImages.find(img => !img.src.includes('logo') && !img.src.includes('brand') && !img.alt.includes('logo'));
-            
-            if (avatarImg) {
-                // Try to find a nearby text element that might be the username
-                let name = 'Yetkili';
-                let current = avatarImg.parentElement;
-                let depth = 0;
-                
-                while (current && depth < 3) {
-                    const texts = Array.from(current.querySelectorAll('span, p, div')).filter(el => {
-                        const txt = el.innerText?.trim();
-                        return txt && txt.length > 2 && txt.length < 32 && !txt.includes('\n') && el.children.length === 0;
-                    });
-                    
-                    if (texts.length > 0) {
-                        name = texts[texts.length - 1].innerText.trim();
-                        break;
-                    }
-                    current = current.parentElement;
-                    depth++;
-                }
-
-                const info = { name, avatar: avatarImg.src };
-                console.log('Lutheus: Found active user dynamically', info);
-                return info;
-            }
-
-            return { name: 'Yetkili', avatar: null };
-        } catch (e) {
-            console.error('Lutheus: Error scraping current user', e);
-            return { name: 'Yetkili', avatar: null };
-        }
     },
 
     isLikelyWrongReason: function (reason) {

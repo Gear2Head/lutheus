@@ -722,38 +722,55 @@ async function handleDiscordBotGuilds(req, res) {
     try {
         const actor = await requirePermission(req, 'discord_bot:view');
 
-        const botGuilds = await fetchBotGuilds();
+        const botGuilds = await fetchBotGuilds().catch(() => []);
         const botGuildIds = new Set(botGuilds.map(g => g.id));
 
-        let userGuildIds = new Set();
+        let userManageableGuilds = [];
         if (actor.discordId) {
             const storedGuilds = await fetchUserDiscordGuilds(actor.discordId);
-            if (storedGuilds) {
-                storedGuilds
-                    .filter(g => (Number(g.permissions) & 0x20) !== 0 || (Number(g.permissions) & 0x8) !== 0)
-                    .forEach(g => userGuildIds.add(g.id));
+            if (storedGuilds && Array.isArray(storedGuilds)) {
+                // Filter manageable guilds only (MANAGE_GUILD: 0x20, ADMINISTRATOR: 0x8)
+                userManageableGuilds = storedGuilds.filter(g => 
+                    (Number(g.permissions) & 0x20) !== 0 || 
+                    (Number(g.permissions) & 0x8) !== 0
+                );
             }
         }
 
-        const hasFilter = userGuildIds.size > 0;
-        const filteredGuildIds = hasFilter
-            ? [...botGuildIds].filter(id => userGuildIds.has(id))
-            : [...botGuildIds];
+        let guilds = [];
 
-        const detailPromises = filteredGuildIds.slice(0, 25).map(id => fetchGuildDetails(id));
-        const details = await Promise.all(detailPromises);
-
-        const guilds = details
-            .filter(Boolean)
-            .map(g => ({
-                id: g.id,
-                name: g.name,
-                memberCount: g.approximate_member_count || g.member_count || 0,
-                botInstalled: true,
-                iconUrl: g.icon
-                    ? `https://cdn.discordapp.com/icons/${g.id}/${g.icon}.png?size=128`
-                    : `https://cdn.discordapp.com/embed/avatars/${Number(g.id) % 5}.png`
-            }));
+        if (userManageableGuilds.length > 0) {
+            // Map each user manageable guild
+            guilds = userManageableGuilds.map(g => {
+                const botInstalled = botGuildIds.has(g.id);
+                // Try to find the guild in botGuilds to get latest approximate member count if installed
+                const botG = botGuilds.find(bg => bg.id === g.id);
+                return {
+                    id: g.id,
+                    name: g.name,
+                    memberCount: botG?.approximate_member_count || botG?.member_count || 0,
+                    botInstalled: botInstalled,
+                    iconUrl: g.icon
+                        ? `https://cdn.discordapp.com/icons/${g.id}/${g.icon}.png?size=128`
+                        : `https://cdn.discordapp.com/embed/avatars/${Number(g.id) % 5}.png`
+                };
+            });
+        } else {
+            // Fallback: If no stored oauth guilds, show the bot's actual guilds directly
+            const detailPromises = botGuilds.slice(0, 25).map(bg => fetchGuildDetails(bg.id).catch(() => null));
+            const details = await Promise.all(detailPromises);
+            guilds = details
+                .filter(Boolean)
+                .map(g => ({
+                    id: g.id,
+                    name: g.name,
+                    memberCount: g.approximate_member_count || g.member_count || 0,
+                    botInstalled: true,
+                    iconUrl: g.icon
+                        ? `https://cdn.discordapp.com/icons/${g.id}/${g.icon}.png?size=128`
+                        : `https://cdn.discordapp.com/embed/avatars/${Number(g.id) % 5}.png`
+                }));
+        }
 
         return ok(res, { guilds });
     } catch (err) {

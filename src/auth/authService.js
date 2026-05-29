@@ -56,6 +56,14 @@ function parseJwtPayload(token) {
     }
 }
 
+function getJwtAppRole(tokenClaims = {}) {
+    const claimRole = tokenClaims.user_metadata?.custom_claims?.role
+        || tokenClaims.app_metadata?.custom_claims?.role
+        || tokenClaims.app_metadata?.role;
+    const normalized = normalizeRole(claimRole);
+    return normalized !== ROLES.PENDING ? normalized : null;
+}
+
 function extensionRedirectUrl(path) {
     return chrome.identity.getRedirectURL(path);
 }
@@ -127,7 +135,7 @@ async function signInWithCustomToken(customToken, oauthProfile = {}) {
         email: oauthProfile.email || null,
         status: tokenClaims.status || oauthProfile.status || 'active'
     };
-    const serverRole = tokenClaims.role || oauthProfile.role || null;
+    const serverRole = getJwtAppRole(tokenClaims) || oauthProfile.role || null;
     const role = isOwnerIdentity(profile)
         ? ROLES.KURUCU
         : serverRole

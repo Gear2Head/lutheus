@@ -31,6 +31,9 @@ function extractDiscordId(decoded) {
     const candidates = [
         decoded.discordId,
         decoded.user_metadata?.discordId,
+        decoded.user_metadata?.custom_claims?.discordId,
+        decoded.app_metadata?.custom_claims?.discordId,
+        decoded.app_metadata?.discordId,
         decoded.firebase?.identities?.['discord.com']?.[0],
         String(decoded.uid || '').startsWith('discord:') ? String(decoded.uid).replace(/^discord:/, '') : null,
         String(decoded.sub || '').startsWith('discord:') ? String(decoded.sub).replace(/^discord:/, '') : null,
@@ -39,6 +42,15 @@ function extractDiscordId(decoded) {
     ].filter(Boolean);
 
     return candidates.find((value) => /^\d{17,20}$/.test(String(value))) || '';
+}
+
+function extractAppRole(decoded) {
+    return normalizeRole(
+        decoded.user_metadata?.custom_claims?.role
+        || decoded.app_metadata?.custom_claims?.role
+        || decoded.app_metadata?.role
+        || 'pending'
+    );
 }
 
 async function maybeSingleSafe(builder, source) {
@@ -121,6 +133,14 @@ async function resolveActorFromToken(req) {
         if (profileRow?.staff_rank) {
             role = profileRow.staff_rank;
             source = 'staff_profiles';
+        }
+    }
+
+    if (!role) {
+        const claimRole = extractAppRole(decoded);
+        if (claimRole !== 'pending') {
+            role = claimRole;
+            source = 'jwtCustomClaims';
         }
     }
 

@@ -141,14 +141,19 @@ function seededStaffProfiles() {
 }
 
 async function addAudit(action, actor, details = {}) {
-    return supabase.from('audit_logs').insert([{
-        action,
-        actor_user_id: actor?.uid || null,
-        actor_email: actor?.email || null,
-        actor_discord_id: actor?.discordId || null,
-        target_type: 'admin',
-        metadata: details
-    }]).catch(() => null);
+    try {
+        await supabase.from('audit_logs').insert([{
+            action,
+            actor_user_id: actor?.uid || null,
+            actor_email: actor?.email || null,
+            actor_discord_id: actor?.discordId || null,
+            target_type: 'admin',
+            metadata: details
+        }]);
+    } catch (_auditError) {
+        return null;
+    }
+    return null;
 }
 
 async function handleAuditLogs(req, res) {

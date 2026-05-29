@@ -207,18 +207,32 @@ export const AuthService = {
         const session = await AuthService.getSession();
         if (!session) {
             redirectToLogin(options.returnTo);
-            throw new Error('AUTH_REQUIRED');
+            const err = new Error('AUTH_MISSING_SESSION');
+            err.code = 'AUTH_MISSING_SESSION';
+            throw err;
         }
         if (!isOwnerIdentity(session.profile) && (session.profile?.status === 'blocked' || session.role === ROLES.BLOCKED)) {
             redirectToLogin(options.returnTo, 'blocked');
-            throw new Error('AUTH_BLOCKED');
+            const err = new Error('AUTH_BLOCKED');
+            err.code = 'AUTH_BLOCKED';
+            throw err;
         }
         if (options.admin && !canAccessAdmin(session.role)) {
-            redirectToLogin(options.returnTo, 'forbidden');
-            throw new Error('AUTH_FORBIDDEN');
+            // Distinguish: pending (never had staff role) vs has role but insufficient
+            const code = session.role === ROLES.PENDING
+                ? 'AUTH_STAFF_NOT_FOUND'
+                : 'AUTH_FORBIDDEN_ROLE';
+            // Do NOT redirect to login — show forbidden state in place
+            const err = new Error(code);
+            err.code = code;
+            err.message = code === 'AUTH_STAFF_NOT_FOUND'
+                ? 'Bu Discord hesabının admin panel yetkisi yok.'
+                : 'Bu işlem için yeterli yetkiniz yok.';
+            throw err;
         }
         return session;
     },
+
 
     async loginWithDiscord() {
         if (!isExtensionRuntime()) {

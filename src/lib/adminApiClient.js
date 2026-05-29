@@ -2,7 +2,8 @@ import { AuthService } from '../auth/authService.js';
 import { APP_CONFIG } from '../config/appConfig.js';
 
 // SECTION: API_CLIENT
-// PURPOSE: Handles secure administrative API requests with context-aware URL resolution.
+// PURPOSE: Handles secure administrative API requests with context-aware URL resolution,
+// structured error codes, and proper credential handling for both web and extension contexts.
 
 function isExtensionContext() {
     return typeof chrome !== 'undefined'
@@ -41,47 +42,104 @@ const FAILURE_TTL_MS = 60_000;
 
 async function authHeaders() {
     const session = await AuthService.getSession();
-    if (!session?.idToken) throw new Error('AUTH_REQUIRED');
+    if (!session?.idToken) {
+        throw Object.assign(new Error('AUTH_REQUIRED'), { code: 'AUTH_MISSING_SESSION', status: 401 });
+    }
     return {
         'Content-Type': 'application/json',
+        'Accept': 'application/json',
         Authorization: `Bearer ${session.idToken}`
     };
+}
+
+/**
+ * Parse the response body safely. Returns null if parsing fails.
+ * Handles both JSON and non-JSON responses without crashing.
+ */
+async function safeParseBody(response) {
+    const contentType = response.headers.get('content-type') || '';
+    try {
+        if (contentType.includes('application/json')) {
+            return await response.json();
+        }
+        // Non-JSON body (HTML error page, plain text, etc.)
+        const text = await response.text();
+        return text ? { _rawText: text } : null;
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Create a structured API error with code, status and body attached.
+ */
+function makeApiError(body, status, path) {
+    const code = body?.error || `API_REQUEST_FAILED_${status}`;
+    const message = body?.message || body?.error || `Admin API error (${status}) on ${path}`;
+    const err = new Error(message);
+    err.code = code;
+    err.status = status;
+    err.body = body;
+
+    // Map HTTP status to semantic codes when no structured code in body
+    if (!body?.error) {
+        if (status === 401) err.code = 'AUTH_MISSING_SESSION';
+        else if (status === 403) err.code = body?.error || 'AUTH_FORBIDDEN_ROLE';
+        else if (status === 404) err.code = 'ADMIN_ENDPOINT_NOT_FOUND';
+        else if (status >= 500) err.code = 'ADMIN_SERVER_ERROR';
+    }
+
+    return err;
 }
 
 async function request(path, options = {}) {
     const method = String(options.method || 'GET').toUpperCase();
     const cacheKey = `${method}:${path}`;
     const now = Date.now();
+
     if ((failedUntil.get(cacheKey) || 0) > now) {
-        throw new Error('ADMIN_API_UNAVAILABLE');
+        throw Object.assign(new Error('ADMIN_API_UNAVAILABLE'), { code: 'ADMIN_API_UNAVAILABLE', status: 503 });
     }
+
     if (method === 'GET' && inFlight.has(cacheKey)) {
         return inFlight.get(cacheKey);
     }
 
     const run = (async () => {
-    const headers = await authHeaders();
-    const url = resolveApiUrl(path);
+        const headers = await authHeaders();
+        const url = resolveApiUrl(path);
 
-    const response = await fetch(url, {
-        ...options,
-        headers: {
-            ...headers,
-            ...(options.headers || {})
+        const response = await fetch(url, {
+            ...options,
+            // credentials:'include' ensures cookies are sent in web context (no-op in extension)
+            credentials: 'include',
+            headers: {
+                ...headers,
+                ...(options.headers || {})
+            }
+        });
+
+        const body = await safeParseBody(response);
+
+        if (!response.ok || body?.ok === false) {
+            if (response.status >= 500 || response.status === 429) {
+                failedUntil.set(cacheKey, Date.now() + FAILURE_TTL_MS);
+            }
+
+            const err = makeApiError(body, response.status, path);
+
+            console.warn('[adminApiClient] Request failed', {
+                path,
+                method,
+                status: response.status,
+                code: err.code
+            });
+
+            throw err;
         }
-    });
 
-    const payload = await response.json().catch(() => ({}));
-
-    if (!response.ok || payload.ok === false) {
-        if (response.status >= 500 || response.status === 429) {
-            failedUntil.set(cacheKey, Date.now() + FAILURE_TTL_MS);
-        }
-        throw new Error(payload.error || payload.message || `API_REQUEST_FAILED_${response.status}`);
-    }
-
-    failedUntil.delete(cacheKey);
-    return payload;
+        failedUntil.delete(cacheKey);
+        return body;
     })();
 
     if (method !== 'GET') return run;

@@ -5,33 +5,38 @@ const jwt = require('jsonwebtoken');
 
 // SECTION: API_ROUTES
 // PURPOSE: Discord OAuth callback endpoint with Supabase backend integration and JWT issuance.
+// SECURITY: No secrets are hardcoded. All credentials come from environment variables.
+// If DISCORD_CLIENT_SECRET or SUPABASE_JWT_SECRET are missing, requests fail fast with a
+// clear error message rather than falling back to a leaked/compromised value.
 
 function redirectWithError(res, redirectUri, error, errorStage = '', detail = '') {
-    const url = new URL(redirectUri);
-    url.searchParams.set('error', error);
-    if (errorStage) {
-        url.searchParams.set('error_stage', errorStage);
+    try {
+        const url = new URL(redirectUri);
+        url.searchParams.set('error', error);
+        if (errorStage) url.searchParams.set('error_stage', errorStage);
+        if (detail) url.searchParams.set('detail', String(detail).slice(0, 200));
+        res.writeHead(302, { Location: url.toString() });
+        res.end();
+    } catch (_parseError) {
+        // redirectUri is not a valid URL — fall back to JSON error
+        res.status(400).json({ ok: false, error, error_stage: errorStage });
     }
-    if (detail) {
-        url.searchParams.set('detail', detail);
-    }
-    res.writeHead(302, { Location: url.toString() });
-    res.end();
 }
 
 function encodeProfile(profile) {
     return Buffer.from(encodeURIComponent(JSON.stringify(profile))).toString('base64');
 }
 
-async function exchangeCode(code, redirectUri, host) {
-    const clientId = process.env.DISCORD_CLIENT_ID || '1500551629768888542';
-    const clientSecret = process.env.DISCORD_CLIENT_SECRET || 'zsFAnmy_7FMPvNlfmXaHoPG6AV03zafi';
+async function exchangeCode(code, oauthRedirectUri) {
+    const clientId = process.env.DISCORD_CLIENT_ID;
+    const clientSecret = process.env.DISCORD_CLIENT_SECRET;
 
-    if (!clientId || !clientSecret) {
-        throw new Error('DISCORD_CLIENT_SECRET_MISSING');
+    if (!clientId) {
+        throw Object.assign(new Error('DISCORD_CLIENT_ID_MISSING'), { stage: 'pre_exchange' });
     }
-
-    const exchangeRedirectUri = redirectUri || `https://${host}/api/auth/discord/callback`;
+    if (!clientSecret) {
+        throw Object.assign(new Error('DISCORD_CLIENT_SECRET_MISSING'), { stage: 'pre_exchange' });
+    }
 
     const response = await fetch('https://discord.com/api/oauth2/token', {
         method: 'POST',
@@ -41,20 +46,28 @@ async function exchangeCode(code, redirectUri, host) {
             client_secret: clientSecret,
             grant_type: 'authorization_code',
             code,
-            redirect_uri: exchangeRedirectUri
+            redirect_uri: oauthRedirectUri
         })
     });
+
     const payload = await response.json();
     if (!response.ok) {
         const errType = payload.error || '';
         const errDesc = payload.error_description || '';
-        console.error(`Discord Code Exchange Error: error=${errType}, description=${errDesc}`);
+        // Log without exposing secrets
+        console.error('[auth.discord.callback] Discord code exchange failed', {
+            status: response.status,
+            errorType: errType,
+            errorDesc: errDesc
+        });
         if (errDesc.includes('redirect_uri_mismatch') || errType.includes('redirect_uri_mismatch')) {
-            throw new Error('DISCORD_REDIRECT_URI_MISMATCH');
+            throw Object.assign(new Error('DISCORD_REDIRECT_URI_MISMATCH'), { stage: 'code_exchange' });
         }
-        throw new Error('DISCORD_CODE_EXCHANGE_FAILED');
+        throw Object.assign(new Error('DISCORD_CODE_EXCHANGE_FAILED'), { stage: 'code_exchange' });
     }
-    return { accessToken: payload.access_token, refreshToken: payload.refresh_token };
+
+    // Return only what we need — never log access/refresh tokens
+    return { accessToken: payload.access_token };
 }
 
 async function fetchDiscordUser(accessToken) {
@@ -63,8 +76,8 @@ async function fetchDiscordUser(accessToken) {
     });
     const payload = await response.json();
     if (!response.ok) {
-        console.error('Discord User Fetch Error:', payload);
-        throw new Error('DISCORD_USER_FETCH_FAILED');
+        console.error('[auth.discord.callback] Discord user fetch failed', { status: response.status });
+        throw Object.assign(new Error('DISCORD_USER_FETCH_FAILED'), { stage: 'user_fetch' });
     }
     return payload;
 }
@@ -81,31 +94,27 @@ async function fetchDiscordUserGuilds(accessToken) {
     }
 }
 
-const SEEDED_ROLE_MEMBERS = [
-    { id: '770612318689165313', role: 'yonetici', name: 'Yönetici' },
-    { id: '202889333563195402', role: 'yonetici', name: 'Yönetici' },
-    { id: '344121374320754709', role: 'yonetici', name: 'Yönetici' },
-    { id: '1109657614968692840', role: 'genel_sorumlu', name: 'Genel Sorumlu' },
-    { id: '962062500189331506', role: 'genel_sorumlu', name: 'Genel Sorumlu' },
-    { id: '860192567177773076', role: 'discord_yoneticisi', name: 'Discord Yöneticisi' },
-    { id: '758769576778661989', role: 'kidemli_discord_moderatoru', name: 'Gear_Head' },
-    { id: '529357404882599966', role: 'discord_moderatoru', name: 'Discord Moderatör' },
-    { id: '1360069068794626139', role: 'discord_destek_ekibi', name: 'Discord Destek Ekibi' },
-    { id: '707582959766732872', role: 'discord_destek_ekibi', name: 'Discord Destek Ekibi' },
-    { id: '1135248585802403901', role: 'discord_destek_ekibi', name: 'Discord Destek Ekibi' },
-    { id: '760895784153251841', role: 'discord_destek_ekibi', name: 'Discord Destek Ekibi' },
-    { id: '1375772029982085184', role: 'discord_destek_ekibi', name: 'Discord Destek Ekibi' }
-];
-
 module.exports = async function handler(req, res) {
+    // Determine the app's canonical public URL for redirect fallbacks
+    const appUrl = process.env.PUBLIC_APP_URL
+        || process.env.NEXT_PUBLIC_APP_URL
+        || `https://${req.headers.host}`;
+
     let redirectUri = '';
     let oauthRedirectUri = '';
+
     const wantsJson = req.query.json === 'true' || !req.query.state;
+
+    const fallbackCallbackUrl = `${appUrl}/api/auth/discord/callback`;
+    const defaultPostLoginUrl = `${appUrl}/dashboard/admin.html`;
+
     try {
-        const fallbackCallbackUrl = `https://${req.headers.host}/api/auth/discord/callback`;
         if (!wantsJson) {
+            if (!req.query.state) {
+                throw Object.assign(new Error('DISCORD_STATE_MISSING'), { stage: 'state_validation' });
+            }
             const state = readState(req.query.state);
-            redirectUri = state.redirectUri;
+            redirectUri = state.redirectUri || defaultPostLoginUrl;
             oauthRedirectUri = state.oauthRedirectUri || fallbackCallbackUrl;
         } else {
             redirectUri = req.query.redirect_uri || '';
@@ -113,29 +122,36 @@ module.exports = async function handler(req, res) {
         }
 
         if (req.query.error) {
+            const discordError = String(req.query.error);
+            console.warn('[auth.discord.callback] Discord returned error param', { discordError });
             if (wantsJson) {
-                res.status(400).json({ error: String(req.query.error) });
+                res.status(400).json({ ok: false, error: discordError });
                 return;
             }
-            redirectWithError(res, redirectUri, String(req.query.error));
+            redirectWithError(res, redirectUri || defaultPostLoginUrl, discordError, 'discord_authorize');
             return;
         }
 
         const code = String(req.query.code || '');
-        if (!code) throw new Error('DISCORD_CODE_MISSING');
-        const { accessToken, refreshToken } = await exchangeCode(code, oauthRedirectUri, req.headers.host);
+        if (!code) {
+            throw Object.assign(new Error('DISCORD_CODE_MISSING'), { stage: 'params_validation' });
+        }
+
+        const { accessToken } = await exchangeCode(code, oauthRedirectUri);
+
         const [discordUser, discordGuilds] = await Promise.all([
             fetchDiscordUser(accessToken),
             fetchDiscordUserGuilds(accessToken)
         ]);
 
         if (!discordUser || !discordUser.id) {
-            throw new Error('USER_UID_REQUIRED');
+            throw Object.assign(new Error('USER_UID_REQUIRED'), { stage: 'user_fetch' });
         }
 
         const avatarUrl = discordUser.avatar
             ? `https://cdn.discordapp.com/avatars/${discordUser.id}/${discordUser.avatar}.png?size=128`
             : `https://cdn.discordapp.com/embed/avatars/${Number(discordUser.id) % 5}.png`;
+
         const roleInfo = await resolveDiscordRole(discordUser, avatarUrl);
         const role = roleInfo.role;
         const uid = `discord:${discordUser.id}`;
@@ -165,7 +181,11 @@ module.exports = async function handler(req, res) {
             last_seen_at: new Date().toISOString(),
             raw_payload: {
                 ...profile,
-                discordGuilds: discordGuilds.map(g => ({ id: g.id, name: g.name, permissions: String(g.permissions || '0') }))
+                discordGuilds: (discordGuilds || []).map(g => ({
+                    id: g.id,
+                    name: g.name,
+                    permissions: String(g.permissions || '0')
+                }))
             },
             updated_at: new Date().toISOString()
         };
@@ -173,13 +193,20 @@ module.exports = async function handler(req, res) {
         try {
             await supabase.from('staff_profiles').upsert([userProfile], { onConflict: 'discord_id' });
         } catch (dbError) {
-            console.error('Supabase DB User Upsert Failed:', dbError);
-            throw new Error('SUPABASE_USER_WRITE_FAILED');
+            console.error('[auth.discord.callback] Supabase staff_profiles upsert failed', {
+                error: dbError?.message || String(dbError)
+            });
+            throw Object.assign(new Error('SUPABASE_USER_WRITE_FAILED'), { stage: 'supabase_db' });
+        }
+
+        // Issue custom JWT using SUPABASE_JWT_SECRET — must be set in Vercel env
+        const jwtSecret = process.env.SUPABASE_JWT_SECRET;
+        if (!jwtSecret) {
+            throw Object.assign(new Error('SUPABASE_JWT_SECRET_MISSING'), { stage: 'supabase_auth' });
         }
 
         let supabaseToken;
         try {
-            const jwtSecret = process.env.SUPABASE_JWT_SECRET || 'super-secret-jwt-key-with-at-least-32-characters-long';
             const tokenPayload = {
                 aud: 'authenticated',
                 role: 'authenticated',
@@ -195,27 +222,34 @@ module.exports = async function handler(req, res) {
                     full_name: discordUser.global_name || discordUser.username,
                     discordId: discordUser.id,
                     custom_claims: {
-                        role: role,
+                        role,
                         discordId: discordUser.id
                     }
                 },
                 aal: 'aal1',
-                amr: [
-                    {
-                        method: 'oauth',
-                        timestamp: Math.floor(Date.now() / 1000)
-                    }
-                ]
+                amr: [{ method: 'oauth', timestamp: Math.floor(Date.now() / 1000) }]
             };
             supabaseToken = jwt.sign(tokenPayload, jwtSecret, { expiresIn: '7d' });
         } catch (tokenError) {
-            console.error('Supabase Custom Token Generation Failed:', tokenError);
-            throw new Error('SUPABASE_CUSTOM_TOKEN_FAILED');
+            console.error('[auth.discord.callback] JWT sign failed', { error: tokenError?.message });
+            throw Object.assign(new Error('SUPABASE_CUSTOM_TOKEN_FAILED'), { stage: 'supabase_auth' });
         }
 
+        // Structured success log — no tokens or secrets logged
+        console.info('[auth.discord.callback]', {
+            ok: true,
+            discordUserId: discordUser.id,
+            hasEmail: Boolean(discordUser.email),
+            role,
+            wantsJson,
+            redirectTo: wantsJson ? null : redirectUri
+        });
+
         if (wantsJson) {
-            res.status(200).json({ supabaseToken, profile });
+            res.status(200).json({ ok: true, supabaseToken, profile });
         } else {
+            // Redirect to login.html (or returnTo) with token+profile as query params
+            // login.js picks these up via signInWithCustomToken
             const url = new URL(redirectUri);
             url.searchParams.set('supabaseToken', supabaseToken);
             url.searchParams.set('profile', encodeProfile(profile));
@@ -223,49 +257,34 @@ module.exports = async function handler(req, res) {
             res.end();
         }
     } catch (error) {
-        console.error('Discord Callback Handler Error:', error);
-        
-        let errCode = 'DISCORD_AUTH_FAILED';
-        let errorStage = 'callback_handler';
-        let detail = error.message || '';
-        
-        const msg = String(error.message || '');
-        
-        if (msg.includes('INVALID_OAUTH_STATE')) {
-            errCode = 'INVALID_OAUTH_STATE';
-            errorStage = 'state_validation';
-        } else if (msg.includes('OAUTH_STATE_EXPIRED')) {
-            errCode = 'OAUTH_STATE_EXPIRED';
-            errorStage = 'state_validation';
-        } else if (msg.includes('DISCORD_CLIENT_SECRET_MISSING')) {
-            errCode = 'DISCORD_CLIENT_SECRET_MISSING';
-            errorStage = 'pre_exchange';
-        } else if (msg.includes('DISCORD_REDIRECT_URI_MISMATCH')) {
-            errCode = 'DISCORD_REDIRECT_URI_MISMATCH';
-            errorStage = 'code_exchange';
-        } else if (msg.includes('DISCORD_CODE_EXCHANGE_FAILED')) {
-            errCode = 'DISCORD_CODE_EXCHANGE_FAILED';
-            errorStage = 'code_exchange';
-        } else if (msg.includes('DISCORD_USER_FETCH_FAILED')) {
-            errCode = 'DISCORD_USER_FETCH_FAILED';
-            errorStage = 'user_fetch';
-        } else if (msg.includes('SUPABASE_USER_WRITE_FAILED')) {
-            errCode = 'SUPABASE_USER_WRITE_FAILED';
-            errorStage = 'supabase_db';
-        } else if (msg.includes('SUPABASE_CUSTOM_TOKEN_FAILED')) {
-            errCode = 'SUPABASE_CUSTOM_TOKEN_FAILED';
-            errorStage = 'supabase_auth';
-        } else if (msg.includes('DISCORD_CODE_MISSING')) {
-            errCode = 'DISCORD_CODE_MISSING';
-            errorStage = 'params_validation';
-        }
-        
+        const errCode = error.message || 'DISCORD_AUTH_FAILED';
+        const errorStage = error.stage || 'callback_handler';
+        const requestId = Math.random().toString(36).slice(2, 10);
+
+        console.error('[auth.discord.callback] Error', {
+            error: errCode,
+            stage: errorStage,
+            requestId
+        });
+
         if (wantsJson) {
-            res.status(400).json({ error: errCode, error_stage: errorStage, detail });
+            res.status(400).json({
+                ok: false,
+                error: errCode,
+                message: 'Discord login callback failed',
+                error_stage: errorStage,
+                requestId
+            });
         } else if (redirectUri) {
-            redirectWithError(res, redirectUri, errCode, errorStage, detail);
+            redirectWithError(res, redirectUri, errCode, errorStage);
         } else {
-            res.status(400).json({ error: errCode, error_stage: errorStage, detail });
+            res.status(400).json({
+                ok: false,
+                error: errCode,
+                message: 'Discord login callback failed',
+                error_stage: errorStage,
+                requestId
+            });
         }
     }
 };

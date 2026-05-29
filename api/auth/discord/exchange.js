@@ -4,12 +4,16 @@ const jwt = require('jsonwebtoken');
 
 // SECTION: API_ROUTES
 // PURPOSE: Dedicated Discord OAuth token exchange endpoint for Chrome Extensions using Supabase Auth.
+// SECURITY: No secrets are hardcoded. All credentials come from environment variables.
 
 async function exchangeCode(code, redirectUri) {
-    const clientId = process.env.DISCORD_CLIENT_ID || '1500551629768888542';
-    const clientSecret = process.env.DISCORD_CLIENT_SECRET || 'zsFAnmy_7FMPvNlfmXaHoPG6AV03zafi';
+    const clientId = process.env.DISCORD_CLIENT_ID;
+    const clientSecret = process.env.DISCORD_CLIENT_SECRET;
 
-    if (!clientId || !clientSecret) {
+    if (!clientId) {
+        throw new Error('DISCORD_CLIENT_ID_MISSING');
+    }
+    if (!clientSecret) {
         throw new Error('DISCORD_CLIENT_SECRET_MISSING');
     }
 
@@ -135,7 +139,10 @@ module.exports = async function handler(req, res) {
 
         let supabaseToken;
         try {
-            const jwtSecret = process.env.SUPABASE_JWT_SECRET || 'super-secret-jwt-key-with-at-least-32-characters-long';
+            const jwtSecret = process.env.SUPABASE_JWT_SECRET;
+            if (!jwtSecret) {
+                throw new Error('SUPABASE_JWT_SECRET_MISSING');
+            }
             const tokenPayload = {
                 aud: 'authenticated',
                 role: 'authenticated',

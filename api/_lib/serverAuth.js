@@ -5,6 +5,18 @@ const jwt = require('jsonwebtoken');
 // SECTION: SERVER_AUTH
 // PURPOSE: Handles server-side identity verification, allowance checks, and custom role mappings using Supabase.
 
+// Validate that SUPABASE_JWT_SECRET is set at startup time.
+// If missing, jwt.verify will silently fail for every request → silent 401 cascade.
+const JWT_SECRET = process.env.SUPABASE_JWT_SECRET;
+if (!JWT_SECRET) {
+  throw new Error(
+    '[serverAuth] SUPABASE_JWT_SECRET is required. ' +
+    'Without it every JWT verification will fail and all admin API calls will return 401. ' +
+    'Find the value in Supabase Dashboard → Settings → API → JWT Secret, ' +
+    'then add it to Vercel Dashboard → Settings → Environment Variables.'
+  );
+}
+
 function safeDocId(value) {
     return String(value || 'unknown').trim().toLowerCase().replace(/\//g, '_');
 }
@@ -21,7 +33,9 @@ function extractDiscordId(decoded) {
         decoded.user_metadata?.discordId,
         decoded.firebase?.identities?.['discord.com']?.[0],
         String(decoded.uid || '').startsWith('discord:') ? String(decoded.uid).replace(/^discord:/, '') : null,
-        String(decoded.sub || '').startsWith('discord:') ? String(decoded.sub).replace(/^discord:/, '') : null
+        String(decoded.sub || '').startsWith('discord:') ? String(decoded.sub).replace(/^discord:/, '') : null,
+        // sub may be the raw Discord snowflake (set in callback.js / exchange.js)
+        /^\d{17,20}$/.test(String(decoded.sub || '')) ? String(decoded.sub) : null
     ].filter(Boolean);
 
     return candidates.find((value) => /^\d{17,20}$/.test(String(value))) || '';
@@ -39,22 +53,21 @@ async function maybeSingleSafe(builder, source) {
 async function resolveActorFromToken(req) {
     const token = getBearerToken(req);
     if (!token) {
-        throw Object.assign(new Error('AUTH_REQUIRED'), { statusCode: 401 });
+        throw Object.assign(new Error('AUTH_MISSING_SESSION'), { statusCode: 401, code: 'AUTH_MISSING_SESSION' });
     }
 
-    // Verify JWT using SUPABASE_JWT_SECRET (custom tokens signed by exchange endpoints)
-    const jwtSecret = process.env.SUPABASE_JWT_SECRET || 'super-secret-jwt-key-with-at-least-32-characters-long';
     let decoded;
     try {
-        decoded = jwt.verify(token, jwtSecret);
+        decoded = jwt.verify(token, JWT_SECRET);
     } catch (jwtError) {
-        throw Object.assign(new Error('AUTH_REQUIRED'), { statusCode: 401 });
+        const isExpired = jwtError.name === 'TokenExpiredError';
+        const code = isExpired ? 'AUTH_EXPIRED_SESSION' : 'AUTH_INVALID_SESSION';
+        throw Object.assign(new Error(code), { statusCode: 401, code });
     }
 
     const uid = decoded.sub || decoded.uid || '';
     const email = String(decoded.email || decoded.user_metadata?.email || '').trim().toLowerCase();
     const discordId = extractDiscordId(decoded);
-
 
     let role = null;
     let source = 'none';
@@ -108,6 +121,14 @@ async function resolveActorFromToken(req) {
 
     role = normalizeRole(role || 'pending');
 
+    console.info('[serverAuth.resolveActorFromToken]', {
+        uid: uid ? uid.slice(0, 8) + '...' : null,
+        hasDiscordId: Boolean(discordId),
+        hasEmail: Boolean(email),
+        role,
+        source
+    });
+
     return {
         uid,
         email,
@@ -120,7 +141,7 @@ async function resolveActorFromToken(req) {
 async function requireUser(req) {
     const actor = await resolveActorFromToken(req);
     if (actor.role === 'blocked') {
-        throw Object.assign(new Error('AUTH_BLOCKED'), { statusCode: 403 });
+        throw Object.assign(new Error('AUTH_BLOCKED'), { statusCode: 403, code: 'AUTH_BLOCKED' });
     }
     return actor;
 }
@@ -129,6 +150,11 @@ async function requirePermission(req, permission) {
     const actor = await requireUser(req);
 
     if (!hasPermission(actor.role, permission)) {
+        // Distinguish: user authenticated but wrong role vs truly missing
+        const code = actor.role === 'pending'
+            ? 'AUTH_STAFF_NOT_FOUND'
+            : 'AUTH_FORBIDDEN_ROLE';
+
         try {
             await supabase.from('audit_logs').insert([{
                 action: 'unauthorized_access_attempt',
@@ -146,11 +172,17 @@ async function requirePermission(req, permission) {
                     userAgent: req.headers['user-agent'] || null
                 }
             }]);
-        } catch (auditError) {
-            // ignore database audit log errors to prevent blocking the response
+        } catch (_auditError) {
+            // ignore audit log errors — do not block the response
         }
 
-        throw Object.assign(new Error('FORBIDDEN'), { statusCode: 403 });
+        throw Object.assign(new Error(code), {
+            statusCode: 403,
+            code,
+            message: code === 'AUTH_STAFF_NOT_FOUND'
+                ? 'Bu Discord hesabının admin panel yetkisi yok.'
+                : 'Bu işlem için yeterli yetkiniz yok.'
+        });
     }
 
     return actor;

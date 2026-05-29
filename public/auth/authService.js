@@ -199,18 +199,30 @@ export const AuthService = {
         const session = await this.getSession();
         if (!session) {
             this.redirectToLogin(options.returnTo);
-            throw new Error('AUTH_REQUIRED');
+            const err = new Error('AUTH_MISSING_SESSION');
+            err.code = 'AUTH_MISSING_SESSION';
+            throw err;
         }
         if (session.profile?.status === 'blocked' || session.role === ROLES.BLOCKED) {
             this.redirectToLogin(options.returnTo, 'blocked');
-            throw new Error('AUTH_BLOCKED');
+            const err = new Error('AUTH_BLOCKED');
+            err.code = 'AUTH_BLOCKED';
+            throw err;
         }
         if (options.admin && !canAccessAdmin(session.role)) {
-            this.redirectToLogin(options.returnTo, 'forbidden');
-            throw new Error('AUTH_FORBIDDEN');
+            const code = session.role === ROLES.PENDING
+                ? 'AUTH_STAFF_NOT_FOUND'
+                : 'AUTH_FORBIDDEN_ROLE';
+            const err = new Error(code);
+            err.code = code;
+            err.message = code === 'AUTH_STAFF_NOT_FOUND'
+                ? 'Bu Discord hesabının admin panel yetkisi yok.'
+                : 'Bu işlem için yeterli yetkiniz yok.';
+            throw err;
         }
         return session;
     },
+
 
     async loginWithDiscord() {
         if (!isExtensionRuntime()) {

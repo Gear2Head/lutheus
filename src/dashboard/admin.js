@@ -3224,16 +3224,62 @@ async function init() {
 
     const returnToUrl = typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.getURL
         ? chrome.runtime.getURL('src/dashboard/admin.html')
-        : window.location.origin + '/';
+        : window.location.href;
 
-    state.session = await AuthService.requireSession({
-        admin: true,
-        returnTo: returnToUrl
-    });
-    if (!canAccessAdmin(state.session.role)) {
-        AuthService.redirectToLogin(returnToUrl, 'forbidden');
+    try {
+        state.session = await AuthService.requireSession({
+            admin: true,
+            returnTo: returnToUrl
+        });
+    } catch (authError) {
+        const code = authError.code || authError.message || 'AUTH_UNKNOWN';
+
+        if (code === 'AUTH_MISSING_SESSION' || code === 'AUTH_BLOCKED') {
+            // requireSession already called redirectToLogin — nothing else to do
+            console.warn('[admin.init] Redirecting to login:', code);
+            return;
+        }
+
+        if (code === 'AUTH_STAFF_NOT_FOUND' || code === 'AUTH_FORBIDDEN_ROLE') {
+            // User is authenticated but does not have admin access.
+            // Show forbidden state — do NOT redirect to login (avoid loop).
+            console.warn('[admin.init] Access denied:', code, authError.message);
+            Toast.init();
+            Toast.error(
+                'Yetkisiz Erişim',
+                authError.message || 'Bu Discord hesabının admin panel yetkisi yok.'
+            );
+            // Optionally show a visible forbidden message in the page body
+            const body = document.body;
+            if (body) {
+                const banner = document.createElement('div');
+                banner.style.cssText = 'position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:var(--bg-base,#0d0d14);color:var(--text-1,#e2e8f0);font-family:system-ui,sans-serif;z-index:9999;gap:16px;';
+                banner.innerHTML = `
+                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#f04e4e" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+                    <h2 style="margin:0;font-size:20px;font-weight:700;">Yetkisiz Erişim</h2>
+                    <p style="margin:0;font-size:14px;color:#94a3b8;max-width:360px;text-align:center;">${authError.message || 'Bu Discord hesabının admin panel yetkisi yok.'}</p>
+                    <a href="/src/auth/login.html" style="margin-top:8px;padding:10px 24px;background:#7c5af5;color:#fff;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px;">Farklı Hesapla Giriş Yap</a>
+                `;
+                body.appendChild(banner);
+            }
+            return;
+        }
+
+        // Unknown auth error — show generic error
+        console.error('[admin.init] Unexpected auth error:', code, authError);
+        Toast.init();
+        Toast.error('Başlatma Hatası', authError.message || 'Admin konsolu yüklenemedi');
         return;
     }
+
+    if (!canAccessAdmin(state.session.role)) {
+        // Double-check after requireSession (defensive)
+        console.warn('[admin.init] canAccessAdmin false after requireSession, role:', state.session.role);
+        Toast.init();
+        Toast.error('Yetkisiz Erişim', 'Bu Discord hesabının admin panel yetkisi yok.');
+        return;
+    }
+
     Toast.init();
     applyRbacVisibility();
     bindEvents();

@@ -99,8 +99,8 @@ async function loginWith(kind) {
 async function init() {
     const params = new URLSearchParams(window.location.search || window.location.hash.replace('#', '?'));
     const reason = params.get('reason');
-    if (reason === 'forbidden') setStatus('Bu sayfa için yetkiniz yok.', 'error');
-    if (reason === 'blocked') setStatus('Hesabınız engellenmiş durumda.', 'error');
+    if (reason === 'forbidden') setStatus('Bu Discord hesabının admin panel yetkisi yok. Farklı bir hesapla giriş yapabilirsiniz.', 'error');
+    if (reason === 'blocked') setStatus('Hesabınız engellenmiş durumda. Lütfen yönetici ile iletişime geçin.', 'error');
 
     const supabaseToken = params.get('supabaseToken');
     const profileEncoded = params.get('profile');

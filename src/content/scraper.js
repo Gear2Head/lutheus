@@ -148,44 +148,43 @@ window.GearTech.Scraper = {
 
         if (columns.length < 6) return this.extractCompactRowData(row, rowIdx);
 
-        let colOffset = 0;
-        const firstColText = columns[0].innerText.trim();
-        if (firstColText.length < 3 || firstColText.length > 20) {
-            colOffset = 1;
-        }
-
-        // Extract ID
-        const idCol = columns[0 + colOffset] || columns[0];
-        let caseId = this.extractCaseIdFromElement(row) || this.extractTextFromColumn(idCol, 'id') || '';
-
-        if (!caseId || caseId.length < 4) {
-            for (let i = 0; i < Math.min(3, columns.length); i++) {
-                const testId = this.extractTextFromColumn(columns[i], 'id');
-                if (testId && testId.length >= 4 && testId.length <= 15) {
-                    caseId = testId;
-                    colOffset = i;
-                    break;
-                }
-            }
-        }
+        const columnMeta = columns.map((col, index) => ({
+            col,
+            index,
+            text: (col.innerText || col.textContent || '').trim(),
+            id: this.extractDiscordId(col),
+            caseId: this.extractCaseIdFromElement(col) || this.extractTextFromColumn(col, 'id'),
+            hasAvatar: Boolean(col.querySelector('img'))
+        }));
+        const caseIdMeta = columnMeta.find(meta => meta.caseId) || {};
+        const caseId = this.extractCaseIdFromElement(row) || caseIdMeta.caseId || '';
+        const dateMeta = columnMeta.find(meta => this.isDateCandidate(meta.text)) || {};
+        const durationMeta = columnMeta.find(meta => this.isDurationCandidate(meta.text)) || {};
+        const typeMeta = columnMeta.find(meta => this.extractPenaltyType(meta.col) !== 'unknown') || columnMeta[0] || {};
+        const identityColumns = columnMeta.filter(meta => meta.id || meta.hasAvatar);
+        const authorMeta = identityColumns.find(meta => meta.index > (caseIdMeta.index ?? 0) + 1) || identityColumns[1] || {};
+        const userMeta = identityColumns.find(meta => meta.index !== authorMeta.index) || columnMeta[(caseIdMeta.index ?? 0) + 1] || {};
 
         // Extract User
-        const userCol = columns[1 + colOffset] || columns[1];
+        const userCol = userMeta.col;
         const userName = this.extractTextFromColumn(userCol, 'name');
         const userId = this.extractDiscordId(userCol) || this.extractTextFromColumn(userCol, 'id');
         const userAvatar = this.extractImageFromColumn(userCol);
 
         // Extract Reason
-        const reasonCol = columns[2 + colOffset] || columns[2];
-        let reason = reasonCol ? reasonCol.innerText.trim() : '';
-        if (this.isInvalidReasonCandidate(reason)) {
-            const fallbackReasonCol = columns.slice(2, Math.min(columns.length, 5))
-                .find((col) => col && !this.isInvalidReasonCandidate(col.innerText?.trim()));
-            reason = fallbackReasonCol ? fallbackReasonCol.innerText.trim() : '';
-        }
+        const reasonMeta = columnMeta.find(meta => (
+            meta.index !== userMeta.index &&
+            meta.index !== authorMeta.index &&
+            meta.index !== caseIdMeta.index &&
+            meta.index !== dateMeta.index &&
+            meta.index !== durationMeta.index &&
+            meta.index !== typeMeta.index &&
+            !this.isInvalidReasonCandidate(meta.text)
+        )) || {};
+        const reason = reasonMeta.text || '';
 
         // Extract Author
-        const authorCol = columns[3 + colOffset] || columns[3];
+        const authorCol = authorMeta.col;
         let authorName = '';
         let authorId = '';
         let authorAvatar = '';
@@ -210,7 +209,7 @@ window.GearTech.Scraper = {
         }
 
         // Extract Duration
-        const durationCol = columns[4 + colOffset] || columns[4];
+        const durationCol = durationMeta.col;
         let duration = '';
         if (durationCol) {
             // Check for title attribute (full duration usually hidden there if truncated)
@@ -220,7 +219,7 @@ window.GearTech.Scraper = {
         if (!duration || duration === '---') duration = 'Süresiz';
 
         // Extract Created date
-        const createdCol = columns[5 + colOffset] || columns[5];
+        const createdCol = dateMeta.col;
         let createdRaw = '';
         if (createdCol) {
             const text = createdCol.innerText.trim();
@@ -230,14 +229,7 @@ window.GearTech.Scraper = {
 
         // Extract Penalty Type (New V4 Feature)
         // Check column before ID (if offset > 0) or first column
-        let penaltyType = 'unknown';
-        const typeCol = colOffset > 0 ? columns[colOffset - 1] : columns[0];
-        if (typeCol) {
-            const img = typeCol.querySelector('img');
-            if (img && img.alt) {
-                penaltyType = img.alt.toLowerCase(); // 'ban', 'mute', 'warn'
-            }
-        }
+        const penaltyType = this.extractPenaltyType(typeMeta.col);
 
         return {
             id: caseId,
@@ -342,6 +334,26 @@ window.GearTech.Scraper = {
         if (/^\d{1,2}\.\d{1,2}\.\d{4}/.test(text)) return true;
         if (/^(mute|ban|warn|kick|timeout|permanent|süresiz|suresiz)$/i.test(text)) return true;
         return false;
+    },
+
+    isDateCandidate: function (value) {
+        const text = String(value || '').trim();
+        return /\d{1,2}\.\d{1,2}\.\d{4}/.test(text) || /\d{4}-\d{2}-\d{2}/.test(text);
+    },
+
+    isDurationCandidate: function (value) {
+        const text = String(value || '').trim().toLowerCase();
+        return /^(permanent|süresiz|suresiz|---)$/.test(text) ||
+            /^\d+(?:[.,]\d+)?\s*(ms|s|sec|secs|m|min|mins|h|hr|hrs|hour|hours|d|day|days|gün|gun|saat|dakika)\b/i.test(text);
+    },
+
+    extractPenaltyType: function (col) {
+        if (!col) return 'unknown';
+        const text = (col.innerText || col.textContent || '').trim().toLowerCase();
+        const img = col.querySelector('img');
+        const raw = (img?.alt || img?.title || text || '').toLowerCase();
+        const match = raw.match(/\b(mute|ban|warn|kick|timeout)\b/i);
+        return match ? match[1].toLowerCase() : 'unknown';
     },
 
     cleanReasonCandidate: function (value) {

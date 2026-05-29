@@ -601,6 +601,13 @@ function openSingleCaseModal(entry) {
     const validation = getValidation(entry);
     const profile = resolveStaffProfile(entry);
     const caseId = String(entry.id || entry.caseId || '-');
+    const punishedUser = entry.punishedUser || {};
+    const punishedUserName = punishedUser.displayName || entry.user || 'Bilinmiyor';
+    const punishedUserId = punishedUser.discordId || entry.userId || '';
+    const rawReason = typeof entry.reason === 'object'
+        ? (entry.reason.raw || entry.reason.normalized || '')
+        : entry.reason;
+    const reasonText = rawReason || 'Sebep belirtilmemiş';
     const status = validation.status || 'pending';
     const statusColor = status === 'valid' ? 'var(--emerald)' : status === 'invalid' ? 'var(--red)' : 'var(--amber)';
     const statusLabel = status === 'valid' ? '✅ Geçerli' : status === 'invalid' ? '❌ Geçersiz' : '⏳ Beklemede';
@@ -625,8 +632,8 @@ function openSingleCaseModal(entry) {
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
                 <div style="display:flex;flex-direction:column;gap:4px;">
                     <span class="field-label" style="font-size:10px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-3);">Cezalı Kullanıcı</span>
-                    <span style="font-weight:700;color:var(--text-1);">${escapeHtml(entry.user || 'Bilinmiyor')}</span>
-                    ${entry.userId ? `<span style="font-family:var(--font-mono);font-size:11px;color:var(--text-3);">${escapeHtml(entry.userId)}</span>` : ''}
+                    <span style="font-weight:700;color:var(--text-1);">${escapeHtml(punishedUserName)}</span>
+                    ${punishedUserId ? `<span style="font-family:var(--font-mono);font-size:11px;color:var(--text-3);">${escapeHtml(punishedUserId)}</span>` : ''}
                 </div>
                 <div style="display:flex;flex-direction:column;gap:4px;">
                     <span class="field-label" style="font-size:10px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-3);">Yetkili</span>
@@ -644,7 +651,7 @@ function openSingleCaseModal(entry) {
             <!-- Reason -->
             <div style="display:flex;flex-direction:column;gap:6px;">
                 <span class="field-label" style="font-size:10px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-3);">Ceza Sebebi</span>
-                <div style="padding:12px;background:var(--bg-elevated);border:1px solid var(--border);border-radius:var(--radius-md);font-size:13px;line-height:1.6;color:var(--text-1);">${escapeHtml(entry.reason || 'Sebep belirtilmemiş')}</div>
+                <div style="padding:12px;background:var(--bg-elevated);border:1px solid var(--border);border-radius:var(--radius-md);font-size:13px;line-height:1.6;color:var(--text-1);">${escapeHtml(reasonText)}</div>
             </div>
             <!-- CUK Evaluation -->
             ${validation.reason ? `

@@ -1100,13 +1100,17 @@ async function runPointtrainScan(options = {}) {
 }
 
 let activeJobId = null;
+let lastMissingIngestTokenWarningAt = 0;
 
 async function forwardToVercelIngest(records, jobId, sourceUrl, finished = false) {
     try {
-        const session = await new Promise(resolve => chrome.storage.local.get(['lutheus:session', 'session'], (res) => resolve(res['lutheus:session'] || res['session'] || null)));
+        const session = await new Promise(resolve => chrome.storage.local.get(['lutheusAuthSession', 'lutheus:session', 'session'], (res) => resolve(res.lutheusAuthSession || res['lutheus:session'] || res.session || null)));
         const idToken = session?.idToken;
         if (!idToken) {
-            console.warn('[Lutheus SW] No idToken found in storage for Vercel ingest.');
+            if (Date.now() - lastMissingIngestTokenWarningAt > 60_000) {
+                lastMissingIngestTokenWarningAt = Date.now();
+                console.warn('[Lutheus SW] No idToken found in storage for Vercel ingest.');
+            }
             return;
         }
 

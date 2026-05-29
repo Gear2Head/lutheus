@@ -16,6 +16,14 @@ function getSafeJobId(jobId) {
     return `${hash.slice(0, 8)}-${hash.slice(8, 12)}-4${hash.slice(12, 15)}-a${hash.slice(15, 18)}-${hash.slice(18, 30)}`;
 }
 
+async function safeInsertAuditLog(log) {
+    try {
+        await supabase.from('audit_logs').insert([log]);
+    } catch (e) {
+        console.warn('[AuditLog] Failed to insert audit log:', e.message || e);
+    }
+}
+
 // SECTION: SCAN_CATCH_ALL
 // PURPOSE: Consolidates scanning APIs (start, ingest, status) into a single route to meet Vercel serverless function allocations limits.
 
@@ -232,13 +240,13 @@ async function handleStart(req, res) {
 
     await supabase.from('scan_sessions').insert([dbJob]);
 
-    await supabase.from('audit_logs').insert([{
+    await safeInsertAuditLog({
         action: 'sapphire_scan_started',
         target_type: 'scan',
         actor_email: actor.email || null,
         actor_discord_id: actor.discordId || null,
         metadata: { jobId, guildId, scanMode, source }
-    }]).catch(() => null);
+    });
 
     return ok(res, {
         success: true,
@@ -303,13 +311,13 @@ async function handleIngest(req, res) {
         jobData = insertedJob || jobPayload;
     }
 
-    await supabase.from('audit_logs').insert([{
+    await safeInsertAuditLog({
         action: 'sapphire_scan_ingest_received',
         target_type: 'scan',
         actor_email: actor.email || null,
         actor_discord_id: actor.discordId || null,
         metadata: { jobId, guildId, count: items.length, page: body.page || null }
-    }]).catch(() => null);
+    });
 
     const normalizedItems = items.map(item => normalizeCase(item, guildId));
 
@@ -456,13 +464,13 @@ async function handleIngest(req, res) {
     await supabase.from('scan_sessions').update(jobUpdate).eq('id', jobId);
 
     if (isFinished) {
-        await supabase.from('audit_logs').insert([{
+        await safeInsertAuditLog({
             action: 'sapphire_scan_completed',
             target_type: 'scan',
             actor_email: actor.email || null,
             actor_discord_id: actor.discordId || null,
             metadata: { jobId, guildId, stats: nextStats }
-        }]).catch(() => null);
+        });
     }
 
     return ok(res, {

@@ -462,7 +462,10 @@ export const CUKEngine = {
      * @returns {{status: string, reason: string, details: Object}}
      */
     validate(caseData) {
-        const { reason, duration, type, reviewStatus, note, evidenceText, description, proofText, raw } = caseData;
+        const { reason: rawReason, duration, type, reviewStatus, note, evidenceText, description, proofText, raw } = caseData;
+        const reason = typeof rawReason === 'object' && rawReason
+            ? String(rawReason.raw || rawReason.normalized || '').trim()
+            : String(rawReason || '').trim();
         const repeatIndex = caseData.repeatIndex !== undefined ? Number(caseData.repeatIndex) : null;
 
         // 0. Manuel Override Kontrolü

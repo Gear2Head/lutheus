@@ -179,7 +179,10 @@ export const CUKEngine = {
      * @returns {{status: string, reason: string, authority: string, details: Object}}
      */
     validate: function(caseData, userRole = 'YETKILI') {
-        const { reason, duration, type, reviewStatus, note, authorRole } = caseData;
+        const { reason: rawReason, duration, type, reviewStatus, note, authorRole } = caseData;
+        const reason = typeof rawReason === 'object' && rawReason
+            ? String(rawReason.raw || rawReason.normalized || '').trim()
+            : String(rawReason || '').trim();
 
         // PRIORITY 1: Manual Override Check (Human authority > CUK)
         if (reviewStatus && (reviewStatus === PenaltyStatus.MANUAL_APPROVED || reviewStatus === PenaltyStatus.MANUAL_REJECTED)) {
@@ -233,14 +236,17 @@ export const CUKEngine = {
             }
         }
 
+        // Clean copy of caseData for downstream checks
+        const cleanCaseData = { ...caseData, reason };
+
         // PRIORITY 4: Server Rules Check
-        const serverRuleResult = this.checkServerRules(caseData, userRole);
+        const serverRuleResult = this.checkServerRules(cleanCaseData, userRole);
         if (serverRuleResult) {
             return serverRuleResult;
         }
 
         // PRIORITY 5: Category-based Check (Default behavior)
-        const categoryResult = this.checkCategoryRules(caseData, userRole, authorRole);
+        const categoryResult = this.checkCategoryRules(cleanCaseData, userRole, authorRole);
         return categoryResult;
     },
 

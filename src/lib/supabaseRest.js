@@ -11,7 +11,7 @@ async function supabaseFetch(path, options = {}, token = null) {
         'apikey': SUPABASE_KEY,
         'Content-Type': 'application/json',
         'Prefer': options.prefer || 'return=representation',
-        ...(token ? { 'Authorization': `Bearer ${token}` } : { 'Authorization': `Bearer ${SUPABASE_KEY}` }),
+        ...(token && token !== SUPABASE_KEY ? { 'Authorization': `Bearer ${token}` } : {}),
         ...(options.headers || {})
     };
     const response = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
@@ -469,7 +469,7 @@ export const SupabaseRest = {
             result = await supabaseFetch(`${tableName}?select=*${qs}`, {}, token);
         } catch (error) {
             if (tableName !== 'sapphire_cases' || !isAuthKeyError(error) || !token) throw error;
-            result = await supabaseFetch(`${tableName}?select=*${qs}`, { headers: { Authorization: `Bearer ${SUPABASE_KEY}` } }, null);
+            result = await supabaseFetch(`${tableName}?select=*${qs}`, {}, null);
         }
         if (Array.isArray(result)) return result.map(row => unflattenFromDb(tableName, row));
         return [];

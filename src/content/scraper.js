@@ -400,7 +400,8 @@ window.GearTech.Scraper = {
     // PURPOSE: Extract case identifiers without allowing IDs to leak into reason text.
     isLikelyCaseId: function (value, options = {}) {
         const text = String(value || '').trim();
-        if (!/^[A-Za-z0-9_-]{4,24}$/.test(text)) return false;
+        if (text.includes('_') || text.includes('-')) return false;
+        if (!/^[A-Za-z0-9]{4,24}$/.test(text)) return false;
         if (/^\d{17,20}$/.test(text)) return false;
         if (/^\d{5,24}$/.test(text)) return true;
         if (/^(mute|ban|warn|kick|timeout|user|reason|author|duration|created|bilinmiyor|sunucu|discord|yetkili)$/i.test(text)) return false;

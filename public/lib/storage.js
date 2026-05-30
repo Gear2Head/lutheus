@@ -133,8 +133,9 @@ function hasBetterAvatar(nextAvatar, previousAvatar) {
 function isCaseIdLike(value) {
     const text = String(value || '').trim();
     if (!text) return false;
+    if (text.includes('_') || text.includes('-')) return false;
     if (/^\d{4,24}$/.test(text)) return true;
-    if (!/^[A-Za-z0-9_-]{4,24}$/.test(text)) return false;
+    if (!/^[A-Za-z0-9]{4,24}$/.test(text)) return false;
     if (/^\d{17,20}$/.test(text)) return false;
     if (/^(mute|ban|warn|kick|timeout|user|reason|author|duration|created|bilinmiyor|sunucu|discord|yetkili)$/i.test(text)) return false;
     return /[A-Za-z]/.test(text) && /\d/.test(text);

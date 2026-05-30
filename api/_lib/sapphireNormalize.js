@@ -13,7 +13,9 @@ function calculateContentHash(fields) {
 }
 
 function parseCaseId(value) {
-    const matched = safeString(value).match(/^[A-Za-z0-9_-]{4,24}$/);
+    const text = safeString(value);
+    if (text.includes('_') || text.includes('-')) return '';
+    const matched = text.match(/^[A-Za-z0-9]{4,24}$/);
     return matched ? matched[0] : '';
 }
 
@@ -36,7 +38,7 @@ function isReasonLike(value) {
     if (!text || isLikelyWrongReason(text)) return false;
     if (isDiscordId(text)) return false;
     if (/^\d{17,20}$/.test(text)) return false;
-    if (/^[A-Za-z0-9_-]{4,24}$/.test(text) && /[A-Za-z]/.test(text) && /\d/.test(text)) return false;
+    if (!text.includes('_') && !text.includes('-') && /^[A-Za-z0-9]{4,24}$/.test(text) && /[A-Za-z]/.test(text) && /\d/.test(text)) return false;
     if (/^\d{1,2}\.\d{1,2}\.\d{4}/.test(text)) return false;
     if (/^(mute|ban|warn|kick|timeout|permanent|süresiz|suresiz)$/i.test(text)) return false;
     return true;
@@ -44,7 +46,10 @@ function isReasonLike(value) {
 
 function validateWsPayload(item, guildId) {
     const caseId = String(item.caseId || item.id || '').trim();
-    if (!caseId || !/^[A-Za-z0-9_-]{4,24}$/.test(caseId)) {
+    if (caseId.includes('_') || caseId.includes('-')) {
+        return { valid: false, reason: 'invalid_case_id' };
+    }
+    if (!caseId || !/^[A-Za-z0-9]{4,24}$/.test(caseId)) {
         return { valid: false, reason: 'invalid_case_id' };
     }
     if (!guildId || String(guildId).trim() === '') {

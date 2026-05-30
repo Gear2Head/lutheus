@@ -440,15 +440,36 @@ function computeModeratorStats(cases, registry, roleCache = []) {
         if (validation.status === PenaltyStatus.PENDING || validation.status === PenaltyStatus.UNKNOWN) current.pending += 1;
     });
 
-    return Array.from(map.values()).map((entry) => {
-        const performance = CUKEngine.calculatePerformanceScore({
+    return Array.from(map.values()).map((entry) => ({
+        ...entry,
+        performance: CUKEngine.calculatePerformanceScore({
             valid: entry.valid,
             invalid: entry.invalid,
             pending: entry.pending
-        });
-        const topReason = Object.entries(entry.reasons).sort((left, right) => right[1] - left[1])[0]?.[0] || '—';
-        return { ...entry, topReason, performance };
-    }).sort((left, right) => right.count - left.count);
+        })
+    })).sort((left, right) => {
+        const roleHierarchyPriority = {
+            'kurucu': 0,
+            'admin': 1,
+            'yonetici': 2,
+            'genel_sorumlu': 3,
+            'discord_yoneticisi': 4,
+            'kidemli_discord_moderatoru': 5,
+            'senior_moderator': 6,
+            'moderator': 7,
+            'discord_moderatoru': 7,
+            'support': 8,
+            'discord_destek_ekibi': 8,
+            'viewer': 9,
+            'pending': 10,
+            'blocked': 11
+        };
+        const pLeft = roleHierarchyPriority[left.role] ?? 99;
+        const pRight = roleHierarchyPriority[right.role] ?? 99;
+        if (pLeft !== pRight) return pLeft - pRight;
+        if (right.count !== left.count) return right.count - left.count;
+        return String(left.name).localeCompare(String(right.name));
+    });
 }
 
 async function loadSettings() {

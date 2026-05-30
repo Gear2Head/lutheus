@@ -68,9 +68,20 @@
                 "https://*.sapphire.xyz/*",
                 "https://dashboard.sapph.xyz/*"
             ],
-            "js": ["src/content/interceptor.js"],
+            "js": ["src/content/interceptor.js", "src/content/sapphireWsInterceptor.js"],
             "run_at": "document_start",
             "world": "MAIN",
+            "all_frames": false
+        },
+        {
+            "matches": [
+                "https://sapphire.xyz/*",
+                "https://*.sapphire.xyz/*",
+                "https://dashboard.sapph.xyz/*"
+            ],
+            "js": ["src/content/sapphireWsListener.js"],
+            "run_at": "document_start",
+            "world": "ISOLATED",
             "all_frames": false
         },
         {

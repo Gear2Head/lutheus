@@ -3,22 +3,87 @@
 
 const IMPORTANT_FIELDS = [
     'caseId',
+    'guildId',
     'userId',
     'userName',
+    'userAvatar',
     'authorId',
     'authorName',
+    'authorAvatar',
     'type',
     'reason',
     'duration',
+    'durationMs',
+    'isPermanent',
+    'isOpen',
+    'closedAt',
+    'closedByDiscordId',
+    'expiresAt',
     'createdAt',
-    'sourceUrl'
+    'createdRaw',
+    'sourceUrl',
+    'source',
+    'capturedVia'
 ];
+
+const SOURCE_CONFIDENCE = {
+    'ws_interceptor': 100,
+    'sapphire-websocket': 100,
+    'http_interceptor': 80,
+    'dom_scraper': 50,
+    'sapphire-dashboard': 50,
+    'manual': 70,
+    'legacy_import': 30
+};
+
+const PROTECTED_FIELDS = [
+    'case_id',
+    'guild_id',
+    'punished_user_discord_id',
+    'author_discord_id',
+    'type',
+    'reason_raw',
+    'reason_normalized',
+    'reason_category',
+    'created_at_sapphire',
+    'expires_at',
+    'duration_raw',
+    'duration_ms',
+    'is_permanent',
+    'is_open',
+    'closed_at',
+    'closed_by_discord_id'
+];
+
+function getConfidence(source) {
+    return SOURCE_CONFIDENCE[source] || 40;
+}
+
+function mapToDbField(key) {
+    const mapping = {
+        caseId: 'case_id',
+        guildId: 'guild_id',
+        userId: 'punished_user_discord_id',
+        authorId: 'author_discord_id',
+        reason: 'reason_raw',
+        createdAt: 'created_at_sapphire',
+        expiresAt: 'expires_at',
+        duration: 'duration_raw',
+        durationMs: 'duration_ms',
+        isPermanent: 'is_permanent',
+        isOpen: 'is_open',
+        closedAt: 'closed_at',
+        closedByDiscordId: 'closed_by_discord_id',
+        type: 'type'
+    };
+    return mapping[key] || key;
+}
 
 function getCompletenessScore(item) {
     if (!item) return 0;
     let score = 0;
     for (const key of IMPORTANT_FIELDS) {
-        if (item[key] && String(item[key]).trim() !== '') {
+        if (item[key] !== undefined && item[key] !== null && String(item[key]).trim() !== '') {
             score++;
         }
     }
@@ -27,11 +92,38 @@ function getCompletenessScore(item) {
 
 function mergeWithoutDataLoss(existing, incoming) {
     const result = { ...existing };
+    const existingConf = getConfidence(existing.capturedVia || existing.source);
+    const incomingConf = getConfidence(incoming.capturedVia || incoming.source);
 
-    // Fill in missing fields if present in incoming
-    for (const key of IMPORTANT_FIELDS) {
-        if ((result[key] === undefined || result[key] === null || String(result[key]).trim() === '') && incoming[key]) {
-            result[key] = incoming[key];
+    // 1. If incoming has higher or equal confidence, we overwrite everything
+    if (incomingConf >= existingConf) {
+        for (const key of IMPORTANT_FIELDS) {
+            if (incoming[key] !== undefined && incoming[key] !== null) {
+                result[key] = incoming[key];
+            }
+        }
+    } else {
+        // 2. If incoming has LOWER confidence (e.g. DOM scraper trying to override WS data),
+        // we ONLY fill missing fields. We NEVER override protected database fields.
+        for (const key of IMPORTANT_FIELDS) {
+            const dbField = mapToDbField(key);
+            const isProtected = PROTECTED_FIELDS.includes(dbField);
+
+            if (isProtected) {
+                // If it is a protected field, only fill if existing is null, empty or undefined
+                if (result[key] === undefined || result[key] === null || String(result[key]).trim() === '') {
+                    if (incoming[key] !== undefined && incoming[key] !== null) {
+                        result[key] = incoming[key];
+                    }
+                }
+            } else {
+                // Non-protected field: fill if existing is empty
+                if (result[key] === undefined || result[key] === null || String(result[key]).trim() === '') {
+                    if (incoming[key] !== undefined && incoming[key] !== null) {
+                        result[key] = incoming[key];
+                    }
+                }
+            }
         }
     }
 
@@ -43,17 +135,13 @@ function mergeWithoutDataLoss(existing, incoming) {
         }
     }
 
-    if (incoming.contentHash && incoming.contentHash !== existing.contentHash) {
+    if (incoming.contentHash && incoming.contentHash !== existing.contentHash && incomingConf >= existingConf) {
         result.previousHash = existing.contentHash || null;
         result.contentHash = incoming.contentHash;
-        result.reason = incoming.reason || existing.reason;
-        result.type = incoming.type || existing.type;
-        result.duration = incoming.duration || existing.duration;
         result.updatedAt = new Date().toISOString();
     }
 
     result.lastSeenAt = new Date().toISOString();
-
     return result;
 }
 
@@ -67,12 +155,26 @@ function diffCase(existing, incoming) {
         return { type: 'skip' };
     }
 
-    const existingScore = getCompletenessScore(existing);
-    const incomingScore = getCompletenessScore(incoming);
+    const existingConf = getConfidence(existing.capturedVia || existing.source);
+    const incomingConf = getConfidence(incoming.capturedVia || incoming.source);
 
     // Rule 5: If incoming data is less complete, skip to avoid losing data
-    if (incomingScore < existingScore) {
-        return { type: 'skip' };
+    // ONLY do this if incoming confidence is NOT lower (if it is lower, it could still fill in empty fields, so we do a partial merge instead of skipping completely, but we avoid overriding protected fields).
+    // If incoming confidence is higher, we always allow update.
+    if (incomingConf < existingConf) {
+        // If incoming has lower confidence, we want to allow the update ONLY if there is at least one field in existing that is empty and populated in incoming.
+        let hasNewData = false;
+        for (const key of IMPORTANT_FIELDS) {
+            const isEmptyInExisting = existing[key] === undefined || existing[key] === null || String(existing[key]).trim() === '';
+            const isFilledInIncoming = incoming[key] !== undefined && incoming[key] !== null && String(incoming[key]).trim() !== '';
+            if (isEmptyInExisting && isFilledInIncoming) {
+                hasNewData = true;
+                break;
+            }
+        }
+        if (!hasNewData) {
+            return { type: 'skip' };
+        }
     }
 
     // Rule 3 & 4: Merge fields safely and decide on update
@@ -82,5 +184,6 @@ function diffCase(existing, incoming) {
 }
 
 module.exports = {
-    diffCase
+    diffCase,
+    mergeWithoutDataLoss
 };

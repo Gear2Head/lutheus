@@ -3,7 +3,7 @@ const { supabase } = require('../../_lib/supabaseClient');
 const { requirePermission, requireUser } = require('../../_lib/serverAuth');
 const { PERMISSIONS, normalizeRole } = require('../../_lib/roles');
 const { normalizeCase } = require('../../_lib/sapphireNormalize');
-const { diffCase } = require('../../_lib/sapphireDiff');
+const { diffCase, mergeWithoutDataLoss } = require('../../_lib/sapphireDiff');
 const { ok, forbidden, serverError } = require('../../_lib/apiResponse');
 
 function getSafeJobId(jobId) {
@@ -33,146 +33,111 @@ function getAction(req) {
     return String(action || '').replace(/^\/+|\/+$/g, '');
 }
 
-function unflattenCaseFromDb(row) {
+function dbRowToDomain(row) {
     if (!row) return null;
-    return {
-        id: row.case_id,
-        caseId: row.case_id,
-        caseKey: row.case_id,
-        guildId: row.guild_id,
-        caseUrl: row.case_url,
-        sourceUrl: row.case_url,
-        type: row.type,
-        state: {
-            raw: row.state_raw,
-            isOpen: row.is_open
-        },
-        punishedUser: {
-            discordId: row.punished_user_discord_id,
-            displayName: row.punished_user_display_name,
-            avatarUrl: row.punished_user_avatar_url,
-            rawText: row.punished_user_display_name || ''
-        },
-        userId: row.punished_user_discord_id,
-        user: row.punished_user_display_name,
-        userAvatar: row.punished_user_avatar_url,
-        author: {
-            discordId: row.author_discord_id,
-            displayName: row.author_display_name,
-            avatarUrl: row.author_avatar_url,
-            rawText: row.author_display_name || ''
-        },
-        authorId: row.author_discord_id,
-        authorName: row.author_display_name,
-        authorAvatar: row.author_avatar_url,
-        reason: {
-            raw: row.reason_raw,
-            normalized: row.reason_normalized,
-            category: row.reason_category,
-            parseStatus: row.reason_parse_status
-        },
-        duration: {
-            raw: row.duration_raw,
-            durationMs: row.duration_ms,
-            isPermanent: row.is_permanent,
-            parseStatus: row.duration_parse_status
-        },
-        durationMs: row.duration_ms,
-        isPermanent: row.is_permanent,
-        created: {
-            raw: row.created_raw,
-            createdAt: row.created_at_sapphire,
-            parseStatus: row.created_parse_status
-        },
-        createdRaw: row.created_raw,
-        createdAt: row.created_at_sapphire,
-        expiry: {
-            expiresAt: row.expires_at,
-            remainingMs: row.remaining_ms,
-            isExpired: row.is_expired
-        },
-        expiresAt: row.expires_at,
-        isExpired: row.is_expired,
-        activeStatus: {
-            isActive: row.is_active,
-            source: row.active_source,
-            conflictDetected: row.conflict_detected,
-            conflictReason: row.conflict_reason
-        },
-        isActive: row.is_active,
-        cukAnalysis: row.cuk_analysis,
-        cukVerdict: row.cuk_verdict,
-        cukConfidence: row.cuk_confidence,
-        cukFlags: row.cuk_flags,
-        stale: {
-            isStale: row.is_stale,
-            staleReason: row.stale_reason,
-            staleDetectedAt: row.stale_detected_at,
-            lastConfirmedInSapphireAt: row.last_confirmed_in_sapphire_at
-        },
-        isStale: row.is_stale,
-        contentHash: row.legacy_payload?.contentHash || null
+    const caseKey = `${row.guild_id}_${row.case_id}`;
+    
+    const dataCompleteness = {
+        hasCaseId: Boolean(row.case_id),
+        hasUserId: Boolean(row.punished_user_discord_id),
+        hasAuthorId: Boolean(row.author_discord_id),
+        hasReason: Boolean(row.reason_raw),
+        hasType: Boolean(row.type && row.type !== 'unknown'),
+        hasCreatedAt: Boolean(row.created_at_sapphire)
     };
+
+    return {
+        caseKey,
+        guildId: row.guild_id,
+        caseId: row.case_id,
+        userId: row.punished_user_discord_id || '',
+        userName: row.punished_user_display_name || 'Unknown',
+        userAvatar: row.punished_user_avatar_url || null,
+        authorId: row.author_discord_id || '',
+        authorName: row.author_display_name || 'Bilinmiyor',
+        authorAvatar: row.author_avatar_url || null,
+        type: row.type || 'unknown',
+        reason: row.reason_raw || '',
+        duration: row.duration_raw || '',
+        durationMs: row.duration_ms !== undefined ? row.duration_ms : null,
+        isPermanent: row.is_permanent !== undefined ? row.is_permanent : (row.duration_ms === null),
+        createdAt: row.created_at_sapphire || null,
+        createdRaw: row.created_raw || '',
+        sourceUrl: row.case_url || '',
+        isOpen: row.is_open !== undefined ? row.is_open : null,
+        closedByDiscordId: row.closed_by_discord_id || null,
+        closedAt: row.closed_at || null,
+        expiresAt: row.expires_at || null,
+        source: row.source_sync || 'sapphire-dashboard',
+        capturedVia: row.source_sync || 'dom_scraper',
+        dataCompleteness,
+        contentHash: row.legacy_payload?.contentHash || null,
+        firstSeenAt: row.scraped_at || new Date().toISOString(),
+        lastSeenAt: row.last_worker_seen_at || new Date().toISOString(),
+        updatedAt: row.updated_at || new Date().toISOString()
+    };
+}
+
+function resolveLastSyncedBy(source) {
+    const s = String(source || '').toLowerCase();
+    if (s === 'ws_interceptor' || s === 'sapphire-websocket') return 'extension-ws';
+    if (s === 'http_interceptor') return 'extension-http';
+    if (s === 'dom_scraper' || s === 'sapphire-dashboard') return 'extension-dom';
+    return 'extension-unknown';
 }
 
 function flattenCaseForDb(data) {
     if (!data) return {};
-    const state = data.state || {};
-    const punishedUser = data.punishedUser || {};
-    const author = data.author || {};
-    const reason = data.reason || {};
-    const duration = data.duration || {};
-    const created = data.created || {};
-    const expiry = data.expiry || {};
-    const activeStatus = data.activeStatus || {};
-    const stale = data.stale || {};
-
-    const authorDiscordId = author.discordId || data.authorId || null;
-    const punishedUserDiscordId = punishedUser.discordId || data.userId || null;
+    const capturedVia = data.capturedVia || data.source || 'unknown';
 
     return {
         case_id: data.caseId || data.id,
         guild_id: data.guildId || '1223431616081166336',
-        case_url: data.caseUrl || data.sourceUrl || '',
+        case_url: data.sourceUrl || '',
         type: data.type || null,
-        state_raw: state.raw || data.stateRaw || null,
-        is_open: state.isOpen !== undefined ? state.isOpen : (data.isOpen !== undefined ? data.isOpen : null),
-        punished_user_discord_id: punishedUserDiscordId,
-        punished_user_display_name: punishedUser.displayName || data.user || null,
-        punished_user_avatar_url: punishedUser.avatarUrl || data.userAvatar || null,
-        author_discord_id: authorDiscordId,
-        author_display_name: author.displayName || data.authorName || null,
-        author_avatar_url: author.avatarUrl || data.authorAvatar || null,
-        reason_raw: reason.raw || data.reason || '',
-        reason_normalized: reason.normalized || data.reason || '',
-        reason_category: reason.category || null,
-        reason_parse_status: reason.parseStatus || 'complete',
-        duration_raw: duration.raw || data.duration || null,
-        duration_ms: duration.durationMs !== undefined ? duration.durationMs : (data.durationMs !== undefined ? data.durationMs : null),
-        is_permanent: duration.isPermanent !== undefined ? duration.isPermanent : (data.isPermanent || false),
-        duration_parse_status: duration.parseStatus || 'complete',
-        created_raw: created.raw || data.createdRaw || null,
-        created_at_sapphire: created.createdAt || data.createdAt || null,
-        created_parse_status: created.parseStatus || 'complete',
-        expires_at: expiry.expiresAt || data.expiresAt || null,
-        remaining_ms: expiry.remainingMs || data.remainingMs || null,
-        is_expired: expiry.isExpired !== undefined ? expiry.isExpired : (data.isExpired || null),
-        is_active: activeStatus.isActive !== undefined ? activeStatus.isActive : (data.isActive || null),
-        active_source: activeStatus.source || null,
-        conflict_detected: activeStatus.conflictDetected || false,
-        conflict_reason: activeStatus.conflictReason || null,
-        cuk_verdict: data.cukVerdict || data.cukAnalysis?.verdict || null,
-        cuk_confidence: data.cukConfidence || data.cukAnalysis?.confidence || null,
-        cuk_flags: data.cukFlags || data.cukAnalysis?.flags || [],
-        cuk_analysis: data.cukAnalysis || null,
-        is_stale: stale.isStale || data.isStale || false,
-        stale_reason: stale.staleReason || data.staleReason || null,
-        stale_detected_at: stale.staleDetectedAt || data.staleDetectedAt || null,
-        last_confirmed_in_sapphire_at: stale.lastConfirmedInSapphireAt || data.lastConfirmedInSapphireAt || null,
+        state_raw: null,
+        is_open: data.isOpen !== undefined ? data.isOpen : null,
+        punished_user_discord_id: data.userId || null,
+        punished_user_display_name: data.userName || null,
+        punished_user_avatar_url: data.userAvatar || null,
+        author_discord_id: data.authorId || null,
+        author_display_name: data.authorName || null,
+        author_avatar_url: data.authorAvatar || null,
+        reason_raw: data.reason || '',
+        reason_normalized: data.reason || '',
+        reason_category: null,
+        reason_parse_status: 'complete',
+        duration_raw: data.duration || null,
+        duration_ms: data.durationMs !== undefined ? data.durationMs : null,
+        is_permanent: data.isPermanent !== undefined ? data.isPermanent : (data.durationMs === null),
+        duration_parse_status: 'complete',
+        created_raw: data.createdRaw || null,
+        created_at_sapphire: data.createdAt || null,
+        created_parse_status: 'complete',
+        expires_at: data.expiresAt || null,
+        remaining_ms: null,
+        is_expired: null,
+        is_active: data.isOpen !== undefined ? data.isOpen : null,
+        active_source: null,
+        conflict_detected: false,
+        conflict_reason: null,
+        cuk_verdict: null,
+        cuk_confidence: null,
+        cuk_flags: [],
+        cuk_analysis: null,
+        is_stale: false,
+        stale_reason: null,
+        stale_detected_at: null,
+        last_confirmed_in_sapphire_at: null,
         scan_session_id: data.scanSessionId || null,
-        migration_source: data.migrationSource || null,
+        migration_source: null,
         legacy_payload: { contentHash: data.contentHash },
         raw_payload: data.rawPayload || data || {},
+        source_sync: capturedVia,
+        last_synced_by: resolveLastSyncedBy(capturedVia),
+        last_worker_seen_at: new Date().toISOString(),
+        closed_by_discord_id: data.closedByDiscordId || null,
+        closed_at: data.closedAt || null,
         scraped_at: data.scrapedAt ? new Date(data.scrapedAt).toISOString() : new Date().toISOString(),
         updated_at: new Date().toISOString()
     };
@@ -256,6 +221,119 @@ async function handleStart(req, res) {
     });
 }
 
+function caseDedupeKey(item) {
+    const guildId = item.guildId || item.guild_id;
+    const caseId = item.caseId || item.case_id || item.id;
+
+    if (!guildId || !caseId) return null;
+
+    return `${String(guildId)}:${String(caseId)}`;
+}
+
+function sourceConfidenceOf(item) {
+    const source = String(
+        item.capturedVia ||
+        item.source_sync ||
+        item.source ||
+        'unknown'
+    );
+
+    if (source === 'ws_interceptor' || source === 'sapphire-websocket') return 100;
+    if (source === 'http_interceptor') return 80;
+    if (source === 'manual') return 70;
+    if (source === 'dom_scraper' || source === 'sapphire-dashboard') return 50;
+
+    return 40;
+}
+
+function completenessScore(item) {
+    let score = 0;
+
+    if (item.userId || item.punished_user_discord_id) score += 1;
+    if (item.authorId || item.author_discord_id) score += 1;
+    if (item.reason || item.reason_raw) score += 1;
+    if (item.createdAt || item.created_at_sapphire) score += 1;
+    if (item.expiresAt || item.expires_at) score += 1;
+    if (item.durationMs || item.duration_ms) score += 1;
+    if (item.closedAt || item.closed_at) score += 1;
+    if (item.closedByDiscordId || item.closed_by_discord_id) score += 1;
+    if (item.type) score += 1;
+
+    return score;
+}
+
+function preferCase(a, b) {
+    const ac = sourceConfidenceOf(a);
+    const bc = sourceConfidenceOf(b);
+
+    if (bc > ac) return b;
+    if (ac > bc) return a;
+
+    const as = completenessScore(a);
+    const bs = completenessScore(b);
+
+    if (bs > as) return b;
+    return a;
+}
+
+function dedupeCasesForUpsert(domainCases) {
+    const map = new Map();
+    const duplicateKeys = [];
+
+    for (const item of domainCases) {
+        const key = caseDedupeKey(item);
+
+        if (!key) {
+            continue;
+        }
+
+        const existing = map.get(key);
+
+        if (!existing) {
+            map.set(key, item);
+            continue;
+        }
+
+        duplicateKeys.push(key);
+
+        const preferred = preferCase(existing, item);
+
+        // mergeWithoutDataLoss takes two domain objects and returns one merged domain object
+        const merged = mergeWithoutDataLoss(existing, preferred);
+
+        map.set(key, merged);
+    }
+
+    return {
+        items: Array.from(map.values()),
+        duplicateKeys: Array.from(new Set(duplicateKeys))
+    };
+}
+
+function assertNoDuplicateUpsertKeys(rows) {
+    const seen = new Set();
+    const duplicates = [];
+
+    for (const row of rows) {
+        const key = `${row.guild_id}:${row.case_id}`;
+
+        if (seen.has(key)) {
+            duplicates.push(key);
+        }
+
+        seen.add(key);
+    }
+
+    if (duplicates.length) {
+        const uniqueDuplicates = Array.from(new Set(duplicates));
+        throw new Error(
+            `Duplicate upsert keys detected before Supabase upsert: ${uniqueDuplicates
+                .slice(0, 10)
+                .join(', ')}`
+        );
+    }
+}
+
 async function handleIngest(req, res) {
     if (req.method !== 'POST') {
         res.setHeader('Allow', 'POST');
@@ -268,88 +346,121 @@ async function handleIngest(req, res) {
     const guildId = String(body.guildId || process.env.LUTHEUS_GUILD_ID || '1223431616081166336');
     const items = Array.isArray(body.items) ? body.items : [];
 
-    if (!rawJobId) {
+    const skipScanSession = body.skipScanSession === true || body.source === 'ws_interceptor' || rawJobId.startsWith('ws-live-');
+
+    if (!rawJobId && !skipScanSession) {
         return res.status(400).json({ ok: false, error: 'JOB_ID_REQUIRED' });
     }
 
-    const jobId = getSafeJobId(rawJobId);
+    const jobId = rawJobId ? getSafeJobId(rawJobId) : null;
 
-    let { data: jobData } = await supabase
-        .from('scan_sessions')
-        .select('*')
-        .eq('id', jobId)
-        .maybeSingle();
-
-    if (!jobData) {
-        const now = new Date().toISOString();
-        const jobPayload = {
-            id: jobId,
-            source: body.source || 'extension-direct',
-            guild_id: guildId,
-            started_at: now,
-            completed_at: null,
-            status: 'running',
-            sapphire_total_cases: 0,
-            page_size: 100,
-            total_pages: Number(body.totalPages || 1),
-            completed_pages: 0,
-            unique_cases_found: 0,
-            rows_read: 0,
-            new_cases_inserted: 0,
-            cases_updated: 0,
-            stale_cases_detected: 0,
-            inconsistencies: [],
-            error_message: null,
-            raw_payload: { jobId, guildId, createdBy: 'ingest' }
-        };
-        const { data: insertedJob, error: insertError } = await supabase
+    let jobData = null;
+    if (!skipScanSession && jobId) {
+        let { data: fetchedJob } = await supabase
             .from('scan_sessions')
-            .insert([jobPayload])
             .select('*')
+            .eq('id', jobId)
             .maybeSingle();
-        if (insertError) return serverError(res, insertError);
-        jobData = insertedJob || jobPayload;
+
+        if (!fetchedJob) {
+            const now = new Date().toISOString();
+            const jobPayload = {
+                id: jobId,
+                source: body.source || 'extension-direct',
+                guild_id: guildId,
+                started_at: now,
+                completed_at: null,
+                status: 'running',
+                sapphire_total_cases: 0,
+                page_size: 100,
+                total_pages: Number(body.totalPages || 1),
+                completed_pages: 0,
+                unique_cases_found: 0,
+                rows_read: 0,
+                new_cases_inserted: 0,
+                cases_updated: 0,
+                stale_cases_detected: 0,
+                inconsistencies: [],
+                error_message: null,
+                raw_payload: { jobId, guildId, createdBy: 'ingest' }
+            };
+            const { data: insertedJob, error: insertError } = await supabase
+                .from('scan_sessions')
+                .insert([jobPayload])
+                .select('*')
+                .maybeSingle();
+            if (insertError) return serverError(res, insertError);
+            fetchedJob = insertedJob || jobPayload;
+        }
+        jobData = fetchedJob;
     }
 
-    await safeInsertAuditLog({
-        action: 'sapphire_scan_ingest_received',
-        target_type: 'scan',
-        actor_email: actor.email || null,
-        actor_discord_id: actor.discordId || null,
-        metadata: { jobId, guildId, count: items.length, page: body.page || null }
-    });
+    if (!skipScanSession) {
+        await safeInsertAuditLog({
+            action: 'sapphire_scan_ingest_received',
+            target_type: 'scan',
+            actor_email: actor.email || null,
+            actor_discord_id: actor.discordId || null,
+            metadata: { jobId, guildId, count: items.length, page: body.page || null }
+        });
+    }
 
-    const normalizedItems = items.map(item => normalizeCase(item, guildId));
+    const received = items.length;
+    const normalized = [];
+    const invalid = [];
+
+    for (const item of items) {
+        try {
+            const normalizedCase = normalizeCase(item, guildId);
+
+            if (!normalizedCase || !normalizedCase.caseId || !normalizedCase.guildId || normalizedCase.validationError) {
+                invalid.push({
+                    item,
+                    reason: normalizedCase?.validationError || 'missing_case_id_or_guild_id'
+                });
+                continue;
+            }
+
+            normalized.push(normalizedCase);
+        } catch (error) {
+            invalid.push({
+                item,
+                reason: error?.message || 'normalize_failed'
+            });
+        }
+    }
+
+    const {
+        items: dedupedCases,
+        duplicateKeys
+    } = dedupeCasesForUpsert(normalized);
 
     let queuedInsert = 0;
     let queuedUpdate = 0;
     let skipped = 0;
-    let invalid = 0;
     let warning = null;
 
-    if (normalizedItems.length > 0) {
-        const caseIds = normalizedItems.map(item => item.caseKey);
+    const upsertRows = [];
+
+    if (dedupedCases.length > 0) {
+        const caseIds = dedupedCases.map(item => item.caseId).filter(Boolean);
 
         const existingRows = [];
-        for (let i = 0; i < caseIds.length; i += 100) {
-            const chunkIds = caseIds.slice(i, i + 100);
-            const { data: chunkRows } = await supabase
-                .from('sapphire_cases')
-                .select('*')
-                .in('case_id', chunkIds);
-            if (chunkRows) existingRows.push(...chunkRows);
+        if (caseIds.length > 0) {
+            for (let i = 0; i < caseIds.length; i += 100) {
+                const chunkIds = caseIds.slice(i, i + 100);
+                const { data: chunkRows } = await supabase
+                    .from('sapphire_cases')
+                    .select('*')
+                    .in('case_id', chunkIds);
+                if (chunkRows) existingRows.push(...chunkRows);
+            }
         }
 
-        const existingMap = new Map(existingRows.map(row => [row.case_id, unflattenCaseFromDb(row)]));
+        const existingMap = new Map(existingRows.map(row => [row.case_id, dbRowToDomain(row)]));
 
-        const upsertRows = [];
-        for (const item of normalizedItems) {
-            // Strict ID/Guild validation
-            if (!item.caseId || !item.guildId) {
-                invalid++;
-                continue;
-            }
-            const existing = existingMap.get(item.caseKey);
+        for (const item of dedupedCases) {
+            const existing = existingMap.get(item.caseId);
             const decision = diffCase(existing, item);
 
             if (decision.type === 'insert') {
@@ -364,7 +475,7 @@ async function handleIngest(req, res) {
         }
 
         const staffProfiles = new Map();
-        for (const item of normalizedItems) {
+        for (const item of dedupedCases) {
             if (item.authorId) {
                 staffProfiles.set(item.authorId, {
                     discord_id: item.authorId,
@@ -419,6 +530,9 @@ async function handleIngest(req, res) {
         }
 
         if (upsertRows.length > 0) {
+            // Safety assertion: final rows must not contain duplicate guild_id + case_id
+            assertNoDuplicateUpsertKeys(upsertRows);
+
             for (let i = 0; i < upsertRows.length; i += 100) {
                 const chunk = upsertRows.slice(i, i + 100);
                 const { error: caseUpsertError } = await supabase.from('sapphire_cases').upsert(chunk, { onConflict: 'guild_id,case_id' });
@@ -429,60 +543,85 @@ async function handleIngest(req, res) {
                         error: 'SAPPHIRE_CASES_UPSERT_FAILED',
                         message: caseUpsertError.message,
                         details: caseUpsertError.details,
-                        hint: caseUpsertError.hint
+                        hint: caseUpsertError.hint,
+                        code: caseUpsertError.code || null,
+                        received,
+                        normalized: normalized.length,
+                        invalid: invalid.length,
+                        duplicateInBatch: duplicateKeys.length,
+                        deduped: dedupedCases.length
                     });
                 }
             }
         }
     }
 
-    const nextStats = {
-        received: Number(jobData.rows_read || 0) + items.length,
-        inserted: Number(jobData.new_cases_inserted || 0) + queuedInsert,
-        updated: Number(jobData.cases_updated || 0) + queuedUpdate,
-        skipped: Number(jobData.stale_cases_detected || 0) + skipped,
-        incomplete: 0,
-        errors: 0
-    };
+    console.log('[Sapphire ingest] batch normalization summary', {
+        received,
+        normalized: normalized.length,
+        invalid: invalid.length,
+        duplicateInBatch: duplicateKeys.length,
+        deduped: dedupedCases.length,
+        rows: upsertRows.length,
+        queuedInsert,
+        queuedUpdate,
+        skipped
+    });
 
-    const isFinished = body.finished === true;
-    const jobUpdate = {
-        status: isFinished ? 'completed' : 'running',
-        completed_pages: Number(jobData.completed_pages || 0) + 1,
-        unique_cases_found: Number(jobData.unique_cases_found || 0) + normalizedItems.length,
-        rows_read: nextStats.received,
-        new_cases_inserted: nextStats.inserted,
-        cases_updated: nextStats.updated,
-        stale_cases_detected: nextStats.skipped,
-        updated_at: new Date().toISOString()
-    };
+    if (!skipScanSession && jobData) {
+        const nextStats = {
+            received: Number(jobData.rows_read || 0) + items.length,
+            inserted: Number(jobData.new_cases_inserted || 0) + queuedInsert,
+            updated: Number(jobData.cases_updated || 0) + queuedUpdate,
+            skipped: Number(jobData.stale_cases_detected || 0) + skipped,
+            incomplete: 0,
+            errors: 0
+        };
 
-    if (isFinished) {
-        jobUpdate.completed_at = new Date().toISOString();
-    }
+        const isFinished = body.finished === true;
+        const status = body.status || (isFinished ? 'completed' : 'running');
+        const jobUpdate = {
+            status: status,
+            completed_pages: Number(jobData.completed_pages || 0) + 1,
+            unique_cases_found: Number(jobData.unique_cases_found || 0) + normalized.length,
+            rows_read: nextStats.received,
+            new_cases_inserted: nextStats.inserted,
+            cases_updated: nextStats.updated,
+            stale_cases_detected: nextStats.skipped,
+            updated_at: new Date().toISOString()
+        };
 
-    await supabase.from('scan_sessions').update(jobUpdate).eq('id', jobId);
+        if (isFinished) {
+            jobUpdate.completed_at = new Date().toISOString();
+        }
 
-    if (isFinished) {
-        await safeInsertAuditLog({
-            action: 'sapphire_scan_completed',
-            target_type: 'scan',
-            actor_email: actor.email || null,
-            actor_discord_id: actor.discordId || null,
-            metadata: { jobId, guildId, stats: nextStats }
-        });
+        await supabase.from('scan_sessions').update(jobUpdate).eq('id', jobId);
+
+        if (isFinished) {
+            await safeInsertAuditLog({
+                action: 'sapphire_scan_completed',
+                target_type: 'scan',
+                actor_email: actor.email || null,
+                actor_discord_id: actor.discordId || null,
+                metadata: { jobId, guildId, stats: nextStats }
+            });
+        }
     }
 
     return ok(res, {
         ok: true,
         success: true,
         jobId: rawJobId,
-        received: items.length,
+        received,
+        normalized: normalized.length,
+        invalid: invalid.length,
+        duplicateInBatch: duplicateKeys.length,
+        duplicateKeys: duplicateKeys.slice(0, 20),
+        deduped: dedupedCases.length,
+        upserted: queuedInsert + queuedUpdate,
         queuedInsert,
         queuedUpdate,
         skipped,
-        invalid,
-        upserted: queuedInsert + queuedUpdate,
         ...(warning ? { warning } : {})
     });
 }

@@ -63,20 +63,33 @@ window.GearTech.Navigation = {
     },
 
     getFirstCaseId: function () {
-        const firstRow = Array.from(document.querySelectorAll('.row[class*="svelte-"], [class*="row"][class*="svelte-"], [role="row"], tbody tr'))
-            .find((row) => {
-                const text = row.innerText || '';
-                return !row.classList.contains('dummy') && /\b[A-Za-z0-9]{4,15}\b/.test(text);
-            });
-        const text = firstRow?.innerText || '';
-        const match = text.match(/\b[A-Za-z0-9]{4,15}\b/);
-        return match ? match[0] : '';
+        const rows = Array.from(document.querySelectorAll('.row[class*="svelte-"], [class*="row"][class*="svelte-"], [role="row"], tbody tr'));
+        for (const row of rows) {
+            if (row.classList.contains('dummy')) continue;
+            const text = row.innerText || '';
+            const match = text.match(/\b[A-Za-z0-9_-]{4,24}\b/);
+            if (match) return match[0];
+        }
+        return '';
     },
 
-    waitForPage: function (pageNumber, timeout = 8000, previousFirstCase = '') {
+    getTableSignature: function () {
+        const rows = Array.from(document.querySelectorAll('.row[class*="svelte-"], [class*="row"][class*="svelte-"], [role="row"], tbody tr'));
+        const ids = [];
+        for (const row of rows) {
+            if (row.classList.contains('dummy')) continue;
+            const text = row.innerText || '';
+            const match = text.match(/\b[A-Za-z0-9_-]{4,24}\b/);
+            if (match) ids.push(match[0]);
+        }
+        return ids.join('|');
+    },
+
+    waitForPage: function (pageNumber, timeout = 8000, previousFirstCase = '', previousSignature = '') {
         const target = Number(pageNumber);
         const start = Date.now();
         const initialFirstCase = previousFirstCase || this.getFirstCaseId();
+        const initialSignature = previousSignature || this.getTableSignature();
 
         return new Promise((resolve, reject) => {
             let observer;
@@ -84,12 +97,17 @@ window.GearTech.Navigation = {
             const evaluate = () => {
                 const current = this.getCurrentPage();
                 const firstCase = this.getFirstCaseId();
+                const currentSignature = this.getTableSignature();
                 const pageMatched = current === target;
-                const rowChanged = !initialFirstCase || !firstCase || firstCase !== initialFirstCase;
 
-                if (pageMatched && rowChanged) {
+                // Robust check: signature changed, or first case ID changed, or table transitioned from empty to populated
+                const signatureChanged = initialSignature && currentSignature && currentSignature !== initialSignature;
+                const rowChanged = initialFirstCase && firstCase && firstCase !== initialFirstCase;
+                const initialWasEmptyAndNowHasData = !initialSignature && currentSignature;
+
+                if (pageMatched && (signatureChanged || rowChanged || initialWasEmptyAndNowHasData)) {
                     if (observer) observer.disconnect();
-                    resolve({ current, firstCase });
+                    resolve({ current, firstCase, signature: currentSignature });
                     return true;
                 }
                 return false;

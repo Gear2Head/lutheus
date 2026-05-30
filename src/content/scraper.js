@@ -222,6 +222,8 @@ window.GearTech.Scraper = {
                         createdRaw: createdRaw || '',
                         type: penaltyType,
                         sourceUrl: this.buildCaseUrl(caseId),
+                        capturedVia: 'dom_scraper',
+                        source: 'sapphire-dashboard',
                         scrapedAt: Date.now()
                     };
                 }
@@ -330,6 +332,8 @@ window.GearTech.Scraper = {
             createdRaw: createdRaw || '',
             type: penaltyType, // extracted type
             sourceUrl: this.buildCaseUrl(caseId),
+            capturedVia: 'dom_scraper',
+            source: 'sapphire-dashboard',
             scrapedAt: Date.now()
         };
     },

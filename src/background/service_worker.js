@@ -528,7 +528,7 @@ function generateUUID() {
     });
 }
 
-async function storageSaveCases(newCases, append = true) {
+async function storageSaveCases(newCases, append = true, options = {}) {
     const existing = append
         ? await new Promise((resolve) => chrome.storage.local.get(['cases'], (result) => resolve(result.cases || [])))
         : [];
@@ -554,7 +554,7 @@ async function storageSaveCases(newCases, append = true) {
         const current = await getLocal('caseQuarantine') || [];
         await setLocal('caseQuarantine', [...quarantined, ...current].slice(0, 100));
     }
-    if (newCases.length) {
+    if (newCases.length && !options.skipRemoteIngest) {
         const jobId = activeJobId || generateUUID();
         await forwardToVercelIngest(newCases, jobId, `https://dashboard.sapph.xyz/${LUTHEUS_GUILD_ID}/moderation/cases`, !activeJobId);
     }
@@ -585,11 +585,119 @@ function compactCaseForStorage(entry = {}) {
         validationStatus: entry.validationStatus,
         validationReason: entry.validationReason,
         reviewStatus: entry.reviewStatus,
-        manualOverride: entry.manualOverride
+        manualOverride: entry.manualOverride,
+        isOpen: entry.isOpen,
+        closedByDiscordId: entry.closedByDiscordId,
+        closedAt: entry.closedAt,
+        expiresAt: entry.expiresAt,
+        isPermanent: entry.isPermanent
     };
 }
 
+function readDurationMs(entry) {
+    if (!entry) return null;
+    return (
+        entry.durationMs ??
+        entry.duration_ms ??
+        entry.duration?.durationMs ??
+        entry.duration?.duration_ms ??
+        null
+    );
+}
+
+function readDurationRaw(entry) {
+    if (!entry) return '';
+    return (
+        entry.durationRaw ??
+        entry.duration_raw ??
+        (typeof entry.duration === 'object' ? (entry.duration?.raw ?? entry.duration?.normalized ?? '') : entry.duration) ??
+        ''
+    );
+}
+
+function readIsPermanent(entry) {
+    if (!entry) return null;
+    const durationMs = readDurationMs(entry);
+    return (
+        entry.isPermanent ??
+        entry.is_permanent ??
+        entry.duration?.isPermanent ??
+        (durationMs === null ? true : false)
+    );
+}
+
+function readCreatedAt(entry) {
+    if (!entry) return null;
+    return (
+        entry.createdAt ??
+        entry.created_at_sapphire ??
+        entry.created?.createdAt ??
+        entry.createdRaw ??
+        entry.created_raw ??
+        null
+    );
+}
+
+function readExpiresAt(entry) {
+    if (!entry) return null;
+    return (
+        entry.expiresAt ??
+        entry.expires_at ??
+        entry.expiry?.expiresAt ??
+        (entry.expiringTimestamp ? new Date(entry.expiringTimestamp).toISOString() : null)
+    );
+}
+
+function readClosedAt(entry) {
+    if (!entry) return null;
+    if (entry.closedAt) return entry.closedAt;
+    if (entry.closed_at) return entry.closed_at;
+    const closed = entry.closed;
+    if (closed && typeof closed === 'object') {
+        const ts = closed.timestamp;
+        if (ts) {
+            try {
+                return new Date(ts).toISOString();
+            } catch (_e) {}
+        }
+    }
+    return null;
+}
+
+function readClosedByDiscordId(entry) {
+    if (!entry) return null;
+    return (
+        entry.closedByDiscordId ??
+        entry.closed_by_discord_id ??
+        entry.closed?.authorId ??
+        null
+    );
+}
+
+function readIsOpen(entry) {
+    if (!entry) return null;
+    if (entry.isOpen !== undefined && entry.isOpen !== null) return entry.isOpen;
+    if (entry.is_open !== undefined && entry.is_open !== null) return entry.is_open;
+    if (entry.state?.isOpen !== undefined && entry.state?.isOpen !== null) return entry.state.isOpen;
+    const closed = readClosedAt(entry) || readClosedByDiscordId(entry);
+    return closed ? false : true;
+}
+
+function readReason(entry) {
+    if (!entry) return '';
+    return (
+        (typeof entry.reason === 'object' ? (entry.reason?.raw ?? entry.reason?.normalized ?? '') : entry.reason) ??
+        ''
+    );
+}
+
+function readType(entry) {
+    if (!entry) return 'unknown';
+    return entry.type ?? 'unknown';
+}
+
 function normalizeCaseForStorage(entry = {}) {
+    const isWsSource = entry.capturedVia === 'ws_interceptor' || entry.source === 'sapphire-websocket';
     const sourceUrl = entry.sourceUrl || '';
     const urlCaseId = String(sourceUrl.match(/\/cases\/([^/?#]+)/)?.[1] || '');
     const id = String(entry.id || entry.caseId || urlCaseId || '').trim();
@@ -598,12 +706,10 @@ function normalizeCaseForStorage(entry = {}) {
     const authorId = isDiscordId(rawAuthorId) ? rawAuthorId : '';
     const authorName = String(entry.authorName || entry.moderator || '').replace(authorId, '').trim();
     
-    const incomingReasonObj = typeof entry.reason === 'object' && entry.reason ? entry.reason : null;
-    const incomingReasonText = getReasonText(entry.reason);
-    const safeReason = isReasonLike(incomingReasonText)
-        ? (incomingReasonObj || incomingReasonText)
-        : '';
-    const duration = getDurationText(entry.duration || '');
+    const safeReason = isWsSource 
+        ? readReason(entry)
+        : (isReasonLike(readReason(entry)) ? readReason(entry) : '');
+    const duration = readDurationRaw(entry);
 
     return {
         ...entry,
@@ -617,45 +723,56 @@ function normalizeCaseForStorage(entry = {}) {
         authorMissing: Boolean(entry.authorMissing || (!authorId && (!authorName || isUnknownAuthorName(authorName)))),
         reason: safeReason,
         duration,
-        durationMs: Number.isFinite(Number(entry.durationMs)) ? Number(entry.durationMs) : normalizeDurationMs(duration),
-        type: entry.type || 'unknown',
-        createdRaw: entry.createdRaw || entry.createdAt || '',
+        durationMs: readDurationMs(entry) ?? normalizeDurationMs(duration),
+        type: readType(entry),
+        createdRaw: readCreatedAt(entry) || '',
         sourceUrl,
         scrapedAt: Number(entry.scrapedAt || Date.now()),
         lastSeen: Date.now(),
         source: entry.source || (entry.capturedVia === 'network_interceptor' ? 'sapphire-network' : 'sapphire-dashboard'),
         capturedVia: entry.capturedVia || 'dom_scraper',
+        isOpen: readIsOpen(entry),
+        closedByDiscordId: readClosedByDiscordId(entry),
+        closedAt: readClosedAt(entry),
+        expiresAt: readExpiresAt(entry),
+        isPermanent: readIsPermanent(entry),
         rawData: entry.rawData || null
     };
 }
 
 function mergeCaseForStorage(previous, next) {
-
+    const prev = previous || {};
     const merged = {
-        ...previous,
+        ...prev,
         ...next,
-        user: next.user && next.user !== 'Bilinmiyor' ? next.user : previous.user,
-        authorName: next.authorName && !isUnknownAuthorName(next.authorName) ? next.authorName : previous.authorName,
-        authorId: next.authorId || previous.authorId || '',
-        userId: next.userId || previous.userId || '',
-        reason: next.reason || previous.reason || '',
-        duration: next.duration || previous.duration || '',
-        durationMs: next.durationMs ?? previous.durationMs ?? null,
-        type: next.type && next.type !== 'unknown' ? next.type : previous.type,
-        createdRaw: next.createdRaw || previous.createdRaw || '',
-        authorAvatar: next.authorAvatar || previous.authorAvatar || null,
-        userAvatar: next.userAvatar || previous.userAvatar || null,
-        note: previous.note,
-        reviewStatus: previous.reviewStatus,
-        manualOverride: previous.manualOverride,
-        assignee: previous.assignee,
-        validationStatus: previous.validationStatus || next.validationStatus,
-        validationReason: previous.validationReason || next.validationReason,
+        user: next.user && next.user !== 'Bilinmiyor' ? next.user : (prev.user || 'Bilinmiyor'),
+        authorName: next.authorName && !isUnknownAuthorName(next.authorName) ? next.authorName : (prev.authorName || 'Bilinmiyor'),
+        authorId: next.authorId || prev.authorId || '',
+        userId: next.userId || prev.userId || '',
+        reason: readReason(next) || readReason(prev) || '',
+        duration: readDurationRaw(next) || readDurationRaw(prev) || '',
+        durationMs: readDurationMs(next) ?? readDurationMs(prev) ?? null,
+        isPermanent: readIsPermanent(next) ?? readIsPermanent(prev) ?? null,
+        type: readType(next) && readType(next) !== 'unknown' ? readType(next) : (readType(prev) || 'unknown'),
+        createdRaw: readCreatedAt(next) || readCreatedAt(prev) || '',
+        createdAt: readCreatedAt(next) || readCreatedAt(prev) || '',
+        expiresAt: readExpiresAt(next) || readExpiresAt(prev) || null,
+        closedAt: readClosedAt(next) || readClosedAt(prev) || null,
+        closedByDiscordId: readClosedByDiscordId(next) || readClosedByDiscordId(prev) || null,
+        isOpen: readIsOpen(next) ?? readIsOpen(prev) ?? null,
+        authorAvatar: next.authorAvatar || prev.authorAvatar || null,
+        userAvatar: next.userAvatar || prev.userAvatar || null,
+        note: prev.note,
+        reviewStatus: prev.reviewStatus,
+        manualOverride: prev.manualOverride,
+        assignee: prev.assignee,
+        validationStatus: prev.validationStatus || next.validationStatus,
+        validationReason: prev.validationReason || next.validationReason,
         lastSeen: Date.now()
     };
-    const mismatch = buildSourceMismatch(previous, merged);
+    const mismatch = buildSourceMismatch(prev, merged);
     if (mismatch) merged.sourceMismatch = mismatch;
-    else if (previous.sourceMismatch) merged.sourceMismatch = previous.sourceMismatch;
+    else if (prev.sourceMismatch) merged.sourceMismatch = prev.sourceMismatch;
     return merged;
 }
 
@@ -741,6 +858,10 @@ async function runAutonomousScan(options = {}) {
         return { success: false, error: 'Page info unavailable', scanRun: failedRun };
     }
 
+    let domRowsPage1 = 0;
+    let domRowsPage2 = 0;
+    let scrapedRaw = 0;
+
     const pagesToScan = pages?.length ? pages : Array.from({ length: detectedTotalPages }, (_, index) => index + 1);
     let allCases = [];
     let scannedCount = 0;
@@ -765,6 +886,7 @@ async function runAutonomousScan(options = {}) {
                 action: 'WAIT_FOR_PAGE',
                 page: pageNum,
                 previousFirstCase,
+                previousSignature: pageInfo.signature || '',
                 timeout: Math.max(6000, scanDelay * 4)
             });
             if (!waited?.success) {
@@ -805,6 +927,10 @@ async function runAutonomousScan(options = {}) {
             }
         }
         if (result?.success && Array.isArray(result.data)) {
+            scrapedRaw += result.data.length;
+            if (pageNum === 1) domRowsPage1 = result.data.length;
+            if (pageNum === 2) domRowsPage2 = result.data.length;
+
             let filtered = result.data.filter((entry) => isInDateRange(entry, parsedStart, parsedEnd));
             const pageSignature = `${pageNum}:${filtered.map((entry) => entry.id || entry.caseId).filter(Boolean).join(',')}`;
             if (pageSignature === previousPageSignature) {
@@ -864,10 +990,32 @@ async function runAutonomousScan(options = {}) {
         });
     }
 
+    const localBeforeDedupe = allCases.length;
+    const uniqueKeys = new Set(allCases.map(c => c.id || c.caseId).filter(Boolean));
+    const localDuplicateCount = localBeforeDedupe - uniqueKeys.size;
+    const localAfterDedupe = uniqueKeys.size;
+
+    console.log('[Lutheus SW] DOM Scan Accounting Summary:', {
+        sapphireReportedTotal: detectedTotalCases,
+        domRowsPage1,
+        domRowsPage2,
+        scrapedRaw,
+        localBeforeDedupe,
+        localDuplicateCount,
+        localAfterDedupe
+    });
+
     if (allCases.length > 0) {
         await storageSaveCases(allCases, true);
         if (typeof activeJobId !== 'undefined' && activeJobId) {
-            await forwardToVercelIngest(allCases, activeJobId, `https://dashboard.sapph.xyz/${guildId}/moderation/cases`);
+            const isPartial = detectedTotalCases > 0 && allCases.length < detectedTotalCases;
+            const status = isPartial ? 'partial' : 'completed';
+            
+            if (isPartial) {
+                console.warn(`[Lutheus SW] Scan partial! Scraped ${allCases.length} unique cases but Sapphire reported ${detectedTotalCases}. Difference: ${detectedTotalCases - allCases.length} cases missing/duplicate/invalid.`);
+            }
+
+            await forwardToVercelIngest(allCases, activeJobId, `https://dashboard.sapph.xyz/${guildId}/moderation/cases`, true, status);
         }
     }
 
@@ -1155,7 +1303,7 @@ async function runPointtrainScan(options = {}) {
 let activeJobId = null;
 let lastMissingIngestTokenWarningAt = 0;
 
-async function forwardToVercelIngest(records, jobId, sourceUrl, finished = false) {
+async function forwardToVercelIngest(records, jobId, sourceUrl, finished = false, status = null) {
     try {
         const session = await new Promise(resolve => chrome.storage.local.get(['lutheusAuthSession', 'lutheus:session', 'session'], (res) => resolve(res.lutheusAuthSession || res['lutheus:session'] || res.session || null)));
         const idToken = session?.idToken;
@@ -1174,7 +1322,18 @@ async function forwardToVercelIngest(records, jobId, sourceUrl, finished = false
         const apiBase = config.vercelAuthBaseUrl || 'https://lutheus.vercel.app';
         const url = `${apiBase.replace(/\/+$/, '')}/api/scan/sapphire/ingest`;
 
-        console.log(`[Lutheus SW] Forwarding ${records.length} records to Vercel API (finished=${finished}): ${url}`);
+        const seen = new Set();
+        const dedupedRecords = [];
+        for (const r of (records || [])) {
+            const key = r.caseId || r.id || r.case_id;
+            if (key) {
+                if (seen.has(key)) continue;
+                seen.add(key);
+            }
+            dedupedRecords.push(r);
+        }
+
+        console.log(`[Lutheus SW] Forwarding ${dedupedRecords.length} records (deduped from ${records.length}) to Vercel API (finished=${finished}, status=${status}): ${url}`);
 
         const response = await fetch(url, {
             method: 'POST',
@@ -1186,19 +1345,47 @@ async function forwardToVercelIngest(records, jobId, sourceUrl, finished = false
                 jobId,
                 guildId,
                 sourceUrl,
-                items: records,
-                finished
+                items: dedupedRecords,
+                finished,
+                ...(status ? { status } : {})
             })
         });
 
         const data = await response.json().catch(() => ({}));
         if (!response.ok) {
-            console.error('[Lutheus SW] Ingest failed:', data.error || response.statusText);
+            const errorPayload = {
+                status: response.status,
+                statusText: response.statusText,
+                error: data.error || null,
+                message: data.message || null,
+                details: data.details || null,
+                hint: data.hint || null,
+                code: data.code || null,
+                timestamp: new Date().toISOString()
+            };
+            console.error('[Lutheus SW] Ingest failed with detailed payload:', JSON.stringify(errorPayload, null, 2));
+            await new Promise(r => chrome.storage.local.set({ lutheusLastIngestError: errorPayload }, r));
         } else {
-            console.log('[Lutheus SW] Ingest successful:', data);
+            console.log('[Lutheus SW] Ingest successful. Accounting details:', {
+                backendReceived: data.received,
+                backendNormalized: data.normalized,
+                backendInvalid: data.invalid,
+                backendDuplicateInBatch: data.duplicateInBatch,
+                backendDeduped: data.deduped,
+                backendUpserted: data.upserted,
+                backendSkipped: data.skipped,
+                duplicateKeysSample: data.duplicateKeys || []
+            });
+            await new Promise(r => chrome.storage.local.remove(['lutheusLastIngestError'], r));
         }
     } catch (err) {
         console.error('[Lutheus SW] Failed to forward to Vercel ingest:', err.message);
+        const errorPayload = {
+            error: 'FETCH_ERROR',
+            message: err.message,
+            timestamp: new Date().toISOString()
+        };
+        await new Promise(r => chrome.storage.local.set({ lutheusLastIngestError: errorPayload }, r));
     }
 }
 
@@ -1254,6 +1441,72 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
                     break;
                 }
 
+                case 'SAPPHIRE_WS_CASES': {
+                    const records = request.records || [];
+                    const meta = request.meta || {};
+                    const guildId = meta.guildId || LUTHEUS_GUILD_ID;
+
+                    if (records.length) {
+                        const normalized = records.map((r) => {
+                            const caseId = String(r.caseId || r.id || '').trim();
+                            const isClosed = !!r.closed;
+                            const closedBy = r.closed?.authorId || null;
+                            const closedAt = r.closed?.timestamp ? new Date(r.closed.timestamp).toISOString() : null;
+                            const expiresAt = r.expiringTimestamp ? new Date(r.expiringTimestamp).toISOString() : null;
+
+                            let durationMs = null;
+                            if (r.timestamp && r.expiringTimestamp) {
+                                durationMs = Math.max(0, Number(r.expiringTimestamp) - Number(r.timestamp));
+                            }
+
+                            return {
+                                id: caseId,
+                                caseId,
+                                guildId,
+                                user: r.user || r.username || `Unknown User (${r.userId})`,
+                                userId: r.userId || '',
+                                authorId: r.authorId || '',
+                                authorName: r.authorName || r.moderator || `Unknown Moderator (${r.authorId})`,
+                                reason: r.reason || '',
+                                type: r.type || 'unknown',
+                                duration: r.duration || '',
+                                durationMs,
+                                isPermanent: durationMs === null,
+                                createdRaw: r.timestamp ? new Date(r.timestamp).toISOString() : '',
+                                scrapedAt: Date.now(),
+                                sourceUrl: meta.sourceUrl || `https://dashboard.sapph.xyz/${guildId}/moderation/cases/${caseId}`,
+                                capturedVia: 'ws_interceptor',
+                                source: 'sapphire-websocket',
+                                isOpen: !isClosed,
+                                closedByDiscordId: closedBy,
+                                closedAt: closedAt,
+                                expiresAt: expiresAt,
+                                rawData: r
+                            };
+                        });
+
+                        await storageSaveCases(normalized, true, { skipRemoteIngest: true });
+                        await updateRegistryFromCases(normalized);
+
+                        console.log(`[Lutheus SW] WebSocket Intercepted ${normalized.length} cases saved.`);
+                        
+                        await forwardToVercelIngest(
+                            normalized,
+                            `ws-live-${guildId}`,
+                            meta.sourceUrl || `https://dashboard.sapph.xyz/${guildId}/moderation/cases`,
+                            false
+                        );
+
+                        await setLocal('lutheusLastIngestSuccess', {
+                            source: 'ws_interceptor',
+                            count: normalized.length,
+                            at: new Date().toISOString()
+                        });
+                    }
+                    sendResponse({ status: 'received', count: records.length });
+                    break;
+                }
+
                 case 'INTERCEPTED_PUNISHMENTS': {
                     const records = request.records || [];
                     if (records.length) {
@@ -1272,6 +1525,7 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
                             scrapedAt: Date.now(),
                             sourceUrl: r.sourceUrl || '',
                             capturedVia: 'network_interceptor',
+                            source: 'sapphire-network',
                             rawData: r.rawData || null
                         }));
                         await storageSaveCases(normalized, true);

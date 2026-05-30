@@ -63,7 +63,12 @@ function storageSet(key, value) {
             resolve();
             return;
         }
-        chrome.storage.local.set({ [key]: value }, resolve);
+        chrome.storage.local.set({ [key]: value }, () => {
+            if (chrome.runtime?.lastError) {
+                console.warn(`Lutheus: chrome.storage.local write skipped for ${key}:`, chrome.runtime.lastError.message);
+            }
+            resolve();
+        });
     });
 }
 
@@ -360,7 +365,7 @@ export const Storage = {
         if (quarantinedEntries.length) await this.addQuarantinedCases(quarantinedEntries);
 
         const allCases = Array.from(caseMap.values()).sort(compareCases);
-        await this.set('cases', allCases);
+        await this.setCasesLocal(allCases);
         await this.setSyncCases(allCases);
         await this.updateUserRegistry(normalizedEntries);
         await this.upsertStaffDirectoryFromCases(normalizedEntries);
@@ -389,7 +394,7 @@ export const Storage = {
             .map((entry) => normalizeCaseEntry(entry))
             .sort(compareCases);
         if (quarantinedEntries.length) await this.addQuarantinedCases(quarantinedEntries);
-        await this.set('cases', normalized);
+        await this.setCasesLocal(normalized);
         await this.setSyncCases(normalized);
         await this.upsertStaffDirectoryFromCases(normalized);
         const actor = await getActor();
@@ -405,7 +410,7 @@ export const Storage = {
         const index = cases.findIndex((item) => item.id === caseId);
         if (index === -1) return false;
         cases[index] = { ...cases[index], ...metadata };
-        await this.set('cases', cases);
+        await this.setCasesLocal(cases);
         await FirebaseRepository.saveCases([cases[index]], undefined, await getActor()).catch((error) => {
             console.warn('Lutheus: Firestore case metadata save failed:', error.message);
         });
@@ -437,7 +442,7 @@ export const Storage = {
                     }
                 }
                 const allCases = Array.from(caseMap.values()).sort(compareCases);
-                await this.set('cases', allCases);
+                await this.setCasesLocal(allCases);
                 await this.updateUserRegistry(allCases);
                 await this.upsertStaffDirectoryFromCases(allCases);
                 return allCases;
@@ -466,6 +471,33 @@ export const Storage = {
                 else writeMeta();
             });
         });
+    },
+
+    async setCasesLocal(cases) {
+        const compact = (cases || []).map((entry) => ({
+            id: entry.id,
+            caseId: entry.caseId,
+            guildId: entry.guildId,
+            type: entry.type,
+            reason: entry.reason,
+            authorId: entry.authorId,
+            authorName: entry.authorName,
+            authorAvatar: entry.authorAvatar,
+            userId: entry.userId,
+            user: entry.user,
+            duration: entry.duration,
+            durationMs: entry.durationMs,
+            createdAt: entry.createdAt,
+            createdRaw: entry.createdRaw,
+            scrapedAt: entry.scrapedAt,
+            updatedAt: entry.updatedAt,
+            validationStatus: entry.validationStatus,
+            reviewStatus: entry.reviewStatus,
+            manualOverride: entry.manualOverride,
+            sourceUrl: entry.sourceUrl,
+            capturedVia: entry.capturedVia
+        }));
+        await this.set('cases', compact);
     },
 
     async getSyncCases() {
@@ -524,8 +556,9 @@ export const Storage = {
                 if (matchedId) authorId = matchedId;
             }
 
-            if (authorId && authorName) {
+            if (authorId) {
                 const previous = registry[authorId] || {};
+                const currentName = entry.authorName || previous.name || `Unknown Moderator (${authorId})`;
                 const aliases = Array.from(new Set([
                     ...(previous.aliases || []),
                     previous.name,
@@ -538,11 +571,11 @@ export const Storage = {
                 registry[authorId] = {
                     ...previous,
                     id: authorId,
-                    name: entry.authorName || previous.name || 'Bilinmiyor',
+                    name: currentName,
                     avatar: hasBetterAvatar(entry.authorAvatar, previous.avatar)
                         ? entry.authorAvatar
                         : (previous.avatar || entry.authorAvatar || null),
-                    role: roleEntry ? normalizeRole(roleEntry.role) : null,
+                    role: roleEntry ? normalizeRole(roleEntry.role) : (previous.role || null),
                     aliases,
                     source: previous.source || 'sapphire-admin-scan',
                     scanCount: Number(previous.scanCount || 0) + 1,
@@ -551,8 +584,9 @@ export const Storage = {
                 changed = true;
             }
 
-            if (entry.userId && entry.user) {
+            if (entry.userId) {
                 const previous = registry[entry.userId] || {};
+                const currentName = entry.user || previous.name || `Unknown User (${entry.userId})`;
                 const roleEntry = roleCache.find(r => {
                     const rcId = r.discordId || String(r.identityKey || r.id || '').replace(/^discord:/, '');
                     return rcId === entry.userId;
@@ -560,11 +594,11 @@ export const Storage = {
                 registry[entry.userId] = {
                     ...previous,
                     id: entry.userId,
-                    name: entry.user || previous.name || 'Bilinmiyor',
+                    name: currentName,
                     avatar: hasBetterAvatar(entry.userAvatar, previous.avatar)
                         ? entry.userAvatar
                         : (previous.avatar || entry.userAvatar || null),
-                    role: roleEntry ? normalizeRole(roleEntry.role) : null,
+                    role: roleEntry ? normalizeRole(roleEntry.role) : (previous.role || null),
                     aliases: Array.from(new Set([...(previous.aliases || []), previous.name, entry.user].filter(Boolean))),
                     source: previous.source || 'sapphire-case-target',
                     scanCount: Number(previous.scanCount || 0) + 1,
@@ -602,7 +636,8 @@ export const Storage = {
         return registry;
     },
 
-    async updateUserRole(id, role, manualAccuracy = null, name = null) {
+    async updateUserRole(id, role, manualAccuracy = null, name = null, options = {}) {
+        const isActiveStaff = options.isActiveStaff !== false && normalizeRole(role) !== 'blocked';
         const registry = (await this.get('userRegistry')) || {};
         registry[id] = {
             ...(registry[id] || {}),
@@ -610,6 +645,8 @@ export const Storage = {
             name: name || registry[id]?.name || 'Bilinmiyor',
             avatar: registry[id]?.avatar || null,
             role: normalizeRole(role),
+            isActiveStaff,
+            formerStaff: !isActiveStaff,
             aliases: registry[id]?.aliases || [],
             manualAccuracy,
             lastSeen: Date.now()
@@ -620,13 +657,17 @@ export const Storage = {
             sapphireAuthorId: id,
             displayName: registry[id].name,
             role: normalizeRole(role),
+            isActiveStaff,
+            formerStaff: !isActiveStaff,
             aliases: registry[id].aliases || []
         });
         await FirebaseRepository.setRoleCache(`discord:${id}`, {
             discordId: id,
             displayName: registry[id].name,
             role,
-            manualAccuracy
+            manualAccuracy,
+            isActiveStaff,
+            removalReason: isActiveStaff ? null : 'no_longer_staff'
         }, await getActor()).catch((error) => {
             console.warn('Lutheus: Firestore role cache update failed:', error.message);
         });

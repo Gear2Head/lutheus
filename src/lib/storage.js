@@ -556,8 +556,9 @@ export const Storage = {
                 if (matchedId) authorId = matchedId;
             }
 
-            if (authorId && authorName) {
+            if (authorId) {
                 const previous = registry[authorId] || {};
+                const currentName = entry.authorName || previous.name || `Unknown Moderator (${authorId})`;
                 const aliases = Array.from(new Set([
                     ...(previous.aliases || []),
                     previous.name,
@@ -570,11 +571,11 @@ export const Storage = {
                 registry[authorId] = {
                     ...previous,
                     id: authorId,
-                    name: entry.authorName || previous.name || 'Bilinmiyor',
+                    name: currentName,
                     avatar: hasBetterAvatar(entry.authorAvatar, previous.avatar)
                         ? entry.authorAvatar
                         : (previous.avatar || entry.authorAvatar || null),
-                    role: roleEntry ? normalizeRole(roleEntry.role) : null,
+                    role: roleEntry ? normalizeRole(roleEntry.role) : (previous.role || null),
                     aliases,
                     source: previous.source || 'sapphire-admin-scan',
                     scanCount: Number(previous.scanCount || 0) + 1,
@@ -583,8 +584,9 @@ export const Storage = {
                 changed = true;
             }
 
-            if (entry.userId && entry.user) {
+            if (entry.userId) {
                 const previous = registry[entry.userId] || {};
+                const currentName = entry.user || previous.name || `Unknown User (${entry.userId})`;
                 const roleEntry = roleCache.find(r => {
                     const rcId = r.discordId || String(r.identityKey || r.id || '').replace(/^discord:/, '');
                     return rcId === entry.userId;
@@ -592,11 +594,11 @@ export const Storage = {
                 registry[entry.userId] = {
                     ...previous,
                     id: entry.userId,
-                    name: entry.user || previous.name || 'Bilinmiyor',
+                    name: currentName,
                     avatar: hasBetterAvatar(entry.userAvatar, previous.avatar)
                         ? entry.userAvatar
                         : (previous.avatar || entry.userAvatar || null),
-                    role: roleEntry ? normalizeRole(roleEntry.role) : null,
+                    role: roleEntry ? normalizeRole(roleEntry.role) : (previous.role || null),
                     aliases: Array.from(new Set([...(previous.aliases || []), previous.name, entry.user].filter(Boolean))),
                     source: previous.source || 'sapphire-case-target',
                     scanCount: Number(previous.scanCount || 0) + 1,

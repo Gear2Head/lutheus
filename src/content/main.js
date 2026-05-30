@@ -100,7 +100,8 @@ waitForModules(() => {
                     const info = {
                         ...pageInfo,
                         current: pageInfo.currentPage,
-                        total: pageInfo.totalPages
+                        total: pageInfo.totalPages,
+                        signature: window.GearTech.Navigation.getTableSignature()
                     };
                     sendResponse(info);
                 } catch (e) {
@@ -111,13 +112,14 @@ waitForModules(() => {
                         totalPages: 1,
                         totalCases: 0,
                         visibleRows: 0,
+                        signature: '',
                         error: e.message
                     });
                 }
                 break;
 
             case 'WAIT_FOR_PAGE':
-                window.GearTech.Navigation.waitForPage(request.page, request.timeout || 8000, request.previousFirstCase || '')
+                window.GearTech.Navigation.waitForPage(request.page, request.timeout || 8000, request.previousFirstCase || '', request.previousSignature || '')
                     .then((info) => sendResponse({ success: true, ...info }))
                     .catch((e) => sendResponse({ success: false, error: e.message }));
                 return true;

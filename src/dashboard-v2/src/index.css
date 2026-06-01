@@ -30,11 +30,11 @@
 }
 
 .dark {
-  --background: rgba(5, 5, 5, 0.85);
+  --background: rgba(5, 5, 5, 0.98);
   --foreground: #F5F5F7;
-  --card: rgba(15, 15, 15, 0.88);
+  --card: rgba(15, 15, 15, 0.99);
   --card-foreground: #F5F5F7;
-  --popover: rgba(15, 15, 15, 0.85);
+  --popover: rgba(15, 15, 15, 0.99);
   --popover-foreground: #F5F5F7;
   --primary: #B19CD9;
   --primary-foreground: #050505;
@@ -74,11 +74,11 @@
 }
 
 .lavender {
-  --background: rgba(11, 10, 16, 0.85);
+  --background: rgba(11, 10, 16, 0.98);
   --foreground: #F1F0F5;
-  --card: rgba(19, 17, 28, 0.88);
+  --card: rgba(19, 17, 28, 0.99);
   --card-foreground: #F1F0F5;
-  --popover: rgba(19, 17, 28, 0.85);
+  --popover: rgba(19, 17, 28, 0.99);
   --popover-foreground: #F1F0F5;
   --primary: #9D7BFE;
   --primary-foreground: #0B0A10;
@@ -124,7 +124,7 @@
 
 body {
   background-color: var(--background);
-  background-image: linear-gradient(rgba(0, 0, 0, 0.45), rgba(0, 0, 0, 0.45)), url('/background.png');
+  background-image: linear-gradient(rgba(0, 0, 0, 0.8), rgba(0, 0, 0, 0.8)), url('/background.png');
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
@@ -142,7 +142,7 @@ body {
   border: 1px solid rgba(255, 255, 255, 0.5);
 }
 .dark .glass-panel {
-  background-color: rgba(15, 15, 15, 0.95);
+  background-color: rgba(15, 15, 15, 0.99);
   backdrop-filter: blur(24px);
   border: 1px solid rgba(255, 255, 255, 0.06);
 }

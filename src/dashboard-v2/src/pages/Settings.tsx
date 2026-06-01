@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { getRoleLabel, getRoleColor, getAvatarUrl } from '../lib/auth';
 import { Card } from '../components/ui/Card';
@@ -154,7 +154,7 @@ export default function Settings() {
       </div>
 
       {/* SECTION: LANGUAGE_SETTINGS */}
-      {/* PURPOSE: Dashboard-v2 ve extension sidepanel ortak dil seÃ§imini yÃ¶netir. */}
+      {/* PURPOSE: Dashboard-v2 ve extension sidepanel ortak dil seçimini yönetir. */}
       <div className="space-y-4">
         <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">{t('settings.langSelect')}</div>
         <Card className="p-4 flex items-center justify-between">
@@ -188,7 +188,7 @@ export default function Settings() {
               </div>
               <div>
                 <div className="font-semibold text-sm text-foreground">{displayName}</div>
-                <div className="text-[10px] font-bold uppercase tracking-wider mt-0.5" style={{ color: roleColor }}>{roleLabel} â€¢ {session?.provider?.toUpperCase()}</div>
+                <div className="text-[10px] font-bold uppercase tracking-wider mt-0.5" style={{ color: roleColor }}>{roleLabel} - {session?.provider?.toUpperCase()}</div>
               </div>
             </div>
             <Button variant="outline" size="sm" onClick={logout}>{t('nav.logout')}</Button>

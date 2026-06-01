@@ -117,9 +117,9 @@ export default function AppLayout() {
     return item ? t(item.translationKey) : 'Dashboard';
   };
 
-  // Block dashboard access entirely for Former Staff (eski_yetkili) or Blocked (blocked) role
+  // Block dashboard access entirely for Former Staff (eski_yetkili), Blocked (blocked), or Pending (pending) role
   const userRole = session?.role?.toLowerCase() || '';
-  if (userRole === 'eski_yetkili' || userRole === 'blocked') {
+  if (userRole === 'eski_yetkili' || userRole === 'blocked' || userRole === 'pending') {
     return (
       <div className="flex flex-col items-center justify-center h-screen w-screen bg-background text-foreground p-6">
         <div className="max-w-md w-full text-center space-y-6 bg-card border border-border/50 rounded-[28px] p-8 glass-panel shadow-2xl animate-in fade-in">
@@ -131,7 +131,9 @@ export default function AppLayout() {
             <p className="text-sm text-muted-foreground">
               {userRole === 'blocked' 
                 ? (language === 'tr' ? 'Hesabınız engellendiği için moderasyon paneline erişim izniniz bulunmamaktadır.' : 'You do not have permission to access the moderation panel because your account has been blocked.')
-                : (language === 'tr' ? 'Eski yetkili rütbesine sahip olduğunuz için moderasyon paneline erişim izniniz bulunmamaktadır.' : 'You do not have permission to access the moderation panel because you have the Former Staff role.')}
+                : userRole === 'eski_yetkili'
+                  ? (language === 'tr' ? 'Eski yetkili rütbesine sahip olduğunuz için moderasyon paneline erişim izniniz bulunmamaktadır.' : 'You do not have permission to access the moderation panel because you have the Former Staff role.')
+                  : (language === 'tr' ? 'Hesabınız henüz onaylanmadığı için moderasyon paneline erişim izniniz bulunmamaktadır.' : 'You do not have permission to access the moderation panel because your account has not been approved yet.')}
             </p>
           </div>
           <button

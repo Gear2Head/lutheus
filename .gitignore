@@ -165,3 +165,4 @@ src/utils/supabase/**
 **/src/utils/supabase/**
 .cursor
 zip
+.env*.local

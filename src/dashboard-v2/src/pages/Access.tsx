@@ -10,6 +10,7 @@ import { Badge } from '../components/ui/Badge';
 import { RefreshCw, Plus, Trash2, Shield, AlertTriangle } from 'lucide-react';
 import { formatDateTime } from '../lib/utils';
 import { ConfirmationModal } from '../components/ui/ConfirmationModal';
+import { useToast } from '../contexts/ToastContext';
 
 interface AllowlistEntry {
   id: string;
@@ -27,8 +28,10 @@ interface RoleCacheEntry {
 
 export default function Access() {
   const { session } = useAuth();
+  const { showToast } = useToast();
   const canManage = hasPermission(session?.role || '', 'google_allowlist:update');
   const canAssignRole = hasPermission(session?.role || '', 'staff:assign_role');
+  const canRepair = ['kurucu', 'admin'].includes(session?.role?.toLowerCase() || '');
 
   const [allowlist, setAllowlist] = useState<AllowlistEntry[]>([]);
   const [roleCache, setRoleCache] = useState<RoleCacheEntry[]>([]);
@@ -45,6 +48,7 @@ export default function Access() {
   const [saving, setSaving] = useState(false);
   const [lockdown, setLockdown] = useState(false);
   const [lockdownConfirm, setLockdownConfirm] = useState(false);
+  const [repairing, setRepairing] = useState(false);
 
   const loadData = async () => {
     setLoading(true);
@@ -142,6 +146,41 @@ export default function Access() {
       await loadData();
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleRepair = async () => {
+    setRepairing(true);
+    showToast('Veritabanı onarım işlemi başlatıldı...', 'info');
+    try {
+      const token = session?.idToken || '';
+      const baseUrl = (typeof window !== 'undefined' && window.location.protocol === 'chrome-extension:')
+        ? 'https://lutheus.vercel.app'
+        : '';
+
+      const res = await fetch(`${baseUrl}/api/admin/repair-dates`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (!res.ok) {
+        throw new Error(`REPAIR_ENDPOINT_FAILED_${res.status}`);
+      }
+
+      const data = await res.json();
+      if (data.success) {
+        showToast(`Veritabanı başarıyla onarıldı! ${data.count} adet ceza düzeltildi.`, 'success');
+      } else {
+        showToast('Onarım tamamlandı ancak beklenen yanıt alınamadı.', 'info');
+      }
+    } catch (err: any) {
+      console.error('[Access] Repair failed:', err);
+      showToast('Onarım işlemi sırasında bir hata oluştu.', 'error');
+    } finally {
+      setRepairing(false);
     }
   };
 
@@ -271,6 +310,31 @@ export default function Access() {
           ))}
         </div>
       </Card>
+
+      {/* Database Healer & Repair */}
+      {canRepair && (
+        <Card className="p-5">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <RefreshCw className={`w-4 h-4 text-primary ${repairing ? 'animate-spin' : ''}`} />
+              <h3 className="font-semibold text-sm text-foreground">Veritabanı Onarıcı (Database Healer)</h3>
+            </div>
+            {repairing && <Badge variant="secondary">Onarılıyor...</Badge>}
+          </div>
+          <p className="text-xs text-muted-foreground mb-4">
+            Bu araç geçmişte gün/ay değerleri ters kaydedilen hatalı ceza tarihlerini, "Kalıcı" olarak kilitlenmiş yanlış ceza sürelerini ve aktif/pasif durumlarını otomatik olarak tarayıp düzeltir.
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleRepair}
+            disabled={repairing}
+          >
+            <RefreshCw className={`w-3.5 h-3.5 mr-2 ${repairing ? 'animate-spin' : ''}`} />
+            Veritabanını Onar (Healer)
+          </Button>
+        </Card>
+      )}
 
       {/* SRE Panel */}
       <Card className="p-5">

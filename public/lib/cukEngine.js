@@ -1,6 +1,13 @@
 // Lutheus CezaRapor - CUK Engine (Ceza Uygulama Kitapçığı)
 // Intelligent penalty validation system
 
+import {
+    matchesKeyword,
+    normalizeMatchText,
+    pickBestScoredCategory,
+    scoreKeywordMatches
+} from './ruleMatching.js';
+
 export const CUK_VERSION = '1.0.0';
 
 // Ceza durumları
@@ -45,11 +52,10 @@ export function parseDuration(durationStr) {
     str = str.replace(/\s*\(\s*$/, '').trim();
 
     // Özel durum: Süresiz / Ban
-    if (str.includes('süresiz') || str.includes('perma') || str.includes('sonsuz') || str.includes('perm') || str.includes('belirsiz')) {
+    if (str.includes('süresiz') || str.includes('perma') || str.includes('sonsuz') || str.includes('perm') || str.includes('belirsiz') || str.includes('kalıcı') || str.includes('kalici') || str.includes('permanent')) {
         return Infinity;
     }
 
-    // Pattern: "20s", "1h", "2d", "1w", etc.
     const patterns = [
         { regex: /(\d+)\s*(saniye|sec|seconds?|sn|s)(?![a-zA-ZçğıöşüÇĞIÖŞÜ])/i, multiplier: 1 / 60 },
         { regex: /(\d+)\s*(dakika|min|minutes?|dk|m)(?![a-zA-ZçğıöşüÇĞIÖŞÜ])/i, multiplier: 1 },
@@ -64,7 +70,7 @@ export function parseDuration(durationStr) {
     let found = false;
 
     for (const { regex, multiplier } of patterns) {
-        const matches = str.matchAll(new RegExp(regex.source, 'gi'));
+        const matches = [...str.matchAll(new RegExp(regex.source, 'gi'))];
         for (const match of matches) {
             totalMinutes += parseInt(match[1]) * multiplier;
             found = true;
@@ -106,7 +112,6 @@ export const CUK_RULES = {
     },
 
     // Ceza kategorileri ve kuralları
-    // Ceza kategorileri ve kuralları
     categories: {
         'Yetkililere Saygısızlık': {
             keywords: ['yetkili', 'adal', 'doğukan', 'admin', 'mod', 'üst yönetim', 'ekip', 'ismini kötüleme', 'aşağılama', 'iftira'],
@@ -124,9 +129,9 @@ export const CUK_RULES = {
                     degree: 1, // Şahsa edilmiş hakaret
                     keywords: ['şahsa hakaret', '1. derece saygısızlık', 'sahsa edilmis hakaret'],
                     repeats: {
-                        1: { duration: 720, type: 'mute' },  // 12 Saat
-                        2: { duration: 1440, type: 'mute' }, // 24 Saat
-                        3: { duration: 2880, type: 'mute' }, // 48 Saat
+                        1: { duration: 180, type: 'mute' },  // 3 Saat
+                        2: { duration: 360, type: 'mute' },  // 6 Saat
+                        3: { duration: 720, type: 'mute' },  // 12 Saat
                         4: { type: 'ban', notes: 'Kısıtlama' }
                     }
                 },
@@ -154,9 +159,9 @@ export const CUK_RULES = {
                     degree: 4, // Kitleye hakaret
                     keywords: ['kitleye hakaret', '4. derece saygısızlık'],
                     repeats: {
-                        1: { duration: 360, type: 'mute' },  // 6 Saat
-                        2: { duration: 720, type: 'mute' },  // 12 Saat
-                        3: { duration: 1440, type: 'mute' }, // 24 Saat
+                        1: { duration: 720, type: 'mute' },  // 12 Saat
+                        2: { duration: 1440, type: 'mute' }, // 24 Saat
+                        3: { duration: 2880, type: 'mute' }, // 48 Saat
                         4: { type: 'ban', notes: 'Kısıtlama' }
                     }
                 }
@@ -194,7 +199,7 @@ export const CUK_RULES = {
             }
         },
         'Sunucu Dinamiği': {
-            keywords: ['sunucu dinamiği', 'dinamik', 'sunucu düzeni', 'kanalın amacı', 'ekran', ' flood'],
+            keywords: ['sunucu dinamiği', 'dinamik', 'sunucu düzeni', 'kanalın amacı', 'ekran', ' flood', 'flood', 'spam', 'sohbet bütünlüğü', 'sohbetin bütünlüğü', 'bütünlüğünü bozacak'],
             degrees: [
                 {
                     degree: 1, // Amacı dışında kullanım
@@ -237,7 +242,7 @@ export const CUK_RULES = {
                 },
                 {
                     degree: 5, // Sohbet bütünlüğü/Flood/Embed
-                    keywords: ['flood', 'latin alfabesi dışı', 'embed', '5. derece dinamik', 'bütünlüğü', 'harf uzatma', 'capstalk', 'spam'],
+                    keywords: ['flood', 'latin alfabesi dışı', 'embed', '5. derece dinamik', 'bütünlüğü', 'harf uzatma', 'capstalk', 'spam', 'sohbet bütünlüğü', 'sohbetin bütünlüğü', 'bütünlüğünü bozacak'],
                     repeats: {
                         1: { duration: 15, type: 'mute' }, 2: { duration: 30, type: 'mute' }, 3: { duration: 60, type: 'mute' },
                         4: { duration: 120, type: 'mute' }, 5: { duration: 240, type: 'mute' }, 6: { duration: 480, type: 'mute' },
@@ -359,7 +364,7 @@ export const CUKEngine = {
     parseReason(reason) {
         if (!reason) return { category: null, degree: null, repeat: null };
 
-        const lowerReason = reason.toLowerCase();
+        const lowerReason = normalizeMatchText(reason);
 
         // Derece tespiti
         let degree = null;
@@ -398,7 +403,7 @@ export const CUKEngine = {
 
         // Priority to 'Yönetim'
         const mgmtKeywords = this.rules.categories['Yönetim']?.keywords || ['yönetim', 'onaylı', 'onayli', 'onay'];
-        if (mgmtKeywords.some(kw => lowerReason.includes(kw))) {
+        if (mgmtKeywords.some((kw) => matchesKeyword(lowerReason, kw))) {
             return { category: 'Yönetim', degree: null, repeat: null };
         }
 
@@ -414,45 +419,48 @@ export const CUKEngine = {
             'latin alfabesi dışı',
             'embed'
         ];
-        if (sunucuDinamigiD5Keywords.some(kw => lowerReason.includes(kw))) {
+        if (sunucuDinamigiD5Keywords.some((kw) => matchesKeyword(lowerReason, kw))) {
             return { category: 'Sunucu Dinamiği', degree: 5, repeat: repeat };
         }
 
-        if (lowerReason.includes('kutsal') || lowerReason.includes('dini') || lowerReason.includes('milli') || lowerReason.includes('atatürk') || lowerReason.includes('dinlere')) {
+        if (
+            matchesKeyword(lowerReason, 'kutsal') ||
+            matchesKeyword(lowerReason, 'dini') ||
+            matchesKeyword(lowerReason, 'milli') ||
+            matchesKeyword(lowerReason, 'atatürk') ||
+            matchesKeyword(lowerReason, 'dinlere')
+        ) {
             return { category: 'Dini/Milli Değerler', degree: null, repeat: repeat };
         }
 
-        if (lowerReason.includes('markasına zarar') || lowerReason.includes('markaya zarar') || lowerReason.includes('lutheus markası') || lowerReason.includes('sunucuya/lutheus markasına')) {
+        if (
+            matchesKeyword(lowerReason, 'markasına zarar') ||
+            matchesKeyword(lowerReason, 'markaya zarar') ||
+            matchesKeyword(lowerReason, 'lutheus markası') ||
+            matchesKeyword(lowerReason, 'sunucuya/lutheus markasına')
+        ) {
             return { category: 'Sunucu Dinamiği', degree: 2, repeat: repeat };
         }
 
-        // Skor tabanlı kategori seçimi
         const scores = {};
         for (const [cat, rule] of Object.entries(this.rules.categories)) {
-            const keywords = rule.keywords || [];
-            let score = 0;
-            keywords.forEach(kw => {
-                if (lowerReason.includes(kw.toLowerCase())) {
-                    score += kw.length;
-                }
-            });
+            let score = scoreKeywordMatches(lowerReason, rule.keywords || []);
 
             if (rule.degrees) {
-                rule.degrees.forEach(d => {
-                    (d.keywords || []).forEach(dkw => {
-                        if (lowerReason.includes(dkw.toLowerCase())) {
-                            score += dkw.length * 1.5;
-                        }
-                    });
+                rule.degrees.forEach((d) => {
+                    const degreeScore = scoreKeywordMatches(lowerReason, d.keywords || []);
+                    if (degreeScore > 0) {
+                        score += degreeScore * 1.5;
+                    }
                 });
             }
 
             if (score > 0) scores[cat] = score;
         }
 
-        const sortedCats = Object.entries(scores).sort((a, b) => b[1] - a[1]);
-        if (sortedCats.length > 0) {
-            category = sortedCats[0][0];
+        const bestCategory = pickBestScoredCategory(scores);
+        if (bestCategory) {
+            category = bestCategory;
         }
 
         return { category, degree, repeat };
@@ -489,9 +497,9 @@ export const CUKEngine = {
         }
 
         // 2. Otomatik hatalı anahtar kelime kontrolü
-        const lowerReason = reason.toLowerCase();
+        const lowerReason = normalizeMatchText(reason);
         for (const keyword of this.rules.autoInvalid.keywords) {
-            if (lowerReason.includes(keyword)) {
+            if (matchesKeyword(lowerReason, keyword)) {
                 return {
                     status: PenaltyStatus.INVALID,
                     reason: `Otomatik hatalı: "${keyword}" ifadesi tespit edildi`,
@@ -505,6 +513,23 @@ export const CUKEngine = {
 
         // Kategori bulunamadıysa manuel inceleme
         if (!parsed.category) {
+            const norm = reason.toLowerCase().trim();
+            const placeholders = new Set([
+                'ada', 'de', 'denem', 'deneme', 'test', 'tst', 'placeholder', 'bos', 'boslar', 'yok',
+                'abc', 'denemeler', 'asdasd', 'qwerty', 'denemee', 'deneme123', '/', '...', '.', '..', '-', '_'
+            ]);
+            const isPlaceholder = placeholders.has(norm) || 
+              /^[^a-z0-9ğışçöü]*$/i.test(norm) || 
+              (norm.length <= 3);
+
+            if (isPlaceholder) {
+                return {
+                    status: PenaltyStatus.INVALID,
+                    reason: 'Geçersiz veya placeholder ceza sebebi. CUK kitapçığına uygun açıklama girilmelidir.',
+                    details: { parsed }
+                };
+            }
+
             return {
                 status: PenaltyStatus.PENDING,
                 reason: 'Kategori tespit edilemedi',
@@ -535,10 +560,11 @@ export const CUKEngine = {
                 note,
                 proofText,
                 typeof raw === 'string' ? raw : (raw && JSON.stringify(raw))
-            ].filter(Boolean).join(' ').toLowerCase();
+            ].filter(Boolean).join(' ');
 
+            const normalizedContext = normalizeMatchText(contextText);
             for (const d of rule.degrees) {
-                if (d.keywords && d.keywords.some(kw => contextText.includes(kw.toLowerCase()))) {
+                if (d.keywords && d.keywords.some((kw) => matchesKeyword(normalizedContext, kw))) {
                     matchedDegree = d.degree;
                     break;
                 }
@@ -555,9 +581,10 @@ export const CUKEngine = {
 
         // Hiyerarşiyi tarayarak olası süreleri/türleri topla
         const collectPossibilities = (r, specificDegree = null) => {
-            if (r.duration) possiblePenalties.push({ duration: r.duration, type: r.type || 'mute', degree: r.degree || null });
-            if (r.type === 'ban') possiblePenalties.push({ type: 'ban', degree: r.degree || null });
-            if (r.type === 'warn') possiblePenalties.push({ type: 'warn', degree: r.degree || null });
+            const currentDegree = specificDegree !== null ? specificDegree : (r.degree || null);
+            if (r.duration) possiblePenalties.push({ duration: r.duration, type: r.type || 'mute', degree: currentDegree });
+            if (r.type === 'ban') possiblePenalties.push({ type: 'ban', degree: currentDegree });
+            if (r.type === 'warn') possiblePenalties.push({ type: 'warn', degree: currentDegree });
 
             if (r.repeats) {
                 if (repeatIndex && repeatIndex > 0) {
@@ -566,17 +593,17 @@ export const CUKEngine = {
                         const targetKey = keys.includes(repeatIndex) ? repeatIndex : keys[keys.length - 1];
                         const rep = r.repeats[targetKey];
                         if (rep) {
-                            if (rep.duration) possiblePenalties.push({ duration: rep.duration, type: rep.type || 'mute', degree: r.degree || null });
+                            if (rep.duration) possiblePenalties.push({ duration: rep.duration, type: rep.type || 'mute', degree: currentDegree });
                             if (rep.type === 'ban' || (rep.notes && (rep.notes.toLowerCase().includes('ban') || rep.notes.toLowerCase().includes('kısıtlama')))) {
-                                possiblePenalties.push({ type: 'ban', degree: r.degree || null });
+                                possiblePenalties.push({ type: 'ban', degree: currentDegree });
                             }
                         }
                     }
                 } else {
                     Object.values(r.repeats).forEach(rep => {
-                        if (rep.duration) possiblePenalties.push({ duration: rep.duration, type: rep.type || 'mute', degree: r.degree || null });
+                        if (rep.duration) possiblePenalties.push({ duration: rep.duration, type: rep.type || 'mute', degree: currentDegree });
                         if (rep.type === 'ban' || (rep.notes && (rep.notes.toLowerCase().includes('ban') || rep.notes.toLowerCase().includes('kısıtlama')))) {
-                            possiblePenalties.push({ type: 'ban', degree: r.degree || null });
+                            possiblePenalties.push({ type: 'ban', degree: currentDegree });
                         }
                     });
                 }
@@ -590,10 +617,10 @@ export const CUKEngine = {
                 }
             }
             if (r.flexible) {
-                r.flexible.forEach(f => possiblePenalties.push({ ...f, degree: r.degree || null }));
+                r.flexible.forEach(f => possiblePenalties.push({ ...f, degree: currentDegree }));
             }
             if (r.type === 'mute' && !r.duration && !r.repeats && !r.degrees) {
-                possiblePenalties.push({ type: 'mute', degree: r.degree || null });
+                possiblePenalties.push({ type: 'mute', degree: currentDegree });
             }
         };
 

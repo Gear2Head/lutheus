@@ -5,6 +5,36 @@ window.GearTech = window.GearTech || {};
 
 window.GearTech.Navigation = {
     /**
+     * Set page size dropdown value
+     */
+    setPageSize: function (size) {
+        console.log('GearTech Nav: Setting page size to', size);
+        const selectors = [
+            '.pagination-controls select',
+            'select[class*="pagination"]',
+            'select'
+        ];
+        let select = null;
+        for (const sel of selectors) {
+            select = document.querySelector(sel);
+            if (select) break;
+        }
+        if (!select) {
+            console.error('GearTech Nav: Page size select not found');
+            return false;
+        }
+        if (select.value === String(size)) {
+            console.log('GearTech Nav: Page size already set to', size);
+            return true;
+        }
+        select.value = String(size);
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+        select.dispatchEvent(new Event('input', { bubbles: true }));
+        console.log('GearTech Nav: Triggered page size change to', size);
+        return true;
+    },
+
+    /**
      * Navigate to a specific page number
      */
     goToPage: function (pageNumber) {

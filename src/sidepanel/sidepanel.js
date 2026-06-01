@@ -1,4 +1,4 @@
-﻿import {
+import {
     Storage,
     DEFAULT_POINTTRAIN_CHANNELS,
     DEFAULT_POINT_WEIGHTS
@@ -120,10 +120,10 @@ const state = {
 const SIDE_PANEL_I18N = {
     tr: {
         languageChangedTitle: 'Dil',
-        languageChangedMessage: 'Dil TÃ¼rkÃ§e olarak ayarlandÄ±',
-        ready: 'HazÄ±r',
-        scanAllPages: 'TÃ¼m sayfalar otomatik taranacak',
-        manualPageInput: 'Manuel sayfa giriÅŸi aktif',
+        languageChangedMessage: 'Dil Türkçe olarak ayarlandı',
+        ready: 'Hazır',
+        scanAllPages: 'Tüm sayfalar otomatik taranacak',
+        manualPageInput: 'Manuel sayfa girişi aktif',
         autoMode: 'Otomatik Mod'
     },
     en: {
@@ -206,7 +206,7 @@ async function copyText(text) {
 }
 
 // SECTION: LANGUAGE_SYNC
-// PURPOSE: Sidepanel dil seÃ§imini dashboard-v2 ile ortak Chrome storage anahtarÄ±nda tutar.
+// PURPOSE: Sidepanel dil seçimini dashboard-v2 ile ortak Chrome storage anahtarında tutar.
 async function loadLanguage() {
     const stored = await new Promise((resolve) => chrome.storage.local.get(['language'], resolve));
     const lang = stored?.language === 'en' ? 'en' : 'tr';
@@ -745,7 +745,7 @@ function renderPointtrainRun(run) {
         DOM.pointtrainSummary.innerHTML = `
             <div class="comp-card" style="grid-column: span 3;">
                 <div class="comp-label">Pointtrain Hazir Degil</div>
-                <div class="comp-value" style="font-size: 13px; opacity: 0.6;">HenÃ¼z bir tarama yapilmadi</div>
+                <div class="comp-value" style="font-size: 13px; opacity: 0.6;">Henüz bir tarama yapılmadı</div>
             </div>
         `;
         DOM.pointtrainResultList.innerHTML = '';
@@ -1047,14 +1047,14 @@ function bindEvents() {
             DOM.toggleAutofill.style.background = 'var(--accent)';
             DOM.toggleAutofill.style.color = '#fff';
             DOM.pageInput.value = '';
-            DOM.pageInput.placeholder = 'Otomatik (tÃ¼m sayfalar)';
+            DOM.pageInput.placeholder = 'Otomatik (tüm sayfalar)';
             DOM.pageInput.disabled = true;
             Toast.info(text('autoMode'), text('scanAllPages'));
         } else {
             DOM.toggleAutofill.classList.remove('active');
             DOM.toggleAutofill.style.background = '';
             DOM.toggleAutofill.style.color = '';
-            DOM.pageInput.placeholder = 'Ã–rn: 5 veya 1-10';
+            DOM.pageInput.placeholder = 'Örn: 5 veya 1-10';
             DOM.pageInput.disabled = false;
             Toast.info(text('autoMode'), text('manualPageInput'));
         }

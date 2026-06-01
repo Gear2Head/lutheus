@@ -177,7 +177,7 @@ module.exports = async function handler(req, res) {
             staff_rank: role,
             permission_group: roleInfo.permissionGroup,
             permission_level: roleInfo.permissionLevel,
-            is_active_staff: role !== 'pending' && role !== 'blocked',
+            is_active_staff: role !== 'pending' && role !== 'blocked' && role !== 'eski_yetkili',
             last_seen_at: new Date().toISOString(),
             raw_payload: {
                 ...profile,

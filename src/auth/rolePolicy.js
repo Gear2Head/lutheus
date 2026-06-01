@@ -13,7 +13,8 @@ export const ROLES = Object.freeze({
     DISCORD_DESTEK_EKIBI: 'discord_destek_ekibi',
     VIEWER: 'viewer',
     PENDING: 'pending',
-    BLOCKED: 'blocked'
+    BLOCKED: 'blocked',
+    ESKI_YETKILI: 'eski_yetkili'
 });
 
 export const ROLE_LEVELS = Object.freeze({
@@ -344,10 +345,14 @@ export function getDefaultGroqLimit(role) {
 }
 
 export function getVisibleSections(role) {
+    const norm = normalizeRole(role);
+    if (norm === ROLES.PENDING || norm === ROLES.BLOCKED || norm === 'eski_yetkili') {
+        return [];
+    }
     if (isPrivilegedRole(role)) {
         return ['home', 'scan', 'stats', 'pointtrain', 'profile', 'settings'];
     }
-    if (normalizeRole(role) === ROLES.DISCORD_MODERATORU) {
+    if (norm === ROLES.DISCORD_MODERATORU) {
         return ['home', 'stats', 'cezalar', 'profile'];
     }
     return ['home', 'cezalar', 'profile'];

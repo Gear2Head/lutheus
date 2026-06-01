@@ -143,7 +143,7 @@ export default function Pointtrain() {
   const totalValid = rows.reduce((s, r) => s + r.valid, 0);
   const totalInvalid = rows.reduce((s, r) => s + r.invalid, 0);
   const totalCases = rows.reduce((s, r) => s + r.sapphireCases, 0);
-  const avgAccuracy = rows.length > 0 ? Math.round(rows.reduce((s, r) => s + r.accuracy, 0) / rows.length) : 0;
+  const avgAccuracy = totalCases > 0 ? Math.round((totalValid / totalCases) * 100) : 0;
 
   const copyMarkdown = () => {
     navigator.clipboard.writeText(exportMarkdown(rows, t))

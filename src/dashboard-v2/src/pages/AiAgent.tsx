@@ -1,4 +1,4 @@
-﻿import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Card } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
 import { Bot, Image as ImageIcon, Send, Sparkles, X, AlertTriangle } from 'lucide-react';
@@ -49,7 +49,7 @@ export default function AiAgent() {
     const reason = text;
     const hourMatch = text.match(/(\d+)\s*(saat|hour)/i);
     const minuteMatch = text.match(/(\d+)\s*(dakika|dk|min)/i);
-    const dayMatch = text.match(/(\d+)\s*(gÃ¼n|gun|day)/i);
+    const dayMatch = text.match(/(\d+)\s*(gün|gun|day)/i);
     let mins: number | null = null;
     if (dayMatch) mins = Number(dayMatch[1]) * 1440;
     else if (hourMatch) mins = Number(hourMatch[1]) * 60;
@@ -89,7 +89,7 @@ export default function AiAgent() {
     const userMsg: Message = {
       id: Date.now(),
       role: 'user',
-      content: input || (language === 'tr' ? '[GÃ¶rsel Analizi Ä°stendi]' : '[Image Analysis Requested]'),
+      content: input || (language === 'tr' ? '[Görsel Analizi İstendi]' : '[Image Analysis Requested]'),
       imageAttached: currentImg || undefined
     };
 
@@ -133,15 +133,15 @@ export default function AiAgent() {
         if (data.success && data.analysis) {
           const ai = data.analysis;
           if (result.valid) {
-            response = `ğŸ›¡ï¸ [${t('ai.engineVerdict')}] ${t('ai.engineVerdictValid')}\n${t('home.status')}: ${result.categoryMatched}\n\n`;
+            response = `[${t('ai.engineVerdict')}] ${t('ai.engineVerdictValid')}\n${t('home.status')}: ${result.categoryMatched}\n\n`;
           } else {
-            response = `âš ï¸ [${t('ai.engineVerdict')}] ${t('ai.engineVerdictInvalid')}\n${t('ai.engineVerdictMsg')}: ${result.message}\n\n`;
+            response = `[${t('ai.engineVerdict')}] ${t('ai.engineVerdictInvalid')}\n${t('ai.engineVerdictMsg')}: ${result.message}\n\n`;
           }
           response += `${t('ai.groqReport')}\n`;
-          response += `â€¢ ${t('ai.groqSummary')}: ${ai.summary || 'N/A'}\n`;
-          response += `â€¢ ${t('ai.groqRisks')}: ${ai.riskReasons || 'N/A'}\n`;
-          response += `â€¢ ${t('ai.groqAction')}: ${ai.recommendedAction || 'N/A'}\n`;
-          response += `â€¢ ${t('ai.groqConfidence')}: ${ai.confidenceNote || 'N/A'}`;
+          response += `- ${t('ai.groqSummary')}: ${ai.summary || 'N/A'}\n`;
+          response += `- ${t('ai.groqRisks')}: ${ai.riskReasons || 'N/A'}\n`;
+          response += `- ${t('ai.groqAction')}: ${ai.recommendedAction || 'N/A'}\n`;
+          response += `- ${t('ai.groqConfidence')}: ${ai.confidenceNote || 'N/A'}`;
           badgeSource = 'Groq AI + CUK';
         } else {
           throw new Error('AI_INVALID_RESPONSE');
@@ -151,9 +151,9 @@ export default function AiAgent() {
         if (result.valid) {
           response = `${t('ai.engineVerdictValid')}\n\n${t('home.status')}: ${result.categoryMatched}\n${t('ai.engineVerdictMsg')}: ${result.message}\n${t('pt.reliability')}: %${Math.round(result.score * 100)}`;
         } else {
-          response = `${t('ai.engineVerdictInvalid')}\n\n${t('home.status')}: ${result.categoryMatched || 'TanÄ±msÄ±z'}\n${t('ai.engineVerdictMsg')}: ${result.message}`;
+          response = `${t('ai.engineVerdictInvalid')}\n\n${t('home.status')}: ${result.categoryMatched || 'Tanimsiz'}\n${t('ai.engineVerdictMsg')}: ${result.message}`;
         }
-        response += `\n\nâš ï¸ ${t('ai.endpointError')}`;
+        response += `\n\n[Hata] ${t('ai.endpointError')}`;
       }
 
       const assistantMsg: Message = {

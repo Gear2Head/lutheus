@@ -192,8 +192,14 @@ window.GearTech.Scraper = {
                     }
                 }
 
+                let duration = durationCol.innerText.trim();
                 const spanWithTitle = durationCol.querySelector('[title]');
-                let duration = spanWithTitle ? spanWithTitle.getAttribute('title') : durationCol.innerText.trim();
+                const titleAttr = spanWithTitle ? spanWithTitle.getAttribute('title') : '';
+                if (titleAttr && !titleAttr.includes('calc') && !titleAttr.includes('%') && !titleAttr.includes('px')) {
+                    if (!duration || duration.includes('...') || duration === '---') {
+                        duration = titleAttr.trim();
+                    }
+                }
                 if (!duration || duration === '---') duration = 'Süresiz';
 
                 const dateText = dateCol.innerText.trim();
@@ -296,12 +302,15 @@ window.GearTech.Scraper = {
         }
 
         // Extract Duration
-        const durationCol = durationMeta.col;
-        let duration = '';
         if (durationCol) {
-            // Check for title attribute (full duration usually hidden there if truncated)
+            duration = durationCol.innerText.trim();
             const spanWithTitle = durationCol.querySelector('[title]');
-            duration = spanWithTitle ? spanWithTitle.getAttribute('title') : durationCol.innerText.trim();
+            const titleAttr = spanWithTitle ? spanWithTitle.getAttribute('title') : '';
+            if (titleAttr && !titleAttr.includes('calc') && !titleAttr.includes('%') && !titleAttr.includes('px')) {
+                if (!duration || duration.includes('...') || duration === '---') {
+                    duration = titleAttr.trim();
+                }
+            }
         }
         if (!duration || duration === '---') duration = 'Süresiz';
 

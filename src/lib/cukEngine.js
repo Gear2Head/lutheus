@@ -112,7 +112,6 @@ export const CUK_RULES = {
     },
 
     // Ceza kategorileri ve kuralları
-    // Ceza kategorileri ve kuralları
     categories: {
         'Yetkililere Saygısızlık': {
             keywords: ['yetkili', 'adal', 'doğukan', 'admin', 'mod', 'üst yönetim', 'ekip', 'ismini kötüleme', 'aşağılama', 'iftira'],
@@ -130,9 +129,9 @@ export const CUK_RULES = {
                     degree: 1, // Şahsa edilmiş hakaret
                     keywords: ['şahsa hakaret', '1. derece saygısızlık', 'sahsa edilmis hakaret'],
                     repeats: {
-                        1: { duration: 720, type: 'mute' },  // 12 Saat
-                        2: { duration: 1440, type: 'mute' }, // 24 Saat
-                        3: { duration: 2880, type: 'mute' }, // 48 Saat
+                        1: { duration: 180, type: 'mute' },  // 3 Saat
+                        2: { duration: 360, type: 'mute' },  // 6 Saat
+                        3: { duration: 720, type: 'mute' },  // 12 Saat
                         4: { type: 'ban', notes: 'Kısıtlama' }
                     }
                 },
@@ -160,9 +159,9 @@ export const CUK_RULES = {
                     degree: 4, // Kitleye hakaret
                     keywords: ['kitleye hakaret', '4. derece saygısızlık'],
                     repeats: {
-                        1: { duration: 360, type: 'mute' },  // 6 Saat
-                        2: { duration: 720, type: 'mute' },  // 12 Saat
-                        3: { duration: 1440, type: 'mute' }, // 24 Saat
+                        1: { duration: 720, type: 'mute' },  // 12 Saat
+                        2: { duration: 1440, type: 'mute' }, // 24 Saat
+                        3: { duration: 2880, type: 'mute' }, // 48 Saat
                         4: { type: 'ban', notes: 'Kısıtlama' }
                     }
                 }
@@ -200,7 +199,7 @@ export const CUK_RULES = {
             }
         },
         'Sunucu Dinamiği': {
-            keywords: ['sunucu dinamiği', 'dinamik', 'sunucu düzeni', 'kanalın amacı', 'ekran', ' flood'],
+            keywords: ['sunucu dinamiği', 'dinamik', 'sunucu düzeni', 'kanalın amacı', 'ekran', ' flood', 'flood', 'spam', 'sohbet bütünlüğü', 'sohbetin bütünlüğü', 'bütünlüğünü bozacak'],
             degrees: [
                 {
                     degree: 1, // Amacı dışında kullanım
@@ -243,7 +242,7 @@ export const CUK_RULES = {
                 },
                 {
                     degree: 5, // Sohbet bütünlüğü/Flood/Embed
-                    keywords: ['flood', 'latin alfabesi dışı', 'embed', '5. derece dinamik', 'bütünlüğü', 'harf uzatma', 'capstalk', 'spam'],
+                    keywords: ['flood', 'latin alfabesi dışı', 'embed', '5. derece dinamik', 'bütünlüğü', 'harf uzatma', 'capstalk', 'spam', 'sohbet bütünlüğü', 'sohbetin bütünlüğü', 'bütünlüğünü bozacak'],
                     repeats: {
                         1: { duration: 15, type: 'mute' }, 2: { duration: 30, type: 'mute' }, 3: { duration: 60, type: 'mute' },
                         4: { duration: 120, type: 'mute' }, 5: { duration: 240, type: 'mute' }, 6: { duration: 480, type: 'mute' },
@@ -514,6 +513,23 @@ export const CUKEngine = {
 
         // Kategori bulunamadıysa manuel inceleme
         if (!parsed.category) {
+            const norm = reason.toLowerCase().trim();
+            const placeholders = new Set([
+                'ada', 'de', 'denem', 'deneme', 'test', 'tst', 'placeholder', 'bos', 'boslar', 'yok',
+                'abc', 'denemeler', 'asdasd', 'qwerty', 'denemee', 'deneme123', '/', '...', '.', '..', '-', '_'
+            ]);
+            const isPlaceholder = placeholders.has(norm) || 
+              /^[^a-z0-9ğışçöü]*$/i.test(norm) || 
+              (norm.length <= 3);
+
+            if (isPlaceholder) {
+                return {
+                    status: PenaltyStatus.INVALID,
+                    reason: 'Geçersiz veya placeholder ceza sebebi. CUK kitapçığına uygun açıklama girilmelidir.',
+                    details: { parsed }
+                };
+            }
+
             return {
                 status: PenaltyStatus.PENDING,
                 reason: 'Kategori tespit edilemedi',

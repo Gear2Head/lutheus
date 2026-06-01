@@ -11,7 +11,8 @@ const ROLES = Object.freeze({
     DISCORD_DESTEK_EKIBI: 'discord_destek_ekibi',
     VIEWER: 'viewer',
     PENDING: 'pending',
-    BLOCKED: 'blocked'
+    BLOCKED: 'blocked',
+    ESKI_YETKILI: 'eski_yetkili'
 });
 
 const OWNER_DISCORD_IDS = Object.freeze(['758769576778661989']);
@@ -85,7 +86,8 @@ const ROLE_PERMISSIONS = Object.freeze({
         PERMISSIONS.REPORTS_VIEW
     ],
     [ROLES.PENDING]: [],
-    [ROLES.BLOCKED]: []
+    [ROLES.BLOCKED]: [],
+    [ROLES.ESKI_YETKILI]: []
 });
 
 const DEFAULT_GROQ_LIMITS = Object.freeze({
@@ -101,7 +103,8 @@ const DEFAULT_GROQ_LIMITS = Object.freeze({
     [ROLES.DISCORD_DESTEK_EKIBI]: 10,
     [ROLES.VIEWER]: 0,
     [ROLES.PENDING]: 0,
-    [ROLES.BLOCKED]: 0
+    [ROLES.BLOCKED]: 0,
+    [ROLES.ESKI_YETKILI]: 0
 });
 
 
@@ -144,7 +147,8 @@ function normalizeRole(role) {
         discord_destek_ekibi: ROLES.DISCORD_DESTEK_EKIBI,
         viewer: ROLES.VIEWER,
         pending: ROLES.PENDING,
-        blocked: ROLES.BLOCKED
+        blocked: ROLES.BLOCKED,
+        eski_yetkili: ROLES.ESKI_YETKILI
     };
 
     if (aliases[normalized]) return aliases[normalized];

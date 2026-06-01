@@ -32,7 +32,8 @@ const DEFAULT_ROLE_CONFIG = Object.freeze({
     discord_destek_ekibi: { permissionGroup: 'support', permissionLevel: 25 },
     viewer: { permissionGroup: 'viewer', permissionLevel: 10 },
     pending: { permissionGroup: 'pending', permissionLevel: 0 },
-    blocked: { permissionGroup: 'blocked', permissionLevel: -1 }
+    blocked: { permissionGroup: 'blocked', permissionLevel: -1 },
+    eski_yetkili: { permissionGroup: 'eski_yetkili', permissionLevel: -2 }
 });
 
 function roleDefaults(role) {
@@ -119,21 +120,29 @@ async function resolveDiscordRole(discordUser, avatarUrl = null) {
         supabase
             .from('role_cache')
             .select('*')
-            .eq('discord_id', discordId)
-            .eq('active', true),
+            .eq('discord_id', discordId),
         'role_cache'
     );
-    if (roleRow?.staff_rank) return getRoleConfig(roleRow.staff_rank);
+    if (roleRow?.staff_rank === 'blocked' || roleRow?.staff_rank === 'eski_yetkili') {
+        return getRoleConfig(roleRow.staff_rank);
+    }
+    if (roleRow?.active === true && roleRow?.staff_rank) {
+        return getRoleConfig(roleRow.staff_rank);
+    }
 
     const profileRow = await maybeSingleSafe(
         supabase
             .from('staff_profiles')
             .select('*')
-            .eq('discord_id', discordId)
-            .eq('is_active_staff', true),
+            .eq('discord_id', discordId),
         'staff_profiles'
     );
-    if (profileRow?.staff_rank) return getRoleConfig(profileRow.staff_rank);
+    if (profileRow?.staff_rank === 'blocked' || profileRow?.staff_rank === 'eski_yetkili') {
+        return getRoleConfig(profileRow.staff_rank);
+    }
+    if (profileRow?.is_active_staff === true && profileRow?.staff_rank) {
+        return getRoleConfig(profileRow.staff_rank);
+    }
 
     const seeded = SEEDED_ROLE_MEMBERS.find((member) => member.id === discordId);
     if (seeded) {

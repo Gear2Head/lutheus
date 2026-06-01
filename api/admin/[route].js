@@ -1084,6 +1084,124 @@ async function handleDiscordBotAction(req, res) {
     }
 }
 
+const { normalizeCase } = require('../_lib/sapphireNormalize');
+
+async function handleRepairDates(req, res) {
+    if (req.method !== 'POST') {
+        res.setHeader('Allow', 'POST');
+        return res.status(405).json({ ok: false, error: 'METHOD_NOT_ALLOWED' });
+    }
+
+    const actor = await requirePermission(req, PERMISSIONS.SYSTEM_SETTINGS_UPDATE);
+
+    // Fetch all cases
+    const { data: cases, error } = await supabase
+        .from('sapphire_cases')
+        .select('*');
+
+    if (error) return serverError(res, error);
+
+    let repairedCount = 0;
+    const updates = [];
+
+    const now = new Date();
+    const cutoff = new Date('2026-06-01');
+
+    for (const c of cases || []) {
+        const createdRaw = c.created_raw || '';
+        let createdIso = c.created_at_sapphire;
+        let needsUpdate = false;
+
+        // If the date is parsed in the future, it is definitely a swapped date
+        if (createdIso && new Date(createdIso) > cutoff) {
+            const d = new Date(createdIso);
+            const year = d.getFullYear();
+            const month = d.getMonth() + 1; // 1-12
+            const day = d.getDate(); // 1-31
+            
+            // Swap: month becomes day, day becomes month
+            if (day >= 1 && day <= 12) {
+                const repairedDate = new Date(year, day - 1, month, d.getHours(), d.getMinutes(), d.getSeconds());
+                if (!isNaN(repairedDate.getTime())) {
+                    createdIso = repairedDate.toISOString();
+                    needsUpdate = true;
+                }
+            }
+        }
+
+        // Always check if duration_ms is null but duration_raw is present (historical cases fix!)
+        let durationMs = c.duration_ms;
+        let expiresAt = c.expires_at;
+        let isPermanent = c.is_permanent;
+        let isOpen = c.is_open;
+        let isActive = c.is_active;
+
+        // Re-normalize using the normalizer helper to heal duration and active state
+        const mockItem = {
+            caseId: c.case_id,
+            userId: c.punished_user_discord_id,
+            userName: c.punished_user_display_name,
+            userAvatar: c.punished_user_avatar_url,
+            authorId: c.author_discord_id,
+            authorName: c.author_display_name,
+            authorAvatar: c.author_avatar_url,
+            type: c.type,
+            reason: c.reason_raw,
+            duration: c.duration_raw,
+            createdRaw: c.created_raw,
+            createdAt: createdIso,
+            sourceUrl: c.case_url,
+            isOpen: c.is_open,
+            closedByDiscordId: c.closed_by_discord_id,
+            closedAt: c.closed_at
+        };
+
+        const normalized = normalizeCase(mockItem, c.guild_id);
+        
+        if (normalized.durationMs !== c.duration_ms || normalized.isPermanent !== c.is_permanent || normalized.expiresAt !== c.expires_at || normalized.isOpen !== c.is_open || createdIso !== c.created_at_sapphire) {
+            needsUpdate = true;
+            durationMs = normalized.durationMs;
+            isPermanent = normalized.isPermanent;
+            expiresAt = normalized.expiresAt;
+            isOpen = normalized.isOpen;
+            isActive = normalized.isOpen; // align active status
+        }
+
+        if (needsUpdate) {
+            updates.push({
+                case_id: c.case_id,
+                guild_id: c.guild_id,
+                created_at_sapphire: createdIso,
+                duration_ms: durationMs,
+                is_permanent: isPermanent,
+                expires_at: expiresAt,
+                is_open: isOpen,
+                is_active: isActive,
+                updated_at: new Date().toISOString()
+            });
+            repairedCount++;
+        }
+    }
+
+    if (updates.length > 0) {
+        // Chunk updates in sizes of 100 to avoid request body size limits
+        for (let i = 0; i < updates.length; i += 100) {
+            const chunk = updates.slice(i, i + 100);
+            const { error: upsertError } = await supabase
+                .from('sapphire_cases')
+                .upsert(chunk, { onConflict: 'guild_id,case_id' });
+            if (upsertError) {
+                console.error('[Repair] Failed to save chunk:', upsertError);
+                return serverError(res, upsertError);
+            }
+        }
+    }
+
+    await addAudit('database_dates_and_durations_repaired', actor, { count: repairedCount });
+
+    return ok(res, { success: true, count: repairedCount });
+}
+
 module.exports = async function handler(req, res) {
     res.setHeader('Cache-Control', 'no-store');
 
@@ -1099,6 +1217,7 @@ module.exports = async function handler(req, res) {
         if (route === 'discord-bot-guilds') return await handleDiscordBotGuilds(req, res);
         if (route === 'discord-bot-dashboard') return await handleDiscordBotDashboard(req, res);
         if (route === 'discord-bot-action') return await handleDiscordBotAction(req, res);
+        if (route === 'repair-dates') return await handleRepairDates(req, res);
 
         return res.status(404).json({ ok: false, error: 'NOT_FOUND', route });
     } catch (error) {

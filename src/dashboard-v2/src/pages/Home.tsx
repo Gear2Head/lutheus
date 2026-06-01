@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Users, Gavel, CheckCircle2, XCircle, TrendingUp, RefreshCw, Copy } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Card } from '../components/ui/Card';
@@ -28,7 +28,7 @@ interface StaffStat {
 }
 
 // SECTION: STAFF_STAT_NORMALIZATION
-// PURPOSE: Case verisindeki gerÃ§ek yetkili adlarÄ±nÄ± generic profil fallback deÄŸerlerine tercih eder.
+// PURPOSE: Case verisindeki gerçek yetkili adlarını generic profil fallback değerlerine tercih eder.
 function buildStaffStats(cases: SapphireCase[], staffProfiles: StaffProfile[], t: any): StaffStat[] {
   const map = new Map<string, StaffStat>();
   const staffMap = new Map(staffProfiles.map(s => [s.discord_id, s]));
@@ -126,7 +126,7 @@ export default function Home() {
   const valid = Math.max(cases.filter((c) => c.cuk_verdict === 'valid').length, 0);
   const invalid = Math.max(cases.filter((c) => c.cuk_verdict === 'invalid').length, 0);
   const pending = Math.max(total - valid - invalid, 0);
-  const accuracy = total > 0 ? ((valid / total) * 100).toFixed(1) : 'â€”';
+  const accuracy = total > 0 ? ((valid / total) * 100).toFixed(1) : '-';
   const staffStats = buildStaffStats(cases, staffProfiles, t);
   const weeklyData = buildWeeklyChart(cases);
   const uniqueMods = staffStats.length;
@@ -134,7 +134,7 @@ export default function Home() {
   const generateReport = () => {
     const lines = staffStats.map((s, i) => {
       const status = getReliabilityStatus(s.valid, s.invalid);
-      return `${i + 1}. ${s.name} â€” ${t('home.total')}: ${s.total} | ${t('pt.valid')}: ${s.valid} | ${t('pt.invalid')}: ${s.invalid} | ${t('home.accuracy')}: %${s.accuracy} | ${translateReliability(status, t)}`;
+      return `${i + 1}. ${s.name} — ${t('home.total')}: ${s.total} | ${t('pt.valid')}: ${s.valid} | ${t('pt.invalid')}: ${s.invalid} | ${t('home.accuracy')}: %${s.accuracy} | ${translateReliability(status, t)}`;
     });
     const text = `Lutheus CezaRapor â€” Report\n${'='.repeat(40)}\n${t('home.total')}: ${total} | ${t('pt.valid')}: ${valid} | ${t('pt.invalid')}: ${invalid} | ${t('pt.pending')}: ${pending}\n\n${lines.join('\n')}`;
     navigator.clipboard.writeText(text).catch(() => {});
@@ -193,7 +193,7 @@ export default function Home() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
         {/* SECTION: HOME_WEEKLY_CHART */}
-        {/* PURPOSE: HaftalÄ±k doÄŸrulama grafiÄŸini dil baÄŸÄ±msÄ±z veri anahtarlarÄ±yla gÃ¶sterir. */}
+        {/* PURPOSE: Haftalık doğrulama grafiğini dil bağımsız veri anahtarlarıyla gösterir. */}
         <Card className="lg:col-span-2 p-5">
           <div className="flex items-center justify-between mb-5">
             <h3 className="font-semibold text-sm text-foreground flex items-center gap-2">
@@ -230,7 +230,7 @@ export default function Home() {
         </Card>
 
         {/* SECTION: HOME_DISTRIBUTION */}
-        {/* PURPOSE: Durum daÄŸÄ±lÄ±mÄ±nÄ± kompakt yÃ¼kseklikte ve deterministik oranlarla gÃ¶sterir. */}
+        {/* PURPOSE: Durum dağılımını kompakt yükseklikte ve deterministik oranlarla gösterir. */}
         <Card className="p-5 self-start">
           <h3 className="font-semibold text-sm text-foreground mb-4">{t('home.verdictDist')}</h3>
           {loading ? (

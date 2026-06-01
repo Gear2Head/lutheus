@@ -818,7 +818,7 @@ function refreshRoleSelectOptions() {
     if (DOM.roleCacheRole) DOM.roleCacheRole.innerHTML = roleOptionsHtml(options, DOM.roleCacheRole.value || 'discord_moderatoru');
     if (DOM.roleCacheFilter) {
         const selected = DOM.roleCacheFilter.value || 'all';
-        DOM.roleCacheFilter.innerHTML = `<option value="all">TÃ¼m Roller</option>${roleOptionsHtml(options, selected)}`;
+        DOM.roleCacheFilter.innerHTML = `<option value="all">Tüm Roller</option>${roleOptionsHtml(options, selected)}`;
         DOM.roleCacheFilter.value = selected;
     }
 }

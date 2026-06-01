@@ -5,6 +5,7 @@ import { Card } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
 import { Skeleton } from '../components/ui/Skeleton';
 import { Drawer } from '../components/ui/Drawer';
+import { CopyButton } from '../components/ui/CopyButton';
 import { EmptyState } from '../components/ui/EmptyState';
 import { Input } from '../components/ui/Input';
 import { Button } from '../components/ui/Button';
@@ -545,7 +546,10 @@ export default function Staff() {
                 <div className="text-xs font-bold uppercase tracking-wider mt-0.5" style={{ color: getRoleColor(selected.role) }}>
                   {getRoleLabel(selected.role)}
                 </div>
-                <div className="text-xs text-muted-foreground font-mono mt-1">{selected.discordId}</div>
+                <div className="flex items-center gap-2 mt-1">
+                  <span className="text-xs text-muted-foreground font-mono">{selected.discordId}</span>
+                  <CopyButton value={selected.discordId} label="Discord ID kopyala" />
+                </div>
               </div>
             </div>
 

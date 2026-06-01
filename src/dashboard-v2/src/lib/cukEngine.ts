@@ -219,3 +219,115 @@ export function getReliabilityStatus(validCount: number, invalidCount: number): 
   if (acc >= 80) return 'Izlemede';
   return 'Riskli';
 }
+
+export type DurationVerdict = 'valid' | 'invalid' | 'pending' | 'manual';
+
+export interface ValidDurationsResult {
+  category: string | null;
+  degree: number | null;
+  allowedMinutes: number[];
+  allowedLabels: string[];
+  minMinutes: number | null;
+  maxMinutes: number | null;
+  isPermanentAllowed: boolean;
+  currentMinutes: number | null;
+  verdict: DurationVerdict;
+  message: string;
+}
+
+/** CUK kategorisine göre izin verilen süre dakikaları (validateCase ile uyumlu). */
+const CATEGORY_ALLOWED_MINUTES: Record<string, number[]> = {
+  'Yetkililere Saygısızlık': [720, 1440, 2880, 0],
+  'Oyunculara Saygısızlık': [180, 360, 720, 1440, 2880, 0],
+  'Küfür/Hakaret': [15, 30, 60, 120, 240, 480, 720, 960, 1440, 1920, 2880, 0],
+  'Dini/Milli Değerler': [10080, 0],
+  Reklam: [1440, 0],
+  'Destek Talebi': [60, 1440, 0],
+  'Sunucu Dinamiği': [15, 30, 60, 120, 240, 480, 960, 1920, 360, 720, 1440, 2880, 5760, 180, 0],
+  'Discord ToS': [0],
+  Yönetim: [],
+};
+
+function minutesToLabel(mins: number): string {
+  if (mins === 0 || mins === Infinity || mins > 50000000) return 'Süresiz';
+  if (mins < 60) return `${mins} dk`;
+  if (mins < 60 * 24) return `${Math.round(mins / 60)} saat`;
+  if (mins < 60 * 24 * 7) return `${Math.round(mins / (60 * 24))} gün`;
+  return `${Math.round(mins / (60 * 24 * 7))} hafta`;
+}
+
+export function getValidDurationsForCase(input: {
+  reason_raw?: string;
+  duration_ms?: number | null;
+  is_permanent?: boolean;
+  type?: string;
+}): ValidDurationsResult {
+  const reason = (input.reason_raw || '').trim();
+  const durationMins = input.is_permanent
+    ? 0
+    : input.duration_ms != null
+      ? Math.floor(input.duration_ms / 60000)
+      : 0;
+
+  const result = validateCase(reason, durationMins);
+  const category = result.categoryMatched && result.categoryMatched !== 'Yok' && result.categoryMatched !== 'Diger'
+    ? result.categoryMatched
+    : null;
+
+  if (!category) {
+    return {
+      category: null,
+      degree: null,
+      allowedMinutes: [],
+      allowedLabels: [],
+      minMinutes: null,
+      maxMinutes: null,
+      isPermanentAllowed: false,
+      currentMinutes: durationMins,
+      verdict: 'pending',
+      message: result.message,
+    };
+  }
+
+  if (category === 'Yönetim') {
+    return {
+      category,
+      degree: null,
+      allowedMinutes: [],
+      allowedLabels: ['Yönetim onayı — süre kısıtı yok'],
+      minMinutes: null,
+      maxMinutes: null,
+      isPermanentAllowed: true,
+      currentMinutes: durationMins,
+      verdict: 'valid',
+      message: result.message,
+    };
+  }
+
+  const rawAllowed = CATEGORY_ALLOWED_MINUTES[category] || [];
+  const allowedMinutes = rawAllowed.filter((m) => m > 0);
+  const isPermanentAllowed = rawAllowed.includes(0);
+  const allowedLabels = [
+    ...allowedMinutes.map(minutesToLabel),
+    ...(isPermanentAllowed ? ['Süresiz / Ban'] : []),
+  ];
+
+  let verdict: DurationVerdict = 'manual';
+  if (result.valid) verdict = 'valid';
+  else if (result.score === 0 && result.message.includes('Geçersiz')) verdict = 'invalid';
+  else if (!reason) verdict = 'pending';
+
+  const finite = allowedMinutes.filter((m) => m > 0);
+  return {
+    category,
+    degree: null,
+    allowedMinutes,
+    allowedLabels,
+    minMinutes: finite.length ? Math.min(...finite) : null,
+    maxMinutes: finite.length ? Math.max(...finite) : null,
+    isPermanentAllowed,
+    currentMinutes: durationMins,
+    verdict,
+    message: result.message,
+  };
+}

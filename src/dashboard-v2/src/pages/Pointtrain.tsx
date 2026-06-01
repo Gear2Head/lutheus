@@ -52,7 +52,13 @@ function buildRows(cases: SapphireCase[], periodDays: number | null, staffProfil
     // Check if the author is management staff
     const profile = staffMap.get(id);
     const roleStr = (profile?.role || 'discord_moderatoru').toLowerCase();
-    if (managementRoles.has(roleStr) || roleStr === 'eski_yetkili' || roleStr === 'blocked' || profile?.status === 'INACTIVE') {
+    if (
+      managementRoles.has(roleStr)
+      || roleStr === 'eski_yetkili'
+      || roleStr === 'blocked'
+      || profile?.status === 'INACTIVE'
+      || profile?.status !== 'ACTIVE'
+    ) {
       continue;
     }
 

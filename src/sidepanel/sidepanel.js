@@ -225,7 +225,8 @@ async function saveLanguage(lang) {
 
 function setStatus(status) {
     DOM.statusDot.className = 'status-dot';
-    if (status === 'scanning') DOM.statusDot.classList.add('scanning');
+    if (status === 'connected') DOM.statusDot.classList.add('connected');
+    if (status === 'scanning' || status === 'waiting') DOM.statusDot.classList.add('scanning');
     if (status === 'error') DOM.statusDot.classList.add('error');
 }
 
@@ -993,6 +994,143 @@ async function resetAll() {
     Toast.success('Sifirlandi', 'Tum yerel veriler temizlendi');
 }
 
+const UNKNOWN_STAFF_NAME_RE = /^(unknown|bilinmiyor|bilinmeyen yetkili|yetkili)$/i;
+const cleanupResultsEl = () => document.getElementById('cleanupResults');
+
+function evaluateStaffEntry(key, entry = {}) {
+    const rawId = String(
+        entry.discordId ||
+        entry.sapphireAuthorId ||
+        entry.id ||
+        (String(key).startsWith('discord:') ? String(key).replace(/^discord:/, '') : '')
+    ).trim();
+    const hasDiscordId = /^\d{17,20}$/.test(rawId);
+    const displayName = String(entry.displayName || entry.name || '').trim();
+    const hasName = displayName.length > 0 && !UNKNOWN_STAFF_NAME_RE.test(displayName);
+
+    if (!hasDiscordId && !hasName) {
+        return { invalid: true, reason: 'ID ve isim bos' };
+    }
+    if (!hasDiscordId && (String(key).startsWith('name:') || !hasName)) {
+        return { invalid: true, reason: 'Gecerli Discord ID yok' };
+    }
+    if (hasDiscordId && !hasName) {
+        return { invalid: true, reason: 'Gorunen ad bos' };
+    }
+    return { invalid: false, reason: '' };
+}
+
+async function collectInvalidStaffKeys() {
+    const registry = (await Storage.getUserRegistry()) || {};
+    const directory = (await Storage.getStaffDirectory()) || {};
+    const invalid = [];
+
+    for (const [key, entry] of Object.entries(registry)) {
+        const verdict = evaluateStaffEntry(key, entry);
+        if (verdict.invalid) invalid.push({ source: 'userRegistry', key, reason: verdict.reason });
+    }
+    for (const [key, entry] of Object.entries(directory)) {
+        const verdict = evaluateStaffEntry(key, entry);
+        if (verdict.invalid) invalid.push({ source: 'staffDirectory', key, reason: verdict.reason });
+    }
+    return invalid;
+}
+
+function renderCleanupResults(lines) {
+    const el = cleanupResultsEl();
+    if (!el) return;
+    el.innerHTML = lines.length
+        ? lines.map((line) => `<div class="log-line">${escapeHtml(line)}</div>`).join('')
+        : '<div class="log-line">Gecersiz kayit bulunamadi.</div>';
+}
+
+async function scanInvalidStaff() {
+    const invalid = await collectInvalidStaffKeys();
+    renderCleanupResults(
+        invalid.length
+            ? invalid.map((item) => `[${item.source}] ${item.key} — ${item.reason}`)
+            : ['Tum yerel yetkili kayitlari gecerli gorunuyor.']
+    );
+    Toast.info('Tarama', `${invalid.length} gecersiz kayit`);
+}
+
+async function cleanInvalidStaff() {
+    if (!confirm('Gecersiz yerel yetkili kayitlari silinecek. Supabase DB etkilenmez. Devam edilsin mi?')) {
+        return;
+    }
+    const invalid = await collectInvalidStaffKeys();
+    const registry = (await Storage.getUserRegistry()) || {};
+    const directory = (await Storage.getStaffDirectory()) || {};
+
+    for (const item of invalid) {
+        if (item.source === 'userRegistry') delete registry[item.key];
+        if (item.source === 'staffDirectory') delete directory[item.key];
+    }
+
+    await chrome.storage.local.set({ userRegistry: registry, staffDirectory: directory });
+    await updateStats();
+    renderCleanupResults([`Temizlendi: ${invalid.length} kayit`]);
+    Toast.success('Temizlik', `${invalid.length} kayit kaldirildi`);
+}
+
+async function resetLocalRegistry() {
+    if (!confirm('userRegistry ve staffDirectory sifirlenecek. DB etkilenmez. Emin misiniz?')) {
+        return;
+    }
+    await chrome.storage.local.set({ userRegistry: {}, staffDirectory: {} });
+    await updateStats();
+    renderCleanupResults(['Local registry sifirlandi.']);
+    Toast.success('Sifirlandi', 'Yerel yetkili registry temizlendi');
+}
+
+async function resyncStaffFromDb() {
+    const stored = await chrome.storage.local.get(['lutheusAuthSession']);
+    const token = stored.lutheusAuthSession?.idToken;
+    if (!token) {
+        Toast.error('Oturum', 'Giris gerekli — DB esitleme yapilamadi');
+        return;
+    }
+
+    const supabaseUrl = 'https://jxhzhaqqtlynbnntwpyu.supabase.co/rest/v1/staff_profiles';
+    const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4aHpoYXFxdGx5bmJubnR3cHl1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk2NjMyMTcsImV4cCI6MjA5NTIzOTIxN30.BrmuT-QX_BkgV6SSlpNThfqSGmUDw0UffUW11agaBzI';
+
+    try {
+        const response = await fetch(
+            `${supabaseUrl}?is_active_staff=eq.true&select=discord_id,display_name,avatar_url,staff_rank`,
+            {
+                headers: {
+                    apikey: supabaseKey,
+                    Authorization: `Bearer ${token}`,
+                },
+            }
+        );
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const rows = await response.json();
+        const directory = (await Storage.getStaffDirectory()) || {};
+
+        for (const row of rows || []) {
+            if (!row.discord_id) continue;
+            directory[row.discord_id] = {
+                ...(directory[row.discord_id] || {}),
+                sapphireAuthorId: row.discord_id,
+                discordUserId: row.discord_id,
+                displayName: row.display_name || directory[row.discord_id]?.displayName || 'Bilinmiyor',
+                avatar: row.avatar_url || directory[row.discord_id]?.avatar || null,
+                role: row.staff_rank || directory[row.discord_id]?.role || 'discord_destek_ekibi',
+                source: 'supabase-resync',
+                updatedAt: new Date().toISOString(),
+            };
+        }
+
+        await Storage.saveStaffDirectory(directory);
+        await updateStats();
+        renderCleanupResults([`DB esitleme tamam: ${(rows || []).length} aktif profil.`]);
+        Toast.success('Esitleme', `${(rows || []).length} profil yuklendi`);
+    } catch (error) {
+        Toast.error('Esitleme', error.message || 'DB okunamadi');
+    }
+}
+
 function bindEvents() {
     DOM.navButtons.forEach((button) => {
         button.addEventListener('click', () => switchSection(button.dataset.section));
@@ -1020,6 +1158,10 @@ function bindEvents() {
     DOM.toggleAutoSave?.addEventListener('change', saveSettings);
     DOM.btnClearCases?.addEventListener('click', clearCases);
     DOM.btnResetAll?.addEventListener('click', resetAll);
+    document.getElementById('btnScanInvalidStaff')?.addEventListener('click', scanInvalidStaff);
+    document.getElementById('btnCleanInvalidStaff')?.addEventListener('click', cleanInvalidStaff);
+    document.getElementById('btnResetLocalRegistry')?.addEventListener('click', resetLocalRegistry);
+    document.getElementById('btnResyncStaffFromDb')?.addEventListener('click', resyncStaffFromDb);
     DOM.btnClearLogs?.addEventListener('click', async () => {
         await Storage.set('scanLogs', []);
         DOM.logContent.innerHTML = '';
@@ -1124,6 +1266,7 @@ async function init() {
     if (appLayout) appLayout.classList.remove('hidden');
     if (sidepanelLoginView) sidepanelLoginView.classList.add('hidden');
 
+    setStatus('connected');
     bindEvents();
     applyRoleVisibility();
     applyScanPreset('week');

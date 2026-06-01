@@ -166,12 +166,19 @@ body {
     border-radius: 50%;
 }
 
+.status-dot.connected {
+    background: #22c55e;
+    box-shadow: 0 0 8px rgba(34, 197, 94, 0.5);
+}
+
 .status-dot.scanning {
-    background: var(--accent-primary);
+    background: #eab308;
+    box-shadow: 0 0 8px rgba(234, 179, 8, 0.45);
 }
 
 .status-dot.error {
     background: var(--danger);
+    box-shadow: 0 0 8px rgba(239, 68, 68, 0.45);
 }
 
 /* ========================================

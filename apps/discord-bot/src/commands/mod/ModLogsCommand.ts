@@ -2,7 +2,7 @@
 // PURPOSE: Fetches recent moderation audit logs from Supabase.
 
 import { SlashCommandBuilder, ChatInputCommandInteraction, EmbedBuilder, PermissionFlagsBits } from 'discord.js';
-import { supabase } from '../../botConfig.js';
+import { supabase, guildId as envGuildId } from '../../botConfig.js';
 
 export const ModLogsCommand = {
     data: new SlashCommandBuilder()
@@ -40,7 +40,20 @@ export const ModLogsCommand = {
 
             if (error) throw error;
             if (!rows || rows.length === 0) {
-                await interaction.editReply({ content: '📋 Kayıt bulunamadı.' });
+                const gid = interaction.guildId || envGuildId || '';
+                const { count: totalCount } = await supabase
+                    .from('audit_logs')
+                    .select('*', { count: 'exact', head: true });
+                const filtered = rows && actionFilter ? `action=${actionFilter}` : 'filtre yok';
+                await interaction.editReply({
+                    content: [
+                        '📋 Kayıt bulunamadı.',
+                        `Guild: \`${gid || 'tanimsiz'}\``,
+                        `audit_logs toplam: **${totalCount ?? '?'}**`,
+                        `Sorgu: limit=${limit}, ${filtered}`,
+                        'Ipucu: Kayitlar metadata.guildId ile yazilir; RLS veya bos tablo olabilir.',
+                    ].join('\n'),
+                });
                 return;
             }
 

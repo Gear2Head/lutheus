@@ -840,6 +840,29 @@ async function handleStatus(req, res) {
     });
 }
 
+async function handleWebhook(req, res) {
+    if (req.method !== 'POST') {
+        res.setHeader('Allow', 'POST');
+        return res.status(405).json({ ok: false, error: 'METHOD_NOT_ALLOWED' });
+    }
+
+    if (process.env.SAPPHIRE_WEBHOOK_ENABLED !== 'true') {
+        return res.status(503).json({
+            ok: false,
+            error: 'WEBHOOK_DISABLED',
+            message: 'Sapphire webhook ingest is disabled. Use extension/Vercel ingest (Mod B).'
+        });
+    }
+
+    const secret = process.env.SAPPHIRE_WEBHOOK_SECRET || '';
+    const provided = req.headers['x-sapphire-signature'] || req.headers['x-webhook-secret'] || '';
+    if (secret && String(provided) !== secret) {
+        return res.status(401).json({ ok: false, error: 'WEBHOOK_UNAUTHORIZED' });
+    }
+
+    return handleIngest(req, res);
+}
+
 module.exports = async function handler(req, res) {
     res.setHeader('Cache-Control', 'no-store');
 
@@ -849,6 +872,7 @@ module.exports = async function handler(req, res) {
         if (action === 'start') return await handleStart(req, res);
         if (action === 'ingest') return await handleIngest(req, res);
         if (action === 'status') return await handleStatus(req, res);
+        if (action === 'webhook') return await handleWebhook(req, res);
 
         return res.status(404).json({ ok: false, error: 'NOT_FOUND', action });
     } catch (error) {

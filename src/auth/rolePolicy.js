@@ -350,7 +350,7 @@ export function getVisibleSections(role) {
         return [];
     }
     if (isPrivilegedRole(role)) {
-        return ['home', 'scan', 'stats', 'pointtrain', 'profile', 'settings'];
+        return ['home', 'scan', 'cleanup', 'stats', 'pointtrain', 'profile', 'settings'];
     }
     if (norm === ROLES.DISCORD_MODERATORU) {
         return ['home', 'stats', 'cezalar', 'profile'];

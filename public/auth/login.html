@@ -1,133 +1,65 @@
 <!DOCTYPE html>
-<html lang="tr" class="dark">
+<html lang="tr">
 
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Lutheus — Giriş Yap</title>
-    <meta name="description" content="Lutheus CezaRapor Moderasyon Analiz Sistemi — Giriş Yap">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <title>Lutheus CezaRapor - Giriş</title>
+    <link rel="stylesheet" href="../sidepanel/sidepanel.css">
     <link rel="stylesheet" href="login.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
 
 <body>
-    <!-- Ambient background blobs -->
-    <div class="glow-blob glow-blob--teal"></div>
-    <div class="glow-blob glow-blob--purple"></div>
-
     <main class="login-shell">
-        <!-- Left panel: branding + features (desktop only) -->
-        <aside class="login-aside">
-            <div class="aside-logo">
-                <img src="/favicon_shield.png" width="48" height="48" alt="Lutheus Logo" class="logo-img">
-                <span class="aside-title">LUTHEUS</span>
-            </div>
+        <div class="login-container glass-panel">
 
-            <div class="aside-headline">
-                <h1>Moderasyon<br><span class="text-teal">Analiz Merkezi</span></h1>
-                <p class="aside-sub">Discord sunucunuzdaki tüm ceza geçmişini gerçek zamanlı izleyin, analiz edin ve yönetin.</p>
-            </div>
-
-            <ul class="feature-list">
-                <li class="feature-item">
-                    <div class="feature-icon feature-icon--teal">
-                        <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+            <!-- Sol Form Alanı (Left Form Area) -->
+            <div class="login-left">
+                <div class="login-brand-header">
+                    <div class="login-logo-box">
+                        <img src="../../favicon_shield.png" width="36" height="36" alt="Lutheus Logo"
+                            style="filter: drop-shadow(0px 0px 8px rgba(124, 90, 245, 0.6));">
+                        <span>Lutheus</span>
                     </div>
-                    <div>
-                        <p class="feature-title">Ceza Takibi</p>
-                        <p class="feature-desc">Sapphire entegrasyonu ile anlık ceza verilerini senkronize edin.</p>
-                    </div>
-                </li>
-                <li class="feature-item">
-                    <div class="feature-icon feature-icon--purple">
-                        <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
-                    </div>
-                    <div>
-                        <p class="feature-title">CUK Kural Motoru</p>
-                        <p class="feature-desc">Ceza geçerliliğini otomatik kural analiziyle doğrulayın.</p>
-                    </div>
-                </li>
-                <li class="feature-item">
-                    <div class="feature-icon feature-icon--pink">
-                        <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-                    </div>
-                    <div>
-                        <p class="feature-title">Yetkili Yönetimi</p>
-                        <p class="feature-desc">Moderasyon ekibini rol bazlı erişim kontrolüyle yönetin.</p>
-                    </div>
-                </li>
-                <li class="feature-item">
-                    <div class="feature-icon feature-icon--amber">
-                        <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M18 20V10"/><path d="M12 20V4"/><path d="M6 20v-6"/></svg>
-                    </div>
-                    <div>
-                        <p class="feature-title">Pointtrain Analizi</p>
-                        <p class="feature-desc">Yetkili performansını puanlama sistemiyle ölçün.</p>
-                    </div>
-                </li>
-            </ul>
-        </aside>
-
-        <!-- Right panel: login card -->
-        <section class="login-panel">
-            <div class="panel-header">
-                <div class="panel-logo">
-                    <img src="/favicon_shield.png" width="40" height="40" alt="Lutheus" class="logo-img">
-                </div>
-                <h2 class="panel-title">Giriş Yap</h2>
-                <p class="panel-sub">Hesabınızla panele erişin</p>
-            </div>
-
-            <!-- Status / feedback -->
-            <div class="login-status" id="loginStatus" role="status" aria-live="polite"></div>
-
-            <!-- Auth buttons -->
-            <div class="auth-buttons">
-                <button class="btn btn--discord" id="btnDiscordLogin" type="button">
-                    <svg class="btn-icon" width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057.1 18.08.115 18.1.133 18.112a19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03z"/>
-                    </svg>
-                    Discord ile Giriş Yap
-                    <span class="btn-arrow">&#8594;</span>
-                </button>
-
-                <div class="divider">
-                    <span class="divider-text">veya</span>
+                    <h1 class="welcome-title">Hoşgeldiniz <span class="wave-hand">👋</span></h1>
+                    <p id="loginSubtitle">Devam etmek için giriş yapın.</p>
                 </div>
 
-                <button class="btn btn--google" id="btnGoogleLogin" type="button">
-                    <svg class="btn-icon" width="18" height="18" viewBox="0 0 24 24">
-                        <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
-                        <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
-                        <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
-                        <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
-                    </svg>
-                    Google ile Giriş Yap
-                </button>
-            </div>
+                <div class="login-status" id="loginStatus"></div>
 
-            <!-- Notes -->
-            <div class="login-notes">
-                <div class="note-item">
-                    <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-                    <span>Google erişimi admin allowlist kaydı gerektirir.</span>
+                <div class="login-actions-group">
+                    <button class="btn primary-btn full login-action-btn discord-btn" id="btnDiscordLogin">
+                        <i class="fa-brands fa-discord"></i>
+                        Discord ile Giriş Yap
+                    </button>
+                    <button class="btn google-btn full login-action-btn" id="btnGoogleLogin">
+                        <i class="fa-brands fa-google"></i>
+                        Google ile Giriş Yap
+                    </button>
                 </div>
-                <div class="note-item">
-                    <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
-                    <span>Discord rolleri yönetici onaylı rol cache üzerinden uygulanır.</span>
+
+                <div class="login-alert-note">
+                    Sisteme sadece yetkilendirilmiş Discord hesapları veya Google hesapları giriş yapabilir. Eğer
+                    hesabınızın erişimi yoksa, lütfen yetkilendirme için Discord üzerinden <strong
+                        style="color: #a40000;">@_gear_head</strong> ile iletişime geçin.
                 </div>
             </div>
 
-            <footer class="panel-footer">
-                &copy; <span id="loginYear"></span> Lutheus System
-            </footer>
-        </section>
+            <!-- Sağ Görsel Alanı (Right Illustration Area) -->
+            <div class="login-right">
+                <div class="login-right-overlay"></div>
+                <div class="login-right-content">
+                    <blockquote>
+                        <p class="quote-text">"BarisYilmaz'a BIAT EDIN!"</p>
+                        <footer class="quote-author">— Lutheus Discord Yönetim Ekibi</footer>
+                    </blockquote>
+                </div>
+            </div>
+
+        </div>
     </main>
-
     <script type="module" src="login.js"></script>
-    <script>document.getElementById('loginYear').textContent = new Date().getFullYear();</script>
 </body>
 
 </html>

@@ -2,7 +2,8 @@
 // PURPOSE: Queries staff performance statistics from Supabase role_cache and sapphire_cases.
 
 import { SlashCommandBuilder, ChatInputCommandInteraction, EmbedBuilder } from 'discord.js';
-import { supabase } from '../botConfig.js';
+import { supabase, guildId as envGuildId } from '../botConfig.js';
+import { runDbHealthCheck, formatDiagnosticsBlock } from '../lib/dbDiagnostics.js';
 
 export const QueryStaffCommand = {
     data: new SlashCommandBuilder()
@@ -59,18 +60,22 @@ export const QueryStaffCommand = {
                 }
             }
 
+            const targetGuildId = interaction.guildId || envGuildId || '1223431616081166336';
+
             let rows;
             if (targetId) {
                 const { data } = await supabase
                     .from('sapphire_cases')
                     .select('*')
-                    .eq('author_discord_id', targetId);
+                    .eq('author_discord_id', targetId)
+                    .eq('guild_id', targetGuildId);
                 rows = data;
             } else {
                 const { data } = await supabase
                     .from('sapphire_cases')
                     .select('*')
-                    .eq('author_display_name', targetName);
+                    .eq('author_display_name', targetName)
+                    .eq('guild_id', targetGuildId);
                 rows = data;
             }
 
@@ -78,8 +83,13 @@ export const QueryStaffCommand = {
             const totalCount = cases.length;
 
             if (totalCount === 0) {
+                const snapshot = await runDbHealthCheck(targetGuildId);
                 await interaction.editReply({
-                    content: `ℹ️ **Ceza Kaydı Bulunamadı:** Yetkilinin (${targetName || targetId}) veritabanında henüz taranmış bir ceza kaydı bulunmamaktadır.`
+                    content: [
+                        `ℹ️ **Ceza Kaydı Bulunamadı:** Yetkili (${targetName || targetId}) için guild \`${targetGuildId}\` altında kayıt yok.`,
+                        '',
+                        formatDiagnosticsBlock(snapshot),
+                    ].join('\n'),
                 });
                 return;
             }

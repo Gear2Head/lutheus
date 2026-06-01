@@ -748,8 +748,166 @@ export const CUKEngine = {
             color: result.status === PenaltyStatus.VALID ? '#2ecc71' :
                 result.status === PenaltyStatus.INVALID ? '#e74c3c' : '#f39c12'
         };
+    },
+
+    /**
+     * Ceza için CUK kapsamındaki geçerli süreleri listeler (dashboard / extension).
+     */
+    getValidDurationsForCase(caseData = {}) {
+        const reasonRaw = caseData.reason ?? caseData.reason_raw ?? '';
+        const reason = typeof reasonRaw === 'object' && reasonRaw
+            ? String(reasonRaw.raw || reasonRaw.normalized || '').trim()
+            : String(reasonRaw || '').trim();
+        const duration = caseData.duration ?? caseData.duration_raw ?? '';
+        const durationMinutes = caseData.durationMinutes !== undefined
+            ? caseData.durationMinutes
+            : parseDuration(duration);
+        const repeatIndex = caseData.repeatIndex !== undefined ? Number(caseData.repeatIndex) : null;
+        const type = (caseData.type || 'unknown').toLowerCase();
+
+        const parsed = this.parseReason(reason);
+        if (!parsed.category) {
+            return {
+                category: null,
+                degree: null,
+                allowedMinutes: [],
+                allowedLabels: [],
+                minMinutes: null,
+                maxMinutes: null,
+                isPermanentAllowed: false,
+                currentMinutes: durationMinutes,
+                verdict: 'pending',
+                message: 'Kategori tespit edilemedi'
+            };
+        }
+
+        const rule = this.rules.categories[parsed.category];
+        if (!rule) {
+            return {
+                category: parsed.category,
+                degree: parsed.degree,
+                allowedMinutes: [],
+                allowedLabels: [],
+                minMinutes: null,
+                maxMinutes: null,
+                isPermanentAllowed: false,
+                currentMinutes: durationMinutes,
+                verdict: 'pending',
+                message: 'Kural tanımı yok'
+            };
+        }
+
+        if (rule.type === 'approved' || parsed.category === 'Yönetim') {
+            return {
+                category: parsed.category,
+                degree: null,
+                allowedMinutes: [],
+                allowedLabels: ['Yönetim onayı — süre kısıtı yok'],
+                minMinutes: null,
+                maxMinutes: null,
+                isPermanentAllowed: true,
+                currentMinutes: durationMinutes,
+                verdict: 'valid',
+                message: 'Yönetim onaylı işlem'
+            };
+        }
+
+        const possiblePenalties = [];
+        const collectPossibilities = (r, specificDegree = null) => {
+            const currentDegree = specificDegree !== null ? specificDegree : (r.degree || null);
+            if (r.duration) {
+                possiblePenalties.push({ duration: r.duration, type: r.type || 'mute', degree: currentDegree });
+            }
+            if (r.type === 'ban') {
+                possiblePenalties.push({ type: 'ban', degree: currentDegree });
+            }
+            if (r.repeats) {
+                const keys = repeatIndex && repeatIndex > 0
+                    ? (Object.keys(r.repeats).map(Number).includes(repeatIndex)
+                        ? [repeatIndex]
+                        : Object.keys(r.repeats).map(Number).sort((a, b) => a - b).slice(-1))
+                    : Object.keys(r.repeats).map(Number);
+                keys.forEach((key) => {
+                    const rep = r.repeats[key];
+                    if (!rep) return;
+                    if (rep.duration) {
+                        possiblePenalties.push({ duration: rep.duration, type: rep.type || 'mute', degree: currentDegree });
+                    }
+                    if (rep.type === 'ban' || (rep.notes && /ban|kısıtlama/i.test(rep.notes))) {
+                        possiblePenalties.push({ type: 'ban', degree: currentDegree });
+                    }
+                });
+            }
+            if (r.degrees) {
+                if (specificDegree !== null) {
+                    const d = r.degrees.find((x) => x.degree === specificDegree);
+                    if (d) collectPossibilities(d, specificDegree);
+                } else {
+                    r.degrees.forEach((d) => collectPossibilities(d, d.degree));
+                }
+            }
+        };
+
+        let matchedDegree = parsed.degree;
+        if (matchedDegree === null && rule.degrees) {
+            const contextText = normalizeMatchText(reason);
+            for (const d of rule.degrees) {
+                if (d.keywords && d.keywords.some((kw) => matchesKeyword(contextText, kw))) {
+                    matchedDegree = d.degree;
+                    break;
+                }
+            }
+        }
+
+        collectPossibilities(rule, matchedDegree);
+
+        const durationSet = new Set();
+        let isPermanentAllowed = false;
+        for (const p of possiblePenalties) {
+            if (p.type === 'ban') isPermanentAllowed = true;
+            if (p.duration != null) durationSet.add(p.duration);
+        }
+        if (possiblePenalties.some((p) => p.duration === 0) || isPermanentAllowed) {
+            durationSet.add(0);
+        }
+
+        const allowedMinutes = Array.from(durationSet).filter((m) => m > 0).sort((a, b) => a - b);
+        const allowedLabels = [
+            ...allowedMinutes.map((m) => formatDuration(m)),
+            ...(isPermanentAllowed ? ['Süresiz / Ban'] : [])
+        ];
+
+        const validation = this.validate({
+            reason,
+            duration,
+            type,
+            repeatIndex
+        });
+
+        let verdict = 'pending';
+        if (validation.status === PenaltyStatus.VALID) verdict = 'valid';
+        else if (validation.status === PenaltyStatus.INVALID) verdict = 'invalid';
+        else verdict = 'manual';
+
+        const finite = allowedMinutes.filter((m) => m > 0 && m < Infinity);
+        return {
+            category: parsed.category,
+            degree: matchedDegree,
+            allowedMinutes,
+            allowedLabels,
+            minMinutes: finite.length ? Math.min(...finite) : null,
+            maxMinutes: finite.length ? Math.max(...finite) : null,
+            isPermanentAllowed,
+            currentMinutes: durationMinutes,
+            verdict,
+            message: validation.reason || validation.message || ''
+        };
     }
 };
+
+export function getValidDurationsForCase(caseData) {
+    return CUKEngine.getValidDurationsForCase(caseData);
+}
 
 // Export for global access
 if (typeof window !== 'undefined') {

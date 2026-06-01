@@ -27,6 +27,8 @@ import { UserInfoCommand } from './commands/mod/UserInfoCommand.js';
 import { ServerInfoCommand } from './commands/mod/ServerInfoCommand.js';
 import { ModLogsCommand } from './commands/mod/ModLogsCommand.js';
 import { UnbanCommand } from './commands/mod/UnbanCommand.js';
+import { diagnosticCommands } from './commands/diagnostics/DbDiagnosticsCommands.js';
+import { runDbHealthCheck, setPollCursor, setLastPollError } from './lib/dbDiagnostics.js';
 
 // In-memory cache for dynamic guild configurations to power real-time welcome, automod, reaction roles etc.
 const guildConfigsCache: Record<string, any> = {};
@@ -46,6 +48,7 @@ const client = new Client({
 // PURPOSE: Railway health endpoint and classified startup status for bot deploys.
 let readyAt: string | null = null;
 let lastError = botToken ? '' : 'MISSING_DISCORD_BOT_TOKEN';
+let lastDbHealth: Awaited<ReturnType<typeof runDbHealthCheck>> | null = null;
 
 function classifyDiscordError(error: any) {
     const code = String(error?.code || error?.status || '');
@@ -66,12 +69,21 @@ function startHealthServer() {
         }
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({
-            ok: Boolean(client.isReady()),
+            ok: Boolean(client.isReady()) && (lastDbHealth?.pingOk ?? false),
             service: 'lutheus-discord-bot',
             guildId,
             readyAt,
             uptime: process.uptime(),
-            lastError
+            lastError,
+            discord: { ready: client.isReady() },
+            supabase: lastDbHealth
+                ? {
+                    ok: lastDbHealth.pingOk,
+                    totalCases: lastDbHealth.totalCases,
+                    guildCases: lastDbHealth.guildCases,
+                    error: lastDbHealth.pingError,
+                }
+                : null,
         }));
     }).listen(port, () => {
         console.log(`Discord Bot: Health endpoint listening on ${port}`);
@@ -120,6 +132,7 @@ const commands = [
     ServerInfoCommand,
     ModLogsCommand,
     UnbanCommand,
+    ...diagnosticCommands,
 ];
 
 function mapDbConfig(row: any) {
@@ -332,16 +345,24 @@ function startSupabasePolling() {
     // 1. Poll new cases every 10 seconds
     setInterval(async () => {
         try {
-            const { data: rows, error } = await supabase
+            let queryBuilder = supabase
                 .from('sapphire_cases')
                 .select('*')
                 .gt('scraped_at', lastProcessedTime)
                 .order('scraped_at', { ascending: true });
 
+            if (guildId) {
+                queryBuilder = queryBuilder.eq('guild_id', guildId);
+            }
+
+            const { data: rows, error } = await queryBuilder;
+
             if (error) {
                 console.error('Discord Bot: Poll cases error:', error.message);
+                setLastPollError(error.message);
                 return;
             }
+            setLastPollError(null);
 
             if (rows && rows.length > 0) {
                 for (const row of rows) {
@@ -372,9 +393,11 @@ function startSupabasePolling() {
                 const times = rows.map(r => new Date(r.scraped_at).getTime());
                 const maxTime = new Date(Math.max(...times));
                 lastProcessedTime = maxTime.toISOString();
+                setPollCursor(lastProcessedTime);
             }
         } catch (err: any) {
             console.error('Discord Bot: Poll cases loop failure:', err.message);
+            setLastPollError(err.message);
         }
     }, 10000);
 
@@ -539,6 +562,23 @@ client.once('clientReady', async () => {
     readyAt = new Date().toISOString();
     lastError = '';
     client.user?.setActivity('Lutheus SRE Audit', { type: ActivityType.Watching });
+
+    try {
+        lastDbHealth = await runDbHealthCheck(guildId || undefined);
+        console.log('Discord Bot: DB health check', {
+            pingOk: lastDbHealth.pingOk,
+            totalCases: lastDbHealth.totalCases,
+            guildCases: lastDbHealth.guildCases,
+            targetGuildId: lastDbHealth.targetGuildId,
+            supabaseUrlConfigured: lastDbHealth.supabaseUrlConfigured,
+            supabaseKeyConfigured: lastDbHealth.supabaseKeyConfigured,
+        });
+        if (!lastDbHealth.pingOk) {
+            console.warn('Discord Bot: DB health check failed:', lastDbHealth.pingError);
+        }
+    } catch (err: any) {
+        console.error('Discord Bot: DB health startup probe failed:', err?.message || err);
+    }
 
     await registerSlashCommands();
     startSupabasePolling();

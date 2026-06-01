@@ -33,6 +33,7 @@ export interface SapphireCase {
   cuk_verdict: 'valid' | 'invalid' | 'pending';
   cuk_analysis: { message: string; category: string; score: number } | null;
   source_sync: string;
+  case_url?: string;
   ai_validation_status?: string;
   ai_validation_notes?: string;
 }

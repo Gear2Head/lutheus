@@ -1,9 +1,13 @@
 import { useEffect, useState, useMemo } from 'react';
-import { Search, RefreshCw, Filter, CheckCircle2, XCircle, Clock, ExternalLink, Zap, Gavel, MicOff, AlertTriangle, HelpCircle } from 'lucide-react';
+import { Search, RefreshCw, Filter, CheckCircle2, XCircle, ExternalLink, Zap } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
 import { Card } from '../components/ui/Card';
-import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
+import { CaseIdBadge } from '../components/ui/CaseIdBadge';
+import { CopyButton } from '../components/ui/CopyButton';
+import { StatusBadge, type StatusKind } from '../components/ui/StatusBadge';
+import { ValidDurationsPanel } from '../components/ui/ValidDurationsPanel';
+import { buildSapphireCaseUrl } from '../lib/sapphireUrl';
 import { Skeleton } from '../components/ui/Skeleton';
 import { Drawer } from '../components/ui/Drawer';
 import { ConfirmationModal } from '../components/ui/ConfirmationModal';
@@ -23,33 +27,24 @@ function getDrawerPosition(): 'right' | 'center' {
   return (localStorage.getItem('panelStyle') || 'side') === 'center' ? 'center' : 'right';
 }
 
-function getPenaltyIcon(type: string) {
-  const t = (type || '').toLowerCase();
-  if (t.includes('ban')) {
-    return <span title="Ban"><Gavel className="w-3.5 h-3.5 text-rose-500" /></span>;
-  }
-  if (t.includes('mute')) {
-    return <span title="Mute"><MicOff className="w-3.5 h-3.5 text-amber-500" /></span>;
-  }
-  if (t.includes('warn')) {
-    return <span title="Warn"><AlertTriangle className="w-3.5 h-3.5 text-yellow-500" /></span>;
-  }
-  return <span title={type}><HelpCircle className="w-3.5 h-3.5 text-muted-foreground" /></span>;
+function verdictToStatus(verdict: string): StatusKind {
+  if (verdict === 'valid') return 'valid';
+  if (verdict === 'invalid') return 'invalid';
+  return 'pending';
 }
 
-function verdictBadge(verdict: string) {
-  if (verdict === 'valid') return <Badge variant="success">Dogru</Badge>;
-  if (verdict === 'invalid') {
-    return (
-      <Badge
-        variant="destructive"
-        className="bg-red-500/20 text-red-500 border border-red-500/40 text-xs font-black shadow-[0_0_12px_rgba(239,68,68,0.2)] animate-pulse"
-      >
-        Hatali
-      </Badge>
-    );
+function openSapphireCase(c: SapphireCase, showToast: (msg: string, type: 'success' | 'error' | 'info') => void) {
+  const url = buildSapphireCaseUrl(c.guild_id, c.case_id) || c.case_url;
+  if (!url) {
+    showToast('Sapphire URL üretilemedi', 'error');
+    return;
   }
-  return <Badge variant="warning">Bekleyen</Badge>;
+  window.open(url, '_blank', 'noopener,noreferrer');
+}
+
+function isFormerStaff(profile: StaffProfile | undefined): boolean {
+  if (!profile) return false;
+  return profile.role === 'eski_yetkili' || profile.status === 'INACTIVE';
 }
 
 export default function Cases() {
@@ -399,11 +394,15 @@ export default function Cases() {
                       />
                     )}
                   </td>
-                  <td className="py-3 px-3 font-mono text-xs text-muted-foreground whitespace-nowrap">
-                    <div className="flex items-center gap-2">
-                      {getPenaltyIcon(c.type)}
-                      <span>#{c.case_id}</span>
-                    </div>
+                  <td className="py-3 px-3 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                    <CaseIdBadge
+                      caseId={c.case_id}
+                      type={c.type}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setDrawerCase(c);
+                      }}
+                    />
                   </td>
                   <td className="py-3 px-3">
                     <div className="flex items-center gap-2">
@@ -426,7 +425,9 @@ export default function Cases() {
                   <td className="py-3 px-3 text-xs text-muted-foreground whitespace-nowrap">
                     {relativeTime(c.created_at_sapphire)}
                   </td>
-                  <td className="py-3 px-4 text-center">{verdictBadge(c.cuk_verdict)}</td>
+                  <td className="py-3 px-4 text-center">
+                    <StatusBadge status={verdictToStatus(c.cuk_verdict)} />
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -436,11 +437,20 @@ export default function Cases() {
 
       {/* Case Drawer */}
       {drawerCase && (
-        <Drawer isOpen={true} onClose={() => setDrawerCase(null)} title={`Case #${drawerCase.case_id}`} position={getDrawerPosition()}>
+        <Drawer
+          isOpen={true}
+          onClose={() => setDrawerCase(null)}
+          title=""
+          position={getDrawerPosition()}
+        >
           <div className="space-y-5">
-            {/* Status badge */}
-            <div className="flex items-center gap-3">
-              {verdictBadge(drawerCase.cuk_verdict)}
+            <div className="flex flex-wrap items-center gap-3">
+              <CaseIdBadge
+                caseId={drawerCase.case_id}
+                type={drawerCase.type}
+                onClick={() => openSapphireCase(drawerCase, showToast)}
+              />
+              <StatusBadge status={verdictToStatus(drawerCase.cuk_verdict)} />
               <span className="text-xs text-muted-foreground uppercase font-bold tracking-wider">{drawerCase.type}</span>
             </div>
 
@@ -451,7 +461,16 @@ export default function Cases() {
                 <img src={drawerCase.punished_user_avatar_url} alt="" className="w-10 h-10 rounded-full bg-secondary" />
                 <div>
                   <div className="font-semibold text-sm text-foreground">{drawerCase.punished_user_display_name}</div>
-                  <div className="text-xs text-muted-foreground font-mono">{drawerCase.punished_user_discord_id}</div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground font-mono">{drawerCase.punished_user_discord_id}</span>
+                    {drawerCase.punished_user_discord_id && (
+                      <CopyButton
+                        value={drawerCase.punished_user_discord_id}
+                        label="Discord ID kopyala"
+                        onError={() => showToast('Kopyalanamadı', 'error')}
+                      />
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
@@ -462,21 +481,53 @@ export default function Cases() {
               <div className="flex items-center gap-3">
                 <img src={drawerCase.author_avatar_url} alt="" className="w-10 h-10 rounded-full bg-secondary" />
                 <div>
-                  <div className="font-semibold text-sm text-foreground">{getModName(drawerCase.author_discord_id, drawerCase.author_display_name)}</div>
-                  <div className="text-xs text-muted-foreground font-mono">{drawerCase.author_discord_id}</div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <div className="font-semibold text-sm text-foreground">
+                      {getModName(drawerCase.author_discord_id, drawerCase.author_display_name)}
+                    </div>
+                    {isFormerStaff(staffMap.get(drawerCase.author_discord_id)) && (
+                      <StatusBadge status="stale" />
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground font-mono">{drawerCase.author_discord_id}</span>
+                    {drawerCase.author_discord_id && (
+                      <CopyButton
+                        value={drawerCase.author_discord_id}
+                        label="Yetkili Discord ID kopyala"
+                        onError={() => showToast('Kopyalanamadı', 'error')}
+                      />
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
 
             {/* Details */}
+            <ValidDurationsPanel caseData={drawerCase} />
+
             <div className="space-y-3">
-              <Row label="Sebep" value={drawerCase.reason_raw || '—'} />
-              <Row label="Süre" value={drawerCase.is_permanent ? 'Kalıcı' : minutesToHuman(Math.floor((drawerCase.duration_ms || 0) / 60000))} />
-              <Row label="Tarih" value={formatDate(drawerCase.created_at_sapphire)} />
+              <DetailRow label="Sebep" value={drawerCase.reason_raw || '—'} tone="neutral" />
+              <DetailRow
+                label="Süre"
+                value={drawerCase.is_permanent ? 'Kalıcı' : minutesToHuman(Math.floor((drawerCase.duration_ms || 0) / 60000))}
+                tone={drawerCase.cuk_verdict === 'invalid' ? 'danger' : drawerCase.cuk_verdict === 'valid' ? 'success' : 'warning'}
+              />
+              <DetailRow label="Tarih" value={formatDate(drawerCase.created_at_sapphire)} tone="neutral" />
               {drawerCase.cuk_analysis && (
                 <>
-                  <Row label="CUK Kategori" value={drawerCase.cuk_analysis.category} />
-                  <Row label="CUK Mesaj" value={drawerCase.cuk_analysis.message} />
+                  <DetailRow label="CUK Kategori" value={drawerCase.cuk_analysis.category} tone="neutral" />
+                  <DetailRow
+                    label="CUK Mesaj"
+                    value={drawerCase.cuk_analysis.message}
+                    tone={
+                      drawerCase.cuk_verdict === 'invalid'
+                        ? 'danger'
+                        : drawerCase.cuk_verdict === 'valid'
+                          ? 'success'
+                          : 'warning'
+                    }
+                  />
                 </>
               )}
             </div>
@@ -504,14 +555,14 @@ export default function Cases() {
                     <XCircle className="w-3.5 h-3.5" /> Hatalı
                   </Button>
                 </div>
-                <a
-                  href={`https://dashboard.sapph.xyz/1223431616081166336/moderation/cases/${drawerCase.case_id}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="flex items-center justify-center gap-2 w-full py-2 rounded-[12px] text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-secondary/50 transition-colors"
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full"
+                  onClick={() => openSapphireCase(drawerCase, showToast)}
                 >
-                  <ExternalLink className="w-3.5 h-3.5" /> Sapphire'da Aç
-                </a>
+                  <ExternalLink className="w-3.5 h-3.5" /> Sapphire&apos;da Aç
+                </Button>
               </div>
             )}
           </div>
@@ -533,11 +584,27 @@ export default function Cases() {
   );
 }
 
-function Row({ label, value }: { label: string; value: string }) {
+function DetailRow({
+  label,
+  value,
+  tone = 'neutral',
+}: {
+  label: string;
+  value: string;
+  tone?: 'success' | 'danger' | 'warning' | 'neutral';
+}) {
+  const toneClass =
+    tone === 'success'
+      ? 'text-emerald-400'
+      : tone === 'danger'
+        ? 'text-red-400'
+        : tone === 'warning'
+          ? 'text-amber-400'
+          : 'text-foreground';
   return (
     <div className="flex items-start justify-between gap-4 py-2 border-b border-border/30 last:border-0">
       <span className="text-xs text-muted-foreground shrink-0">{label}</span>
-      <span className="text-xs text-foreground text-right leading-relaxed">{value}</span>
+      <span className={`text-xs text-right leading-relaxed ${toneClass}`}>{value}</span>
     </div>
   );
 }

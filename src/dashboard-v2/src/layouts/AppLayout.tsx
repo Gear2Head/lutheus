@@ -157,20 +157,25 @@ export default function AppLayout() {
       {/* Sidebar */}
       <aside className="hidden md:flex flex-col w-64 m-3 mr-0 rounded-[28px] bg-card border border-border/50 shadow-sm glass-panel overflow-visible relative flex-shrink-0">
         {/* Logo */}
-        <div className="p-5 flex items-center gap-3">
-          <img 
-            src="favicon_shield.png" 
-            width="32" 
-            height="32" 
-            alt="Lutheus Logo" 
-            className="shrink-0" 
-            style={{ filter: 'drop-shadow(0px 0px 8px rgba(124, 90, 245, 0.5))' }} 
+        <button
+          type="button"
+          onClick={() => { window.location.href = '/'; }}
+          aria-label="Ana sayfaya dön"
+          className="p-5 flex items-center gap-3 w-full text-left rounded-[20px] hover:bg-muted/40 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+        >
+          <img
+            src="favicon_shield.png"
+            width="32"
+            height="32"
+            alt="Lutheus Logo"
+            className="shrink-0"
+            style={{ filter: 'drop-shadow(0px 0px 8px rgba(124, 90, 245, 0.5))' }}
           />
           <div>
             <div className="font-bold text-sm tracking-tight text-foreground">Lutheus</div>
             <div className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">CezaRapor</div>
           </div>
-        </div>
+        </button>
 
         {/* Sync indicator */}
         {pendingSync > 0 && (

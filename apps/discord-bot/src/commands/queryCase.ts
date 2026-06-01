@@ -2,7 +2,8 @@
 // PURPOSE: Queries Sapphire case details and AI audit analysis from Supabase sapphire_cases and app_settings.
 
 import { SlashCommandBuilder, ChatInputCommandInteraction, EmbedBuilder } from 'discord.js';
-import { supabase } from '../botConfig.js';
+import { supabase, guildId as envGuildId } from '../botConfig.js';
+import { runDbHealthCheck, formatDiagnosticsBlock } from '../lib/dbDiagnostics.js';
 
 export const QueryCaseCommand = {
     data: new SlashCommandBuilder()
@@ -19,15 +20,23 @@ export const QueryCaseCommand = {
         await interaction.deferReply();
 
         try {
+            const targetGuildId = interaction.guildId || envGuildId || '1223431616081166336';
+
             const { data: row } = await supabase
                 .from('sapphire_cases')
                 .select('*')
                 .eq('case_id', caseId)
+                .eq('guild_id', targetGuildId)
                 .maybeSingle();
 
             if (!row) {
+                const snapshot = await runDbHealthCheck(targetGuildId);
                 await interaction.editReply({
-                    content: `❌ **Ceza Bulunamadı:** \`${caseId}\` kimliğine sahip herhangi bir ceza kaydı veritabanında mevcut değil.`
+                    content: [
+                        `❌ **Ceza Bulunamadı:** \`${caseId}\` guild \`${targetGuildId}\` altında yok.`,
+                        '',
+                        formatDiagnosticsBlock(snapshot),
+                    ].join('\n'),
                 });
                 return;
             }

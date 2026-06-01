@@ -52,6 +52,9 @@
                 <button class="nav-btn" id="btnOpenAdmin" title="Admin Paneli">
                     <i class="fa-solid fa-gauge-high"></i>
                 </button>
+                <button class="nav-btn" data-section="cleanup" title="Veri Temizliği">
+                    <i class="fa-solid fa-broom"></i>
+                </button>
             </div>
 
             <!-- Hidden navigation elements to satisfy legacy JS bindings without layout presence -->
@@ -251,6 +254,29 @@
                             <div class="progress-bar" id="progressFill"></div>
                         </div>
                     </div>
+                </div>
+            </section>
+
+            <!-- SECTION: DATA CLEANUP -->
+            <section id="section-cleanup" class="view-section">
+                <div class="card">
+                    <h3><i class="fa-solid fa-broom" style="margin-right: 10px; opacity: 0.6;"></i>Veri Temizliği</h3>
+                    <p class="subtitle" style="margin: 8px 0 16px;">Yalnızca eklenti yerel kayıtları. Supabase veritabanına dokunulmaz.</p>
+                    <div class="btn-group" style="flex-direction: column; gap: 8px;">
+                        <button class="btn secondary-btn full" id="btnScanInvalidStaff">
+                            <i class="fa-solid fa-magnifying-glass"></i> Boş Yetkilileri Tara
+                        </button>
+                        <button class="btn outline-danger full" id="btnCleanInvalidStaff">
+                            <i class="fa-solid fa-user-xmark"></i> Geçersiz Yetkilileri Temizle
+                        </button>
+                        <button class="btn outline-danger full" id="btnResetLocalRegistry">
+                            <i class="fa-solid fa-rotate-left"></i> Local Registry Sıfırla
+                        </button>
+                        <button class="btn primary-btn full" id="btnResyncStaffFromDb">
+                            <i class="fa-solid fa-cloud-arrow-down"></i> DB ile Yeniden Eşitle (okuma)
+                        </button>
+                    </div>
+                    <div class="log-list margin-top" id="cleanupResults" style="max-height: 220px; min-height: 80px;"></div>
                 </div>
             </section>
 

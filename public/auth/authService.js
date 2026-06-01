@@ -357,11 +357,10 @@ export const AuthService = {
     redirectToLogin,
 
     getPostLoginUrl(session) {
-        if (canAccessAdmin(session?.role)) {
-            if (typeof chrome === 'undefined' || !chrome.runtime?.getURL) return `${window.location.origin}/`;
-            return getURL('src/dashboard-v2/dist/index.html');
+        // Non-extension web context: always route to the React SPA at /dashboard
+        if (typeof chrome === 'undefined' || !chrome.runtime?.getURL) {
+            return `${window.location.origin}/dashboard`;
         }
-        if (typeof chrome === 'undefined' || !chrome.runtime?.getURL) return `${window.location.origin}/src/dashboard-v2/dist/index.html`;
         return getURL('src/dashboard-v2/dist/index.html');
     }
 };

@@ -118,7 +118,7 @@ export default function RootWelcomePage() {
           </Link>
 
           {/* Card 2: Ceza Rapor Sistemi */}
-          <a href="/dashboard/admin.html" className="group">
+          <Link href="/dashboard" className="group">
             <div className="h-full bg-[#1f2833]/40 hover:bg-[#1f2833]/80 backdrop-blur-md p-8 rounded-2xl border border-[#2f3e46] hover:border-purple-500/50 transition-all duration-500 hover:shadow-[0_0_30px_rgba(168,85,247,0.15)] flex flex-col text-left relative overflow-hidden group-hover:-translate-y-1">
               <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-purple-500/5 to-transparent rounded-bl-full pointer-events-none" />
               
@@ -139,7 +139,7 @@ export default function RootWelcomePage() {
                 <span>Sisteme Giriş</span>
               </div>
             </div>
-          </a>
+          </Link>
         </div>
       </main>
 

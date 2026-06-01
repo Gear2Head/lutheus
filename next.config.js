@@ -10,6 +10,10 @@ const nextConfig = {
   async rewrites() {
     return [
       {
+        source: "/dashboard",
+        destination: "/dashboard/index.html",
+      },
+      {
         source: "/dashboard/admin",
         destination: "/dashboard/admin.html",
       },

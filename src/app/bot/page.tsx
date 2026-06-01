@@ -9,11 +9,12 @@ import { useRouter } from "next/navigation";
 import { getStoredSession } from "@/lib/auth/session";
 import { discordDashboardApi } from "@/lib/discord/api";
 import { DashboardGuild } from "@/lib/discord/types";
-import { Shield, Users, ArrowLeft, Loader2, Link2, Settings, Sparkles } from "lucide-react";
+import { Shield, Users, ArrowLeft, Loader2, Link2, Settings, Sparkles, AlertTriangle, RefreshCw } from "lucide-react";
 
 export default function BotServerSelectionPage() {
   const [guilds, setGuilds] = useState<DashboardGuild[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<"all" | "installed" | "invite">("all");
   const router = useRouter();
 
@@ -27,12 +28,21 @@ export default function BotServerSelectionPage() {
 
     async function loadGuilds() {
       try {
+        setError(null);
         const data = await discordDashboardApi.fetchGuilds();
         // filter manageable guilds only (Sapphire style dashboard only lets you select managed servers)
         const manageable = data.guilds.filter(g => g.manageable);
         setGuilds(manageable);
       } catch (err) {
         console.error("Failed to load guilds", err);
+        const msg = err instanceof Error ? err.message : "Bilinmeyen hata";
+        if (msg.includes("Unauthorized") || msg.includes("401")) {
+          setError("Oturum süresi dolmuş veya yetkisiz erişim. Lütfen tekrar giriş yapın.");
+        } else if (msg.includes("DISCORD_BOT_TOKEN") || msg.includes("500")) {
+          setError("Bot yapılandırması eksik. Sunucu yöneticisiyle iletişime geçin.");
+        } else {
+          setError(`Sunucular yüklenirken bir hata oluştu: ${msg}`);
+        }
       } finally {
         setLoading(false);
       }
@@ -111,10 +121,28 @@ export default function BotServerSelectionPage() {
             <Loader2 className="w-8 h-8 text-[#66fcf1] animate-spin" />
             <span className="text-xs uppercase tracking-widest font-semibold">Sunucular Yükleniyor...</span>
           </div>
+        ) : error ? (
+          <div className="max-w-lg mx-auto mt-8 p-8 bg-[#1f2833]/40 border border-red-500/20 rounded-2xl text-center flex flex-col items-center gap-4 backdrop-blur-md">
+            <div className="w-14 h-14 rounded-2xl bg-red-500/10 border border-red-500/20 flex items-center justify-center">
+              <AlertTriangle className="w-7 h-7 text-red-400" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-white mb-1">Sunucular Yüklenemedi</h3>
+              <p className="text-sm text-[#c5c6c7] leading-relaxed">{error}</p>
+            </div>
+            <button
+              onClick={() => { setLoading(true); setError(null); discordDashboardApi.fetchGuilds().then(d => setGuilds(d.guilds.filter(g => g.manageable))).catch(e => setError(e instanceof Error ? e.message : "Hata")).finally(() => setLoading(false)); }}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#1f2833] border border-[#2f3e46] text-sm font-semibold text-[#66fcf1] hover:bg-[#2f3e46] transition-all"
+            >
+              <RefreshCw className="w-4 h-4" />
+              Yeniden Dene
+            </button>
+          </div>
         ) : filteredGuilds.length === 0 ? (
           <div className="h-64 flex flex-col items-center justify-center p-8 bg-[#1f2833]/30 border border-[#2f3e46] rounded-2xl text-center">
             <Shield className="w-10 h-10 text-gray-500 mb-3" />
-            <span className="text-sm text-gray-400 font-medium">Bu kritere uygun sunucu bulunamadı.</span>
+            <p className="text-sm text-gray-400 font-medium mb-1">Bu kritere uygun sunucu bulunamadı.</p>
+            <p className="text-xs text-gray-500">Bot yüklü ve yönetim izniniz olan bir sunucu gereklidir.</p>
           </div>
         ) : (
           <div className="grid sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">

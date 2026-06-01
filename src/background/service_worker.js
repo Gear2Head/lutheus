@@ -42,8 +42,13 @@ const ACTIONS = {
     RUN_POINTTRAIN_QUERY: 'RUN_POINTTRAIN_QUERY',
     SCAN_PROGRESS_EVENT: 'SCAN_PROGRESS_EVENT',
     POINTTRAIN_PROGRESS_EVENT: 'POINTTRAIN_PROGRESS_EVENT',
-    POINTTRAIN_DONE_EVENT: 'POINTTRAIN_DONE_EVENT'
+    POINTTRAIN_DONE_EVENT: 'POINTTRAIN_DONE_EVENT',
+    REFRESH_AUTH_TOKEN: 'REFRESH_AUTH_TOKEN'
 };
+
+const INGEST_QUEUE_KEY = 'lutheusIngestQueue';
+const INGEST_FLUSH_ALARM = 'lutheus-ingest-flush';
+const MAX_INGEST_QUEUE_SIZE = 200;
 
 let pointtrainCancelled = false;
 let autonomousScanCancelled = false;
@@ -58,6 +63,18 @@ function normalizeRole(role) {
 chrome.sidePanel
     .setPanelBehavior({ openPanelOnActionClick: true })
     .catch((error) => console.error('GearTech: Side panel error:', error));
+
+if (chrome.alarms) {
+    chrome.alarms.create(INGEST_FLUSH_ALARM, { periodInMinutes: 1 }).catch(() => undefined);
+}
+
+chrome.alarms?.onAlarm.addListener((alarm) => {
+    if (alarm.name === INGEST_FLUSH_ALARM) {
+        flushIngestQueue().catch((error) => {
+            console.warn('[Lutheus SW] Ingest queue flush failed:', error.message || error);
+        });
+    }
+});
 
 chrome.runtime.onInstalled.addListener((details) => {
     console.log('GearTech: Extension installed/updated', details.reason);
@@ -891,9 +908,10 @@ async function runAutonomousScan(options = {}) {
                 timeout: Math.max(6000, scanDelay * 4)
             });
             if (!waited?.success) {
+                console.warn('[Lutheus SW] PAGE_NAV_TIMEOUT fallback action on page:', pageNum, waited?.error);
                 failures.push({ page: pageNum, error: waited?.error || 'PAGE_NAV_TIMEOUT' });
-                scannedCount++;
-                continue;
+                // Sleep for 800ms to allow Svelte DOM settling
+                await new Promise((resolve) => setTimeout(resolve, 800));
             }
             pageInfo = await sendToContentScript(tabId, { action: 'GET_PAGE_INFO' }) || pageInfo;
         }
@@ -1303,17 +1321,83 @@ async function runPointtrainScan(options = {}) {
 
 let activeJobId = null;
 let lastMissingIngestTokenWarningAt = 0;
+let ingestFlushInProgress = false;
 
-async function forwardToVercelIngest(records, jobId, sourceUrl, finished = false, status = null) {
+async function getAuthSessionFromStorage() {
+    return new Promise((resolve) => {
+        chrome.storage.local.get(['lutheusAuthSession', 'lutheus:session', 'session'], (res) => {
+            resolve(res.lutheusAuthSession || res['lutheus:session'] || res.session || null);
+        });
+    });
+}
+
+function isStoredSessionExpired(session, skewMs = 60_000) {
+    if (!session?.expiresAt) return true;
+    return Date.now() + skewMs >= Number(session.expiresAt);
+}
+
+async function enqueueIngestPayload(payload) {
+    const queue = (await getLocal(INGEST_QUEUE_KEY)) || [];
+    queue.push({
+        ...payload,
+        queuedAt: new Date().toISOString(),
+        attempts: Number(payload.attempts || 0)
+    });
+    await setLocal(INGEST_QUEUE_KEY, queue.slice(-MAX_INGEST_QUEUE_SIZE));
+}
+
+async function flushIngestQueue() {
+    if (ingestFlushInProgress) return;
+    ingestFlushInProgress = true;
+
     try {
-        const session = await new Promise(resolve => chrome.storage.local.get(['lutheusAuthSession', 'lutheus:session', 'session'], (res) => resolve(res.lutheusAuthSession || res['lutheus:session'] || res.session || null)));
+        const queue = (await getLocal(INGEST_QUEUE_KEY)) || [];
+        if (!queue.length) return;
+
+        const session = await getAuthSessionFromStorage();
+        if (!session?.idToken || isStoredSessionExpired(session)) {
+            return;
+        }
+
+        const remaining = [];
+        for (const item of queue) {
+            const sent = await forwardToVercelIngest(
+                item.records || [],
+                item.jobId,
+                item.sourceUrl,
+                item.finished === true,
+                item.status || null,
+                { skipQueue: true, attempts: Number(item.attempts || 0) + 1 }
+            );
+            if (!sent) {
+                remaining.push({
+                    ...item,
+                    attempts: Number(item.attempts || 0) + 1
+                });
+            }
+        }
+
+        await setLocal(INGEST_QUEUE_KEY, remaining.slice(-MAX_INGEST_QUEUE_SIZE));
+    } finally {
+        ingestFlushInProgress = false;
+    }
+}
+
+async function forwardToVercelIngest(records, jobId, sourceUrl, finished = false, status = null, options = {}) {
+    const { skipQueue = false, attempts = 0 } = options;
+
+    try {
+        const session = await getAuthSessionFromStorage();
         const idToken = session?.idToken;
-        if (!idToken) {
+        if (!idToken || isStoredSessionExpired(session)) {
             if (Date.now() - lastMissingIngestTokenWarningAt > 60_000) {
                 lastMissingIngestTokenWarningAt = Date.now();
-                console.warn('[Lutheus SW] No idToken found in storage for Vercel ingest.');
+                console.warn('[Lutheus SW] No valid idToken for Vercel ingest; queueing batch.');
             }
-            return;
+            if (!skipQueue && (records?.length || finished)) {
+                await enqueueIngestPayload({ records, jobId, sourceUrl, finished, status, attempts });
+            }
+            return false;
         }
 
         const settings = await new Promise(resolve => chrome.storage.sync.get(['settings'], (res) => resolve(res.settings || {})));
@@ -1366,19 +1450,24 @@ async function forwardToVercelIngest(records, jobId, sourceUrl, finished = false
             };
             console.error('[Lutheus SW] Ingest failed with detailed payload:', JSON.stringify(errorPayload, null, 2));
             await new Promise(r => chrome.storage.local.set({ lutheusLastIngestError: errorPayload }, r));
-        } else {
-            console.log('[Lutheus SW] Ingest successful. Accounting details:', {
-                backendReceived: data.received,
-                backendNormalized: data.normalized,
-                backendInvalid: data.invalid,
-                backendDuplicateInBatch: data.duplicateInBatch,
-                backendDeduped: data.deduped,
-                backendUpserted: data.upserted,
-                backendSkipped: data.skipped,
-                duplicateKeysSample: data.duplicateKeys || []
-            });
-            await new Promise(r => chrome.storage.local.remove(['lutheusLastIngestError'], r));
+            if (!skipQueue && (records?.length || finished)) {
+                await enqueueIngestPayload({ records, jobId, sourceUrl, finished, status, attempts });
+            }
+            return false;
         }
+
+        console.log('[Lutheus SW] Ingest successful. Accounting details:', {
+            backendReceived: data.received,
+            backendNormalized: data.normalized,
+            backendInvalid: data.invalid,
+            backendDuplicateInBatch: data.duplicateInBatch,
+            backendDeduped: data.deduped,
+            backendUpserted: data.upserted,
+            backendSkipped: data.skipped,
+            duplicateKeysSample: data.duplicateKeys || []
+        });
+        await new Promise(r => chrome.storage.local.remove(['lutheusLastIngestError'], r));
+        return true;
     } catch (err) {
         console.error('[Lutheus SW] Failed to forward to Vercel ingest:', err.message);
         const errorPayload = {
@@ -1387,6 +1476,10 @@ async function forwardToVercelIngest(records, jobId, sourceUrl, finished = false
             timestamp: new Date().toISOString()
         };
         await new Promise(r => chrome.storage.local.set({ lutheusLastIngestError: errorPayload }, r));
+        if (!skipQueue && (records?.length || finished)) {
+            await enqueueIngestPayload({ records, jobId, sourceUrl, finished, status, attempts });
+        }
+        return false;
     }
 }
 
@@ -1566,7 +1659,7 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
                 }
 
                 case ACTIONS.OPEN_ADMIN: {
-                    const adminUrl = chrome.runtime.getURL('src/dashboard/admin.html');
+                    const adminUrl = chrome.runtime.getURL('src/dashboard-v2/dist/index.html');
                     const adminTabs = await chrome.tabs.query({ url: adminUrl });
                     if (adminTabs.length > 0) {
                         await chrome.tabs.update(adminTabs[0].id, { active: true });
@@ -1615,6 +1708,22 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
                 case ACTIONS.INTEGRITY_COMPROMISED: {
                     console.error('[Security] Integrity compromised signal received from extension.');
                     sendResponse({ received: true });
+                    break;
+                }
+
+                case ACTIONS.REFRESH_AUTH_TOKEN: {
+                    const session = await getAuthSessionFromStorage();
+                    if (session?.idToken && !isStoredSessionExpired(session)) {
+                        sendResponse({ ok: true, idToken: session.idToken, expiresAt: session.expiresAt || null });
+                    } else {
+                        sendResponse({ ok: false, error: 'SESSION_EXPIRED_OR_MISSING' });
+                    }
+                    break;
+                }
+
+                case 'FLUSH_INGEST_QUEUE': {
+                    await flushIngestQueue();
+                    sendResponse({ success: true });
                     break;
                 }
 

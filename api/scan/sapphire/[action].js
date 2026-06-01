@@ -1,7 +1,47 @@
 const crypto = require('crypto');
 const { supabase } = require('../../_lib/supabaseClient');
 const { requirePermission, requireUser } = require('../../_lib/serverAuth');
-const { PERMISSIONS, normalizeRole } = require('../../_lib/roles');
+const { PERMISSIONS, normalizeRole, ROLES } = require('../../_lib/roles');
+
+const SESSION_LOCKOUT_MS = 15 * 60 * 1000;
+const ACTIVE_SESSION_STATUSES = ['pending', 'running'];
+const INGEST_CHUNK_SIZE = 100;
+
+function canForceStartScan(role) {
+    const normalized = normalizeRole(role);
+    return normalized === ROLES.KURUCU || normalized === ROLES.ADMIN;
+}
+
+async function findActiveGuildScan(guildId) {
+    const cutoff = new Date(Date.now() - SESSION_LOCKOUT_MS).toISOString();
+    const { data, error } = await supabase
+        .from('scan_sessions')
+        .select('id, status, started_at, source, guild_id')
+        .eq('guild_id', guildId)
+        .in('status', ACTIVE_SESSION_STATUSES)
+        .gte('started_at', cutoff)
+        .order('started_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+    if (error) {
+        throw Object.assign(new Error(error.message || 'ACTIVE_SESSION_LOOKUP_FAILED'), { cause: error });
+    }
+    return data || null;
+}
+
+async function cancelHangingSession(sessionId, actor) {
+    const message = `Force-start by ${actor.email || actor.discordId || actor.uid || 'admin'}`;
+    await supabase
+        .from('scan_sessions')
+        .update({
+            status: 'failed',
+            error_message: message,
+            completed_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+        })
+        .eq('id', sessionId);
+}
 const { normalizeCase } = require('../../_lib/sapphireNormalize');
 const { diffCase, mergeWithoutDataLoss } = require('../../_lib/sapphireDiff');
 const { ok, forbidden, serverError } = require('../../_lib/apiResponse');
@@ -155,6 +195,28 @@ async function handleStart(req, res) {
     const pages = Array.isArray(body.pages) ? body.pages.slice(0, 10) : [1];
     const scanMode = body.scanMode || 'fast';
     const source = body.source || 'web-dashboard';
+    const forceStart = body.force === true;
+
+    const activeSession = await findActiveGuildScan(guildId);
+    if (activeSession) {
+        if (!forceStart || !canForceStartScan(actor.role)) {
+            return res.status(409).json({
+                ok: false,
+                error: 'ACTIVE_SESSION_EXISTS',
+                activeSessionId: activeSession.id,
+                activeSessionStatus: activeSession.status,
+                lockoutMinutes: SESSION_LOCKOUT_MS / 60_000
+            });
+        }
+        await cancelHangingSession(activeSession.id, actor);
+        await safeInsertAuditLog({
+            action: 'sapphire_scan_force_cancelled',
+            target_type: 'scan',
+            actor_email: actor.email || null,
+            actor_discord_id: actor.discordId || null,
+            metadata: { cancelledSessionId: activeSession.id, guildId, forceStart: true }
+        });
+    }
 
     const jobId = crypto.randomUUID ? crypto.randomUUID() : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
         const r = Math.random() * 16 | 0;
@@ -310,6 +372,116 @@ function dedupeCasesForUpsert(domainCases) {
     };
 }
 
+function buildStaffProfilesFromCases(dedupedCases) {
+    const staffProfiles = new Map();
+    for (const item of dedupedCases) {
+        if (!item.authorId) continue;
+        staffProfiles.set(item.authorId, {
+            discord_id: item.authorId,
+            display_name: item.authorName || null,
+            avatar_url: item.authorAvatar || null,
+            staff_rank: 'discord_destek_ekibi',
+            permission_group: 'support',
+            permission_level: 25,
+            is_active_staff: true,
+            last_seen_at: new Date().toISOString(),
+            raw_payload: {
+                discordId: item.authorId,
+                displayName: item.authorName,
+                avatar: item.authorAvatar,
+                source: 'sapphire-author'
+            },
+            updated_at: new Date().toISOString()
+        });
+    }
+    return staffProfiles;
+}
+
+async function upsertStaffProfilesForIngest(dedupedCases) {
+    const staffProfiles = buildStaffProfilesFromCases(dedupedCases);
+    if (!staffProfiles.size) {
+        return { success: true, count: 0 };
+    }
+
+    const authorIds = Array.from(staffProfiles.keys());
+    const { data: existingProfiles, error: existingProfilesError } = await supabase
+        .from('staff_profiles')
+        .select('discord_id, staff_rank, permission_group, permission_level')
+        .in('discord_id', authorIds);
+
+    if (existingProfilesError) {
+        return {
+            success: false,
+            error: existingProfilesError,
+            code: 'STAFF_PROFILE_READ_FAILED'
+        };
+    }
+
+    const existingMap = new Map((existingProfiles || []).map((p) => [p.discord_id, p]));
+    const finalProfiles = Array.from(staffProfiles.values()).map((p) => {
+        const existing = existingMap.get(p.discord_id);
+        if (!existing) return p;
+        return {
+            ...p,
+            staff_rank: existing.staff_rank || p.staff_rank,
+            permission_group: existing.permission_group || p.permission_group,
+            permission_level: existing.permission_level !== undefined ? existing.permission_level : p.permission_level
+        };
+    });
+
+    const { error: staffUpsertError } = await supabase
+        .from('staff_profiles')
+        .upsert(finalProfiles, { onConflict: 'discord_id' });
+
+    if (staffUpsertError) {
+        return {
+            success: false,
+            error: staffUpsertError,
+            code: 'STAFF_PROFILE_UPSERT_FAILED'
+        };
+    }
+
+    return { success: true, count: finalProfiles.length };
+}
+
+async function upsertCaseRowsInChunks(upsertRows) {
+    if (!upsertRows.length) {
+        return { success: true, committedChunks: [], committedRowCount: 0 };
+    }
+
+    assertNoDuplicateUpsertKeys(upsertRows);
+
+    const committedChunks = [];
+    let committedRowCount = 0;
+
+    for (let i = 0; i < upsertRows.length; i += INGEST_CHUNK_SIZE) {
+        const chunk = upsertRows.slice(i, i + INGEST_CHUNK_SIZE);
+        const chunkIndex = Math.floor(i / INGEST_CHUNK_SIZE);
+        const { error: caseUpsertError } = await supabase
+            .from('sapphire_cases')
+            .upsert(chunk, { onConflict: 'guild_id,case_id' });
+
+        if (caseUpsertError) {
+            return {
+                success: false,
+                partial: committedChunks.length > 0,
+                failedChunkIndex: chunkIndex,
+                failedRecordStartIndex: i,
+                failedRecordEndIndex: Math.min(i + chunk.length - 1, upsertRows.length - 1),
+                failedRecordCount: chunk.length,
+                committedChunks,
+                committedRowCount,
+                error: caseUpsertError
+            };
+        }
+
+        committedChunks.push(chunkIndex);
+        committedRowCount += chunk.length;
+    }
+
+    return { success: true, committedChunks, committedRowCount };
+}
+
 function assertNoDuplicateUpsertKeys(rows) {
     const seen = new Set();
     const duplicates = [];
@@ -439,6 +611,8 @@ async function handleIngest(req, res) {
     let queuedUpdate = 0;
     let skipped = 0;
     let warning = null;
+    let ingestPartial = false;
+    let ingestDiagnostics = null;
 
     const upsertRows = [];
 
@@ -474,84 +648,70 @@ async function handleIngest(req, res) {
             }
         }
 
-        const staffProfiles = new Map();
-        for (const item of dedupedCases) {
-            if (item.authorId) {
-                staffProfiles.set(item.authorId, {
-                    discord_id: item.authorId,
-                    display_name: item.authorName || null,
-                    avatar_url: item.authorAvatar || null,
-                    staff_rank: 'discord_destek_ekibi',
-                    permission_group: 'support',
-                    permission_level: 25,
-                    is_active_staff: true,
-                    last_seen_at: new Date().toISOString(),
-                    raw_payload: {
-                        discordId: item.authorId,
-                        displayName: item.authorName,
-                        avatar: item.authorAvatar,
-                        source: 'sapphire-author'
-                    },
+        const staffSync = await upsertStaffProfilesForIngest(dedupedCases);
+        if (!staffSync.success) {
+            console.error('[Ingest] staff_profiles sync failed before case upsert:', staffSync.error);
+            if (!skipScanSession && jobId) {
+                await supabase.from('scan_sessions').update({
+                    status: 'failed',
+                    error_message: staffSync.code || 'STAFF_PROFILE_SYNC_FAILED',
                     updated_at: new Date().toISOString()
-                });
+                }).eq('id', jobId);
             }
-        }
-        if (staffProfiles.size) {
-            const authorIds = Array.from(staffProfiles.keys());
-            const { data: existingProfiles, error: existingProfilesError } = await supabase
-                .from('staff_profiles')
-                .select('discord_id, staff_rank, permission_group, permission_level')
-                .in('discord_id', authorIds);
-            if (existingProfilesError) {
-                console.warn('[Ingest] Failed to read existing staff profiles:', existingProfilesError.message || existingProfilesError);
-                warning = 'STAFF_PROFILE_READ_SKIPPED';
-            }
-            
-            const existingMap = new Map((existingProfiles || []).map(p => [p.discord_id, p]));
-
-            const finalProfiles = Array.from(staffProfiles.values()).map(p => {
-                const existing = existingMap.get(p.discord_id);
-                if (existing) {
-                    return {
-                        ...p,
-                        staff_rank: existing.staff_rank || p.staff_rank,
-                        permission_group: existing.permission_group || p.permission_group,
-                        permission_level: existing.permission_level !== undefined ? existing.permission_level : p.permission_level
-                    };
-                }
-                return p;
+            return res.status(500).json({
+                ok: false,
+                error: staffSync.code || 'STAFF_PROFILE_SYNC_FAILED',
+                message: staffSync.error?.message || 'Staff profile upsert failed',
+                details: staffSync.error?.details || null,
+                hint: staffSync.error?.hint || null,
+                received,
+                normalized: normalized.length,
+                invalid: invalid.length,
+                duplicateInBatch: duplicateKeys.length,
+                deduped: dedupedCases.length
             });
-
-            const { error: staffUpsertError } = await supabase.from('staff_profiles').upsert(finalProfiles, { onConflict: 'discord_id' });
-            if (staffUpsertError) {
-                console.warn('[Ingest] Failed to upsert staff_profiles:', staffUpsertError.message || staffUpsertError);
-                warning = 'STAFF_PROFILE_SYNC_SKIPPED';
-            }
         }
 
         if (upsertRows.length > 0) {
-            // Safety assertion: final rows must not contain duplicate guild_id + case_id
-            assertNoDuplicateUpsertKeys(upsertRows);
+            const caseUpsert = await upsertCaseRowsInChunks(upsertRows);
+            if (!caseUpsert.success) {
+                ingestPartial = Boolean(caseUpsert.partial);
+                ingestDiagnostics = {
+                    failedChunkIndex: caseUpsert.failedChunkIndex,
+                    failedRecordStartIndex: caseUpsert.failedRecordStartIndex,
+                    failedRecordEndIndex: caseUpsert.failedRecordEndIndex,
+                    failedRecordCount: caseUpsert.failedRecordCount,
+                    committedChunks: caseUpsert.committedChunks,
+                    committedRowCount: caseUpsert.committedRowCount
+                };
 
-            for (let i = 0; i < upsertRows.length; i += 100) {
-                const chunk = upsertRows.slice(i, i + 100);
-                const { error: caseUpsertError } = await supabase.from('sapphire_cases').upsert(chunk, { onConflict: 'guild_id,case_id' });
-                if (caseUpsertError) {
-                    console.error('[Ingest] Failed to upsert sapphire_cases:', caseUpsertError);
-                    return res.status(500).json({
-                        ok: false,
-                        error: 'SAPPHIRE_CASES_UPSERT_FAILED',
-                        message: caseUpsertError.message,
-                        details: caseUpsertError.details,
-                        hint: caseUpsertError.hint,
-                        code: caseUpsertError.code || null,
-                        received,
-                        normalized: normalized.length,
-                        invalid: invalid.length,
-                        duplicateInBatch: duplicateKeys.length,
-                        deduped: dedupedCases.length
-                    });
+                console.error('[Ingest] sapphire_cases upsert failed:', caseUpsert.error, ingestDiagnostics);
+
+                if (!skipScanSession && jobId) {
+                    await supabase.from('scan_sessions').update({
+                        status: 'partial',
+                        error_message: caseUpsert.error?.message || 'SAPPHIRE_CASES_UPSERT_PARTIAL',
+                        inconsistencies: ingestDiagnostics,
+                        updated_at: new Date().toISOString()
+                    }).eq('id', jobId);
                 }
+
+                return res.status(caseUpsert.partial ? 207 : 500).json({
+                    ok: false,
+                    error: caseUpsert.partial ? 'SAPPHIRE_CASES_UPSERT_PARTIAL' : 'SAPPHIRE_CASES_UPSERT_FAILED',
+                    message: caseUpsert.error?.message,
+                    details: caseUpsert.error?.details,
+                    hint: caseUpsert.error?.hint,
+                    code: caseUpsert.error?.code || null,
+                    partial: caseUpsert.partial,
+                    diagnostics: ingestDiagnostics,
+                    received,
+                    normalized: normalized.length,
+                    invalid: invalid.length,
+                    duplicateInBatch: duplicateKeys.length,
+                    deduped: dedupedCases.length,
+                    committedRowCount: caseUpsert.committedRowCount || 0
+                });
             }
         }
     }
@@ -579,7 +739,9 @@ async function handleIngest(req, res) {
         };
 
         const isFinished = body.finished === true;
-        const status = body.status || (isFinished ? 'completed' : 'running');
+        const status = ingestPartial
+            ? 'partial'
+            : (body.status || (isFinished ? 'completed' : 'running'));
         const jobUpdate = {
             status: status,
             completed_pages: Number(jobData.completed_pages || 0) + 1,
@@ -622,7 +784,8 @@ async function handleIngest(req, res) {
         queuedInsert,
         queuedUpdate,
         skipped,
-        ...(warning ? { warning } : {})
+        ...(warning ? { warning } : {}),
+        ...(ingestPartial ? { partial: true, diagnostics: ingestDiagnostics } : {})
     });
 }
 

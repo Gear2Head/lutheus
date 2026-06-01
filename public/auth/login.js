@@ -24,7 +24,7 @@ function postLogin(session) {
     const targetUrl = returnTo || AuthService.getPostLoginUrl(session);
 
     if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.getURL) {
-        window.location.href = chrome.runtime.getURL('src/sidepanel/sidepanel.html');
+        window.location.href = returnTo ? chrome.runtime.getURL(returnTo) : chrome.runtime.getURL('src/sidepanel/sidepanel.html');
     } else {
         window.location.href = targetUrl || '/';
     }

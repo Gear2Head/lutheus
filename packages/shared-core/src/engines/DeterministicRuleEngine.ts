@@ -4,6 +4,7 @@
  */
 import { EvidenceV1 } from '../domain/DecisionSchema';
 import { DecisionError } from '../domain/Errors';
+import { normalizeMatchText } from './ruleMatching';
 
 export interface RuleDefinition {
     id: string;
@@ -35,7 +36,7 @@ export class DeterministicRuleEngine {
         const explanation: string[] = [];
 
         for (const evidence of evidenceData) {
-            const content = evidence.rawContent.toLowerCase();
+            const content = normalizeMatchText(evidence.rawContent);
 
             for (const rule of this.rules) {
                 if (!matchedRuleIds.has(rule.id) && rule.evaluate(content)) {

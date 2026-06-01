@@ -1,7 +1,25 @@
 // SECTION: API_CLIENT
 // PURPOSE: Pure-fetch Supabase REST client — no CDN dependency, CSP-safe for Chrome Extension.
 
-import { getStoredSession, isSessionExpired } from '../auth/sessionStore.js';
+import { getStoredSession, isSessionExpired, isSessionNearExpiry } from '../auth/sessionStore.js';
+
+const TOKEN_REFRESH_BUFFER_MS = 5 * 60_000;
+let tokenRefreshPromise = null;
+
+async function requestBackgroundTokenRefresh() {
+    if (typeof chrome === 'undefined' || !chrome.runtime?.sendMessage) {
+        return null;
+    }
+    return new Promise((resolve) => {
+        chrome.runtime.sendMessage({ action: 'REFRESH_AUTH_TOKEN' }, (response) => {
+            if (chrome.runtime?.lastError) {
+                resolve(null);
+                return;
+            }
+            resolve(response?.ok ? (response.idToken || null) : null);
+        });
+    });
+}
 
 const SUPABASE_URL = 'https://jxhzhaqqtlynbnntwpyu.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4aHpoYXFxdGx5bmJubnR3cHl1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk2NjMyMTcsImV4cCI6MjA5NTIzOTIxN30.BrmuT-QX_BkgV6SSlpNThfqSGmUDw0UffUW11agaBzI';
@@ -403,10 +421,32 @@ function unflattenFromDb(tableName, row) {
 }
 
 async function getIdToken() {
-    const session = await getStoredSession();
-    if (!session?.idToken || isSessionExpired(session)) {
+    let session = await getStoredSession();
+    if (!session?.idToken) {
         return null;
     }
+
+    if (isSessionExpired(session)) {
+        const refreshed = await requestBackgroundTokenRefresh();
+        if (refreshed) return refreshed;
+        session = await getStoredSession();
+        if (!session?.idToken || isSessionExpired(session)) {
+            return null;
+        }
+        return session.idToken;
+    }
+
+    if (isSessionNearExpiry(session, TOKEN_REFRESH_BUFFER_MS)) {
+        if (!tokenRefreshPromise) {
+            tokenRefreshPromise = requestBackgroundTokenRefresh()
+                .finally(() => {
+                    tokenRefreshPromise = null;
+                });
+        }
+        const refreshed = await tokenRefreshPromise;
+        if (refreshed) return refreshed;
+    }
+
     return session.idToken;
 }
 

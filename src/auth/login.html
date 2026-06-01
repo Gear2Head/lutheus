@@ -12,31 +12,52 @@
 
 <body>
     <main class="login-shell">
-        <section class="login-panel">
-            <div class="login-brand" style="display: flex; align-items: center; gap: 12px;">
-                <img src="../../favicon_shield.png" width="44" height="44" alt="Lutheus Logo" style="filter: drop-shadow(0px 0px 12px rgba(124, 90, 245, 0.7));">
-                <div>
-                    <h1 style="margin: 0; font-size: 20px;">Lutheus CezaRapor</h1>
-                    <p id="loginSubtitle" style="margin-top: 2px;">Devam etmek için hesap bağla</p>
+        <div class="login-container glass-panel">
+
+            <!-- Sol Form Alanı (Left Form Area) -->
+            <div class="login-left">
+                <div class="login-brand-header">
+                    <div class="login-logo-box">
+                        <img src="../../favicon_shield.png" width="36" height="36" alt="Lutheus Logo"
+                            style="filter: drop-shadow(0px 0px 8px rgba(124, 90, 245, 0.6));">
+                        <span>Lutheus</span>
+                    </div>
+                    <h1 class="welcome-title">Hoşgeldiniz <span class="wave-hand">👋</span></h1>
+                    <p id="loginSubtitle">Devam etmek için giriş yapın.</p>
+                </div>
+
+                <div class="login-status" id="loginStatus"></div>
+
+                <div class="login-actions-group">
+                    <button class="btn primary-btn full login-action-btn discord-btn" id="btnDiscordLogin">
+                        <i class="fa-brands fa-discord"></i>
+                        Discord ile Giriş Yap
+                    </button>
+                    <button class="btn google-btn full login-action-btn" id="btnGoogleLogin">
+                        <i class="fa-brands fa-google"></i>
+                        Google ile Giriş Yap
+                    </button>
+                </div>
+
+                <div class="login-alert-note">
+                    Sisteme sadece yetkilendirilmiş Discord hesapları veya Google hesapları giriş yapabilir. Eğer
+                    hesabınızın erişimi yoksa, lütfen yetkilendirme için Discord üzerinden <strong
+                        style="color: #ffffff;">@_gear_head</strong> ile iletişime geçin.
                 </div>
             </div>
 
-            <div class="login-status" id="loginStatus"></div>
-
-            <button class="btn primary-btn full login-action" id="btnDiscordLogin">
-                <i class="fa-brands fa-discord"></i>
-                Discord ile Giriş Yap
-            </button>
-            <button class="btn secondary-btn full login-action" id="btnGoogleLogin">
-                <i class="fa-brands fa-google"></i>
-                Google ile Giriş Yap
-            </button>
-
-            <div class="login-note">
-                <span>Google erişimi admin allowlist kaydı gerektirir.</span>
-                <span>Discord rolleri admin onaylı role cache üzerinden uygulanır.</span>
+            <!-- Sağ Görsel Alanı (Right Illustration Area) -->
+            <div class="login-right">
+                <div class="login-right-overlay"></div>
+                <div class="login-right-content">
+                    <blockquote>
+                        <p class="quote-text">"BarisYilmaz'a BIAT EDIN!"</p>
+                        <footer class="quote-author">— Lutheus Discord Yönetim Ekibi</footer>
+                    </blockquote>
+                </div>
             </div>
-        </section>
+
+        </div>
     </main>
     <script type="module" src="login.js"></script>
 </body>

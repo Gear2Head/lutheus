@@ -2,6 +2,11 @@
 <html lang="tr">
 <head>
   <meta charset="UTF-8">
+  <script>
+    if (typeof chrome !== 'undefined' && chrome.runtime?.getURL) {
+      window.location.href = chrome.runtime.getURL('src/dashboard-v2/dist/index.html');
+    }
+  </script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Lutheus CezaRapor - Admin v3</title>
   <link rel="stylesheet" href="admin.css">

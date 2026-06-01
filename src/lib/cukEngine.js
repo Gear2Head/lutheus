@@ -1,6 +1,13 @@
 // Lutheus CezaRapor - CUK Engine (Ceza Uygulama Kitapçığı)
 // Intelligent penalty validation system
 
+import {
+    matchesKeyword,
+    normalizeMatchText,
+    pickBestScoredCategory,
+    scoreKeywordMatches
+} from './ruleMatching.js';
+
 export const CUK_VERSION = '1.0.0';
 
 // Ceza durumları
@@ -358,7 +365,7 @@ export const CUKEngine = {
     parseReason(reason) {
         if (!reason) return { category: null, degree: null, repeat: null };
 
-        const lowerReason = reason.toLowerCase();
+        const lowerReason = normalizeMatchText(reason);
 
         // Derece tespiti
         let degree = null;
@@ -397,7 +404,7 @@ export const CUKEngine = {
 
         // Priority to 'Yönetim'
         const mgmtKeywords = this.rules.categories['Yönetim']?.keywords || ['yönetim', 'onaylı', 'onayli', 'onay'];
-        if (mgmtKeywords.some(kw => lowerReason.includes(kw))) {
+        if (mgmtKeywords.some((kw) => matchesKeyword(lowerReason, kw))) {
             return { category: 'Yönetim', degree: null, repeat: null };
         }
 
@@ -413,45 +420,48 @@ export const CUKEngine = {
             'latin alfabesi dışı',
             'embed'
         ];
-        if (sunucuDinamigiD5Keywords.some(kw => lowerReason.includes(kw))) {
+        if (sunucuDinamigiD5Keywords.some((kw) => matchesKeyword(lowerReason, kw))) {
             return { category: 'Sunucu Dinamiği', degree: 5, repeat: repeat };
         }
 
-        if (lowerReason.includes('kutsal') || lowerReason.includes('dini') || lowerReason.includes('milli') || lowerReason.includes('atatürk') || lowerReason.includes('dinlere')) {
+        if (
+            matchesKeyword(lowerReason, 'kutsal') ||
+            matchesKeyword(lowerReason, 'dini') ||
+            matchesKeyword(lowerReason, 'milli') ||
+            matchesKeyword(lowerReason, 'atatürk') ||
+            matchesKeyword(lowerReason, 'dinlere')
+        ) {
             return { category: 'Dini/Milli Değerler', degree: null, repeat: repeat };
         }
 
-        if (lowerReason.includes('markasına zarar') || lowerReason.includes('markaya zarar') || lowerReason.includes('lutheus markası') || lowerReason.includes('sunucuya/lutheus markasına')) {
+        if (
+            matchesKeyword(lowerReason, 'markasına zarar') ||
+            matchesKeyword(lowerReason, 'markaya zarar') ||
+            matchesKeyword(lowerReason, 'lutheus markası') ||
+            matchesKeyword(lowerReason, 'sunucuya/lutheus markasına')
+        ) {
             return { category: 'Sunucu Dinamiği', degree: 2, repeat: repeat };
         }
 
-        // Skor tabanlı kategori seçimi
         const scores = {};
         for (const [cat, rule] of Object.entries(this.rules.categories)) {
-            const keywords = rule.keywords || [];
-            let score = 0;
-            keywords.forEach(kw => {
-                if (lowerReason.includes(kw.toLowerCase())) {
-                    score += kw.length;
-                }
-            });
+            let score = scoreKeywordMatches(lowerReason, rule.keywords || []);
 
             if (rule.degrees) {
-                rule.degrees.forEach(d => {
-                    (d.keywords || []).forEach(dkw => {
-                        if (lowerReason.includes(dkw.toLowerCase())) {
-                            score += dkw.length * 1.5;
-                        }
-                    });
+                rule.degrees.forEach((d) => {
+                    const degreeScore = scoreKeywordMatches(lowerReason, d.keywords || []);
+                    if (degreeScore > 0) {
+                        score += degreeScore * 1.5;
+                    }
                 });
             }
 
             if (score > 0) scores[cat] = score;
         }
 
-        const sortedCats = Object.entries(scores).sort((a, b) => b[1] - a[1]);
-        if (sortedCats.length > 0) {
-            category = sortedCats[0][0];
+        const bestCategory = pickBestScoredCategory(scores);
+        if (bestCategory) {
+            category = bestCategory;
         }
 
         return { category, degree, repeat };
@@ -488,9 +498,9 @@ export const CUKEngine = {
         }
 
         // 2. Otomatik hatalı anahtar kelime kontrolü
-        const lowerReason = reason.toLowerCase();
+        const lowerReason = normalizeMatchText(reason);
         for (const keyword of this.rules.autoInvalid.keywords) {
-            if (lowerReason.includes(keyword)) {
+            if (matchesKeyword(lowerReason, keyword)) {
                 return {
                     status: PenaltyStatus.INVALID,
                     reason: `Otomatik hatalı: "${keyword}" ifadesi tespit edildi`,
@@ -534,10 +544,11 @@ export const CUKEngine = {
                 note,
                 proofText,
                 typeof raw === 'string' ? raw : (raw && JSON.stringify(raw))
-            ].filter(Boolean).join(' ').toLowerCase();
+            ].filter(Boolean).join(' ');
 
+            const normalizedContext = normalizeMatchText(contextText);
             for (const d of rule.degrees) {
-                if (d.keywords && d.keywords.some(kw => contextText.includes(kw.toLowerCase()))) {
+                if (d.keywords && d.keywords.some((kw) => matchesKeyword(normalizedContext, kw))) {
                     matchedDegree = d.degree;
                     break;
                 }

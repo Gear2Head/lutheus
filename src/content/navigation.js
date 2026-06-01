@@ -85,56 +85,88 @@ window.GearTech.Navigation = {
         return ids.join('|');
     },
 
-    waitForPage: function (pageNumber, timeout = 8000, previousFirstCase = '', previousSignature = '') {
+    waitForPage: function (pageNumber, timeout = 8000, previousFirstCase = '', previousSignature = '', debounceMs = 300) {
         const target = Number(pageNumber);
         const start = Date.now();
         const initialFirstCase = previousFirstCase || this.getFirstCaseId();
         const initialSignature = previousSignature || this.getTableSignature();
+        const initialRowCount = this.getVisibleRowCount();
 
         return new Promise((resolve, reject) => {
             let observer;
-            
+            let debounceTimer = null;
+            let settled = false;
+            let fallbackInterval = null;
+
+            const cleanup = () => {
+                if (observer) observer.disconnect();
+                if (fallbackInterval) clearInterval(fallbackInterval);
+                if (debounceTimer) clearTimeout(debounceTimer);
+            };
+
             const evaluate = () => {
+                if (settled) return true;
+
                 const current = this.getCurrentPage();
                 const firstCase = this.getFirstCaseId();
                 const currentSignature = this.getTableSignature();
+                const currentRowCount = this.getVisibleRowCount();
                 const pageMatched = current === target;
 
-                // Robust check: signature changed, or first case ID changed, or table transitioned from empty to populated
-                const signatureChanged = initialSignature && currentSignature && currentSignature !== initialSignature;
-                const rowChanged = initialFirstCase && firstCase && firstCase !== initialFirstCase;
-                const initialWasEmptyAndNowHasData = !initialSignature && currentSignature;
+                const signatureChanged = Boolean(
+                    initialSignature && currentSignature && currentSignature !== initialSignature
+                );
+                const rowChanged = Boolean(
+                    initialFirstCase && firstCase && firstCase !== initialFirstCase
+                );
+                const initialWasEmptyAndNowHasData = !initialSignature && Boolean(currentSignature);
+                const rowCountChanged = currentRowCount !== initialRowCount && currentRowCount > 0;
+                const paginationReady = pageMatched && currentRowCount > 0;
 
-                if (pageMatched && (signatureChanged || rowChanged || initialWasEmptyAndNowHasData)) {
-                    if (observer) observer.disconnect();
-                    resolve({ current, firstCase, signature: currentSignature });
+                if (paginationReady && (signatureChanged || rowChanged || initialWasEmptyAndNowHasData || rowCountChanged)) {
+                    settled = true;
+                    resolve({ current, firstCase, signature: currentSignature, rowCount: currentRowCount });
                     return true;
                 }
                 return false;
             };
 
-            // Initial check
+            const scheduleEvaluate = () => {
+                if (debounceTimer) clearTimeout(debounceTimer);
+                debounceTimer = setTimeout(() => {
+                    if (evaluate()) {
+                        cleanup();
+                    }
+                }, debounceMs);
+            };
+
             if (evaluate()) return;
 
-            // Start MutationObserver for robust detection of DOM changes
             observer = new MutationObserver((mutations) => {
-                if (evaluate()) return;
+                const rowMutation = mutations.some((mutation) => {
+                    const targetNode = mutation.target;
+                    if (!targetNode || !targetNode.closest) return false;
+                    return Boolean(
+                        targetNode.closest('tbody, table, [role="table"], [role="row"], .row')
+                    );
+                });
+                if (rowMutation || mutations.length) {
+                    scheduleEvaluate();
+                }
             });
 
-            // Observe table container, tbody, or body for added rows
-            const container = document.querySelector('table, tbody, [role="table"]') || document.body;
+            const container = document.querySelector('table, tbody, [role="table"], [class*="pagination"]') || document.body;
             observer.observe(container, { childList: true, subtree: true, characterData: true });
 
-            // Fallback interval just in case mutations don't fire
-            const fallbackInterval = setInterval(() => {
-                if (evaluate()) {
-                    clearInterval(fallbackInterval);
-                } else if (Date.now() - start > timeout) {
-                    if (observer) observer.disconnect();
-                    clearInterval(fallbackInterval);
+            fallbackInterval = setInterval(() => {
+                scheduleEvaluate();
+                if (settled) return;
+                if (Date.now() - start > timeout) {
+                    settled = true;
+                    cleanup();
                     reject(new Error(`PAGE_NAV_TIMEOUT_${target}_CURRENT_${this.getCurrentPage()}`));
                 }
-            }, 300);
+            }, debounceMs);
         });
     },
 

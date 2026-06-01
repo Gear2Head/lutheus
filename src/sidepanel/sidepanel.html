@@ -15,6 +15,26 @@
     <!-- Toast Notification Container -->
     <div class="toast-container" id="toastContainer"></div>
 
+    <!-- Login Screen inside Sidepanel -->
+    <div id="sidepanel-login-view" class="hidden">
+        <div class="login-card glass-panel">
+            <div class="login-header">
+                <img src="../../favicon_shield.png" width="48" height="48" alt="Lutheus Logo" class="login-logo-glow">
+                <h2>Lutheus <span class="highlight">CezaRapor</span></h2>
+                <p>Eklentiyi kullanmak için giriş yapın.</p>
+            </div>
+            <div class="login-actions">
+                <button class="btn primary-btn full" id="btnSidepanelLogin" style="height: 44px; font-weight: 600;">
+                    <i class="fa-solid fa-right-to-bracket"></i>
+                    Giriş Ekranını Aç
+                </button>
+            </div>
+            <div class="login-footer-note">
+                Butona bastığınızda yeni bir tarayıcı sekmesinde güvenli giriş ekranı açılacaktır. Giriş tamamlandığında bu panel otomatik olarak yüklenecektir.
+            </div>
+        </div>
+    </div>
+
     <div class="app-layout">
         <!-- Sol İkon Menüsü -->
         <nav class="sidebar">
@@ -29,18 +49,17 @@
                 <button class="nav-btn" data-section="scan" title="Tarama Merkezi">
                     <i class="fa-solid fa-satellite-dish"></i>
                 </button>
-                <button class="nav-btn" data-section="stats" title="İstatistikler">
-                    <i class="fa-solid fa-chart-pie"></i>
+                <button class="nav-btn" id="btnOpenAdmin" title="Admin Paneli">
+                    <i class="fa-solid fa-gauge-high"></i>
                 </button>
-                <button class="nav-btn" data-section="pointtrain" title="Pointtrain">
-                    <i class="fa-solid fa-ranking-star"></i>
-                </button>
-                <button class="nav-btn" data-section="profile" title="Profil">
-                    <i class="fa-solid fa-user"></i>
-                </button>
-                <button class="nav-btn" data-section="settings" title="Ayarlar">
-                    <i class="fa-solid fa-gear"></i>
-                </button>
+            </div>
+
+            <!-- Hidden navigation elements to satisfy legacy JS bindings without layout presence -->
+            <div style="display: none !important;">
+                <button class="nav-btn" data-section="stats" title="İstatistikler"></button>
+                <button class="nav-btn" data-section="pointtrain" title="Pointtrain"></button>
+                <button class="nav-btn" data-section="profile" title="Profil"></button>
+                <button class="nav-btn" data-section="settings" title="Ayarlar"></button>
             </div>
 
             <div class="nav-footer">
@@ -104,6 +123,19 @@
                     </div>
                     <div class="card-image">
                         <i class="fa-solid fa-rocket"></i>
+                    </div>
+                </div>
+
+                <div class="card large-card" style="margin-top: 12px; background: linear-gradient(135deg, rgba(124, 58, 237, 0.15), rgba(17, 17, 21, 0.9)) !important;">
+                    <div class="card-content">
+                        <h2>Dashboard'a Git</h2>
+                        <p>Tüm analiz ve istatistikleri detaylı inceleyin.</p>
+                        <button class="btn primary-btn" id="btnOpenDashboardDirect">
+                            <i class="fa-solid fa-up-right-from-square"></i> Dashboard'u Aç
+                        </button>
+                    </div>
+                    <div class="card-image">
+                        <i class="fa-solid fa-gauge-high" style="color: var(--accent-primary);"></i>
                     </div>
                 </div>
 
@@ -215,6 +247,9 @@
                     </div>
                 </div>
             </section>
+
+            <!-- Hidden Legacy Sections to prevent DOM selector failures in sidepanel.js -->
+            <div style="display: none !important;">
 
             <!-- SECTION: STATS -->
             <section id="section-stats" class="view-section">
@@ -400,6 +435,8 @@
                     </div>
                 </div>
             </section>
+
+            </div> <!-- End of Hidden Legacy Sections -->
 
         </main>
     </div>

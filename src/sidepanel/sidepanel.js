@@ -964,6 +964,7 @@ function bindEvents() {
     DOM.btnAllTime?.addEventListener('click', () => applyScanPreset('all'));
     DOM.btnExport?.addEventListener('click', exportReport);
     DOM.btnOpenAdmin?.addEventListener('click', () => sendRuntimeMessage({ action: ACTIONS.OPEN_ADMIN }));
+    document.getElementById('btnOpenDashboardDirect')?.addEventListener('click', () => sendRuntimeMessage({ action: ACTIONS.OPEN_ADMIN }));
     DOM.btnLogout?.addEventListener('click', async () => {
         await AuthService.logout();
         AuthService.redirectToLogin(chrome.runtime.getURL('src/sidepanel/sidepanel.html'));
@@ -1038,8 +1039,41 @@ function bindEvents() {
 }
 
 async function init() {
-    state.session = await AuthService.requireSession({ returnTo: chrome.runtime.getURL('src/sidepanel/sidepanel.html') });
     Toast.init();
+
+    // Register storage change listener to reload sidepanel when session state updates
+    if (typeof chrome !== 'undefined' && chrome.storage?.onChanged) {
+        chrome.storage.onChanged.addListener((changes, areaName) => {
+            if (areaName === 'local' && changes.lutheusAuthSession) {
+                window.location.reload();
+            }
+        });
+    }
+
+    state.session = await AuthService.getSession();
+    const appLayout = document.querySelector('.app-layout');
+    const sidepanelLoginView = document.getElementById('sidepanel-login-view');
+    const btnSidepanelLogin = document.getElementById('btnSidepanelLogin');
+
+    if (!state.session) {
+        if (appLayout) appLayout.classList.add('hidden');
+        if (sidepanelLoginView) sidepanelLoginView.classList.remove('hidden');
+
+        if (btnSidepanelLogin) {
+            btnSidepanelLogin.addEventListener('click', () => {
+                if (typeof chrome !== 'undefined' && chrome.tabs?.create) {
+                    chrome.tabs.create({ url: chrome.runtime.getURL('src/auth/login.html') });
+                } else {
+                    window.open('/src/auth/login.html', '_blank');
+                }
+            });
+        }
+        return;
+    }
+
+    if (appLayout) appLayout.classList.remove('hidden');
+    if (sidepanelLoginView) sidepanelLoginView.classList.add('hidden');
+
     bindEvents();
     applyRoleVisibility();
     applyScanPreset('week');

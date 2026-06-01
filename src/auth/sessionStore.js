@@ -54,3 +54,8 @@ export function isSessionExpired(session, skewMs = 60_000) {
     if (!session?.expiresAt) return true;
     return Date.now() + skewMs >= Number(session.expiresAt);
 }
+
+export function isSessionNearExpiry(session, bufferMs = 5 * 60_000) {
+    if (!session?.expiresAt) return false;
+    return Date.now() + bufferMs >= Number(session.expiresAt);
+}

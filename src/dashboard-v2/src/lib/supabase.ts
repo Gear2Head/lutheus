@@ -1,0 +1,317 @@
+// ============================================================
+// Lutheus Supabase REST Client v2
+// Direct REST API calls — compatible with Chrome Extension CSP.
+// The anon key is safe for client-side use (RLS enforced on DB).
+// ============================================================
+
+import { validateCase } from './cukEngine';
+
+export const SUPABASE_URL = 'https://jxhzhaqqtlynbnntwpyu.supabase.co/rest/v1';
+export const SUPABASE_KEY =
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4aHpoYXFxdGx5bmJubnR3cHl1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk2NjMyMTcsImV4cCI6MjA5NTIzOTIxN30.BrmuT-QX_BkgV6SSlpNThfqSGmUDw0UffUW11agaBzI';
+
+// ---------- Types ----------
+
+export interface SapphireCase {
+  case_id: string;
+  guild_id: string;
+  type: string;
+  is_open: boolean;
+  punished_user_discord_id: string;
+  punished_user_display_name: string;
+  punished_user_avatar_url: string;
+  author_discord_id: string;
+  author_display_name: string;
+  author_avatar_url: string;
+  reason_raw: string;
+  reason_normalized: string;
+  duration_raw: string;
+  duration_ms: number;
+  is_permanent: boolean;
+  created_at_sapphire: string;
+  expires_at: string;
+  cuk_verdict: 'valid' | 'invalid' | 'pending';
+  cuk_analysis: { message: string; category: string; score: number } | null;
+  source_sync: string;
+  ai_validation_status?: string;
+  ai_validation_notes?: string;
+}
+
+export interface StaffProfile {
+  discord_id: string;
+  username: string;
+  role: string;
+  in_game_name: string;
+  status: 'ACTIVE' | 'INACTIVE';
+  created_at: string;
+  avatar_url?: string;
+}
+
+export interface AuditLog {
+  id: string;
+  actor_discord_id: string;
+  action: string;
+  target_id: string;
+  details: Record<string, unknown>;
+  created_at: string;
+}
+
+// ---------- Core fetch ----------
+
+let _userToken: string | null = null;
+
+export function setAuthToken(token: string | null) {
+  _userToken = token;
+}
+
+function buildHeaders(): Record<string, string> {
+  const token = _userToken || SUPABASE_KEY;
+  return {
+    apikey: SUPABASE_KEY,
+    Authorization: `Bearer ${token}`,
+    'Content-Type': 'application/json',
+    Prefer: 'return=representation',
+  };
+}
+
+export async function supabaseFetch<T = unknown>(
+  table: string,
+  method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
+  queryParams?: string,
+  body?: unknown,
+): Promise<T | null> {
+  const url = `${SUPABASE_URL}/${table}${queryParams ? `?${queryParams}` : ''}`;
+  const response = await fetch(url, {
+    method,
+    headers: buildHeaders(),
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+
+  if (response.status === 204) return null;
+
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(`Supabase ${method} ${table} failed: ${response.status} ${error}`);
+  }
+
+  return response.json() as Promise<T>;
+}
+
+export function enrichCaseWithCuk(c: SapphireCase): SapphireCase {
+  if (!c.cuk_verdict || c.cuk_verdict === 'pending') {
+    const analysis = validateCase(c.reason_raw, Math.round((c.duration_ms || 0) / 60000));
+    c.cuk_verdict = analysis.valid ? 'valid' : 'invalid';
+    c.cuk_analysis = {
+      message: analysis.message,
+      category: analysis.categoryMatched || 'Diğer',
+      score: analysis.score
+    };
+  }
+  return c;
+}
+
+// ---------- Cases ----------
+
+export async function getRecentCases(limit = 100): Promise<SapphireCase[]> {
+  const data = await supabaseFetch<SapphireCase[]>(
+    'sapphire_cases',
+    'GET',
+    `order=created_at_sapphire.desc&limit=${limit}`,
+  );
+  return (data || []).map(enrichCaseWithCuk);
+}
+
+export async function getCaseById(caseId: string): Promise<SapphireCase | null> {
+  const data = await supabaseFetch<SapphireCase[]>(
+    'sapphire_cases',
+    'GET',
+    `case_id=eq.${encodeURIComponent(caseId)}&limit=1`,
+  );
+  return data?.[0] ? enrichCaseWithCuk(data[0]) : null;
+}
+
+export async function updateCaseVerdict(
+  caseId: string,
+  verdict: 'valid' | 'invalid' | 'pending',
+  analysis?: { message: string; category: string; score: number },
+): Promise<void> {
+  await supabaseFetch(
+    'sapphire_cases',
+    'PATCH',
+    `case_id=eq.${encodeURIComponent(caseId)}`,
+    { cuk_verdict: verdict, ...(analysis ? { cuk_analysis: analysis } : {}) },
+  );
+}
+
+export async function bulkUpdateVerdict(
+  caseIds: string[],
+  verdict: 'valid' | 'invalid',
+): Promise<void> {
+  // Supabase REST bulk update: use IN filter
+  const ids = caseIds.map((id) => `"${id}"`).join(',');
+  await supabaseFetch(
+    'sapphire_cases',
+    'PATCH',
+    `case_id=in.(${ids})`,
+    { cuk_verdict: verdict },
+  );
+}
+
+// ---------- Staff ----------
+
+export async function getStaffProfiles(): Promise<StaffProfile[]> {
+  const data = await supabaseFetch<any[]>(
+    'staff_profiles',
+    'GET',
+    'order=discord_id.desc',
+  );
+  
+  if (!data) return [];
+  
+  return data.map((p) => ({
+    discord_id: p.discord_id,
+    username: p.display_name || p.username || p.discord_id,
+    role: p.staff_rank || 'discord_moderatoru',
+    in_game_name: p.display_name || p.username || p.discord_id,
+    status: p.is_active_staff ? 'ACTIVE' : 'INACTIVE',
+    created_at: p.created_at || new Date().toISOString(),
+    avatar_url: p.avatar_url || undefined
+  }));
+}
+
+export async function updateStaffProfile(
+  discordId: string,
+  updates: Partial<StaffProfile>,
+): Promise<void> {
+  const dbUpdates: Record<string, any> = {};
+  if (updates.in_game_name !== undefined || updates.username !== undefined) {
+    dbUpdates.display_name = updates.in_game_name ?? updates.username;
+  }
+  if (updates.role !== undefined) {
+    dbUpdates.staff_rank = updates.role;
+  }
+  if (updates.status !== undefined) {
+    dbUpdates.is_active_staff = updates.status === 'ACTIVE';
+  }
+  if (updates.avatar_url !== undefined) {
+    dbUpdates.avatar_url = updates.avatar_url;
+  }
+
+  // Update staff_profiles table
+  await supabaseFetch(
+    'staff_profiles',
+    'PATCH',
+    `discord_id=eq.${encodeURIComponent(discordId)}`,
+    dbUpdates,
+  );
+
+  // Mirror to role_cache if role or status was modified
+  if (updates.role !== undefined || updates.status !== undefined) {
+    const rcUpdates: Record<string, any> = {};
+    if (updates.role !== undefined) {
+      rcUpdates.staff_rank = updates.role;
+    }
+    if (updates.status !== undefined) {
+      rcUpdates.active = updates.status === 'ACTIVE';
+    }
+    rcUpdates.updated_at = new Date().toISOString();
+
+    try {
+      await supabaseFetch(
+        'role_cache',
+        'PATCH',
+        `discord_id=eq.${encodeURIComponent(discordId)}`,
+        rcUpdates,
+      );
+    } catch (err) {
+      console.warn('[Lutheus] Failed to mirror to role_cache:', err);
+    }
+  }
+}
+
+// ---------- Audit ----------
+
+export async function getAuditLogs(limit = 50): Promise<AuditLog[]> {
+  const data = await supabaseFetch<AuditLog[]>(
+    'audit_logs',
+    'GET',
+    `order=created_at.desc&limit=${limit}`,
+  );
+  return data || [];
+}
+
+export async function insertAuditLog(
+  actorId: string,
+  action: string,
+  targetId: string,
+  details: Record<string, unknown>,
+): Promise<void> {
+  await supabaseFetch('audit_logs', 'POST', '', {
+    actor_discord_id: actorId,
+    action,
+    target_id: targetId,
+    details,
+  });
+}
+
+// ---------- Local-first sync queue ----------
+// Cases captured locally by the extension are queued in chrome.storage
+// and flushed to Supabase either automatically or on demand.
+
+const LOCAL_CASES_KEY = 'cases';
+const SYNC_QUEUE_KEY = 'lutheusIngestQueue';
+
+function getLocal<T>(key: string): Promise<T | null> {
+  if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+    return new Promise((resolve) =>
+      chrome.storage.local.get([key], (r) => resolve((r[key] as T) || null)),
+    );
+  }
+  try {
+    const raw = localStorage.getItem(key);
+    return Promise.resolve(raw ? JSON.parse(raw) : null);
+  } catch {
+    return Promise.resolve(null);
+  }
+}
+
+/** Returns all cases that are locally cached by the extension scraper. */
+export async function getLocalCases(): Promise<SapphireCase[]> {
+  const raw = await getLocal<SapphireCase[]>(LOCAL_CASES_KEY);
+  return (raw || []).map(enrichCaseWithCuk);
+}
+
+/** Returns count of items pending sync to Supabase. */
+export async function getPendingSyncCount(): Promise<number> {
+  const queue = await getLocal<unknown[]>(SYNC_QUEUE_KEY);
+  return queue?.length || 0;
+}
+
+/** Trigger manual sync by messaging the service worker. */
+export function triggerManualSync(): Promise<{ synced: number; errors: number }> {
+  if (typeof chrome !== 'undefined' && chrome.runtime?.sendMessage) {
+    return new Promise((resolve, reject) => {
+      chrome.runtime.sendMessage(
+        { action: 'MANUAL_SYNC_FLUSH' },
+        (response) => {
+          if (chrome.runtime.lastError) {
+            reject(new Error(chrome.runtime.lastError.message));
+          } else {
+            resolve(response || { synced: 0, errors: 0 });
+          }
+        },
+      );
+    });
+  }
+  return Promise.resolve({ synced: 0, errors: 0 });
+}
+
+/** Fetch cases: prefers Supabase, falls back to local storage. */
+export async function getCases(limit = 100): Promise<SapphireCase[]> {
+  try {
+    return await getRecentCases(limit);
+  } catch {
+    console.warn('[Lutheus] Supabase unavailable, using local cases');
+    return getLocalCases();
+  }
+}

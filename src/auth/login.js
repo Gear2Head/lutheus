@@ -21,11 +21,12 @@ function setBusy(busy) {
 function postLogin(session) {
     const params = new URLSearchParams(window.location.search);
     const returnTo = sanitizeReturnTo(params.get('returnTo'));
-    const targetUrl = returnTo || AuthService.getPostLoginUrl(session);
 
     if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.getURL) {
-        window.location.href = chrome.runtime.getURL('src/sidepanel/sidepanel.html');
+        const target = returnTo ? chrome.runtime.getURL(returnTo) : chrome.runtime.getURL('src/dashboard-v2/dist/index.html');
+        window.location.href = target;
     } else {
+        const targetUrl = returnTo || AuthService.getPostLoginUrl(session);
         window.location.href = targetUrl || '/';
     }
 }

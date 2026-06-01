@@ -8,14 +8,23 @@ const DOM = {
     google: document.getElementById('btnGoogleLogin')
 };
 
+let _activeBtnEl = null;
+
 function setStatus(message, type = '') {
     DOM.status.className = `login-status ${type}`.trim();
     DOM.status.textContent = message || '';
 }
 
-function setBusy(busy) {
+function setBusy(busy, kind = null) {
     DOM.discord.disabled = busy;
     DOM.google.disabled = busy;
+    if (busy && kind) {
+        _activeBtnEl = kind === 'discord' ? DOM.discord : DOM.google;
+        _activeBtnEl.classList.add('is-loading');
+    } else if (_activeBtnEl) {
+        _activeBtnEl.classList.remove('is-loading');
+        _activeBtnEl = null;
+    }
 }
 
 function postLogin(session) {
@@ -41,7 +50,7 @@ function sanitizeReturnTo(value) {
 }
 
 async function loginWith(kind) {
-    setBusy(true);
+    setBusy(true, kind);
     setStatus(`${kind === 'discord' ? 'Discord' : 'Google'} doğrulanıyor...`);
     try {
         const session = kind === 'discord'

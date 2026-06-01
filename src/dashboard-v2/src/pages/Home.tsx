@@ -1,15 +1,15 @@
-import { useEffect, useState } from 'react';
-import { Users, Gavel, CheckCircle2, XCircle, Clock, TrendingUp, RefreshCw, Copy } from 'lucide-react';
+﻿import { useEffect, useState } from 'react';
+import { Users, Gavel, CheckCircle2, XCircle, TrendingUp, RefreshCw, Copy } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Card } from '../components/ui/Card';
 import { Skeleton } from '../components/ui/Skeleton';
 import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
-import { getCases, SapphireCase } from '../lib/supabase';
-import { validateCase, getReliabilityStatus } from '../lib/cukEngine';
-import { getRoleLabel, getRoleColor, hasPermission } from '../lib/auth';
-import { formatDate, relativeTime } from '../lib/utils';
+import { getCases, getStaffProfiles, SapphireCase, StaffProfile } from '../lib/supabase';
+import { getReliabilityStatus } from '../lib/cukEngine';
 import { useAuth } from '../contexts/AuthContext';
+import { resolveStaffAvatar, resolveStaffName } from '../lib/staffDisplay';
+import { useLanguage } from '../contexts/LanguageContext';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts';
@@ -27,25 +27,23 @@ interface StaffStat {
   trend: number[];
 }
 
-function formatModeratorName(name: string, discordId?: string): string {
-  if (!name) return discordId ? `Yetkili (${discordId.slice(-4)})` : 'Bilinmeyen Yetkili';
-  const clean = name.replace(/\(\)?/g, '').trim();
-  if (clean.toLowerCase().includes('unknown moderator') || clean.toLowerCase().includes('bilinmiyor')) {
-    return discordId ? `Yetkili (${discordId.slice(-4)})` : 'Bilinmeyen Yetkili';
-  }
-  return clean;
-}
-
-function buildStaffStats(cases: SapphireCase[]): StaffStat[] {
+// SECTION: STAFF_STAT_NORMALIZATION
+// PURPOSE: Case verisindeki gerÃ§ek yetkili adlarÄ±nÄ± generic profil fallback deÄŸerlerine tercih eder.
+function buildStaffStats(cases: SapphireCase[], staffProfiles: StaffProfile[], t: any): StaffStat[] {
   const map = new Map<string, StaffStat>();
+  const staffMap = new Map(staffProfiles.map(s => [s.discord_id, s]));
+
   for (const c of cases) {
     const id = c.author_discord_id;
     if (!map.has(id)) {
+      const profile = staffMap.get(id);
+      const role = profile?.role || 'discord_moderatoru';
+
       map.set(id, {
         discordId: id,
-        name: formatModeratorName(c.author_display_name, id),
-        avatar: c.author_avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${id}`,
-        role: 'discord_moderatoru',
+        name: resolveStaffName(profile, c, t('home.moderator')),
+        avatar: resolveStaffAvatar(profile, c, id),
+        role: role,
         total: 0, valid: 0, invalid: 0, pending: 0, accuracy: 0, trend: [],
       });
     }
@@ -78,15 +76,23 @@ function buildWeeklyChart(cases: SapphireCase[]) {
   }
   return Object.entries(days).map(([date, d]) => ({
     date: new Date(date).toLocaleDateString('tr-TR', { weekday: 'short' }),
-    Dogru: d.valid,
-    Hatali: d.invalid,
+    valid: d.valid,
+    invalid: d.invalid,
   }));
+}
+
+function translateReliability(status: string, t: (key: string) => string): string {
+  if (status === 'Guvenilir') return t('status.reliable');
+  if (status === 'Riskli') return t('status.risky');
+  return t('status.monitoring');
 }
 
 export default function Home() {
   const { session } = useAuth();
   const navigate = useNavigate();
+  const { t } = useLanguage();
   const [cases, setCases] = useState<SapphireCase[]>([]);
+  const [staffProfiles, setStaffProfiles] = useState<StaffProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -100,8 +106,12 @@ export default function Home() {
     else setLoading(true);
     setError(null);
     try {
-      const data = await getCases(200);
-      setCases(data);
+      const [casesData, staffData] = await Promise.all([
+        getCases(200),
+        getStaffProfiles()
+      ]);
+      setCases(casesData);
+      setStaffProfiles(staffData);
     } catch (e: any) {
       setError(e.message);
     } finally {
@@ -112,21 +122,21 @@ export default function Home() {
 
   useEffect(() => { loadData(); }, []);
 
-  const total = cases.length;
-  const valid = cases.filter((c) => c.cuk_verdict === 'valid').length;
-  const invalid = cases.filter((c) => c.cuk_verdict === 'invalid').length;
-  const pending = cases.filter((c) => c.cuk_verdict === 'pending').length;
-  const accuracy = total > 0 ? ((valid / total) * 100).toFixed(1) : '—';
-  const staffStats = buildStaffStats(cases);
+  const total = Math.max(cases.length, 0);
+  const valid = Math.max(cases.filter((c) => c.cuk_verdict === 'valid').length, 0);
+  const invalid = Math.max(cases.filter((c) => c.cuk_verdict === 'invalid').length, 0);
+  const pending = Math.max(total - valid - invalid, 0);
+  const accuracy = total > 0 ? ((valid / total) * 100).toFixed(1) : 'â€”';
+  const staffStats = buildStaffStats(cases, staffProfiles, t);
   const weeklyData = buildWeeklyChart(cases);
   const uniqueMods = staffStats.length;
 
   const generateReport = () => {
     const lines = staffStats.map((s, i) => {
       const status = getReliabilityStatus(s.valid, s.invalid);
-      return `${i + 1}. ${s.name} — Toplam: ${s.total} | Dogru: ${s.valid} | Hatali: ${s.invalid} | Dogruluk: %${s.accuracy} | ${status}`;
+      return `${i + 1}. ${s.name} â€” ${t('home.total')}: ${s.total} | ${t('pt.valid')}: ${s.valid} | ${t('pt.invalid')}: ${s.invalid} | ${t('home.accuracy')}: %${s.accuracy} | ${translateReliability(status, t)}`;
     });
-    const text = `Lutheus CezaRapor — Haftalık Rapor\n${'='.repeat(40)}\nToplam: ${total} | Dogrulanan: ${valid} | Hatalı: ${invalid} | Bekleyen: ${pending}\n\n${lines.join('\n')}`;
+    const text = `Lutheus CezaRapor â€” Report\n${'='.repeat(40)}\n${t('home.total')}: ${total} | ${t('pt.valid')}: ${valid} | ${t('pt.invalid')}: ${invalid} | ${t('pt.pending')}: ${pending}\n\n${lines.join('\n')}`;
     navigator.clipboard.writeText(text).catch(() => {});
   };
 
@@ -152,17 +162,17 @@ export default function Home() {
       {/* Header */}
       <div className="flex items-center justify-between pt-2">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">Genel Bakış</h2>
-          <p className="text-sm text-muted-foreground mt-0.5">Son {total} kayıt</p>
+          <h2 className="text-2xl font-bold tracking-tight">{t('home.title')}</h2>
+          <p className="text-sm text-muted-foreground mt-0.5">{t('home.subtitle').replace('{total}', String(total))}</p>
         </div>
         <div className="flex gap-2">
           {isMgmtOrSenior && (
             <Button variant="ghost" size="sm" onClick={generateReport} disabled={loading}>
-              <Copy className="w-3.5 h-3.5" /> Rapor Kopyala
+              <Copy className="w-3.5 h-3.5" /> {t('home.copyReport')}
             </Button>
           )}
           <Button variant="outline" size="sm" onClick={() => loadData(true)} disabled={refreshing}>
-            <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} /> Yenile
+            <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} /> {t('home.refresh')}
           </Button>
         </div>
       </div>
@@ -175,18 +185,19 @@ export default function Home() {
 
       {/* Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <StatCard icon={Gavel} label="Toplam Ceza" value={total} color="bg-secondary text-muted-foreground" />
-        <StatCard icon={CheckCircle2} label="Dogrulanmis" value={valid} sub={`%${accuracy} dogru`} color="bg-emerald-500/15 text-emerald-400" />
-        <StatCard icon={XCircle} label="Hatali" value={invalid} color="bg-destructive/15 text-destructive" />
-        <StatCard icon={Users} label="Aktif Yetkili" value={uniqueMods} color="bg-primary/15 text-primary" />
+        <StatCard icon={Gavel} label={t('home.statTotal')} value={total} color="bg-secondary text-muted-foreground" />
+        <StatCard icon={CheckCircle2} label={t('home.statValid')} value={valid} sub={`%${accuracy} ${t('pt.valid').toLowerCase()}`} color="bg-emerald-500/15 text-emerald-400" />
+        <StatCard icon={XCircle} label={t('home.statInvalid')} value={invalid} color="bg-destructive/15 text-destructive" />
+        <StatCard icon={Users} label={t('home.statActiveStaff')} value={uniqueMods} color="bg-primary/15 text-primary" />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* Weekly chart */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
+        {/* SECTION: HOME_WEEKLY_CHART */}
+        {/* PURPOSE: HaftalÄ±k doÄŸrulama grafiÄŸini dil baÄŸÄ±msÄ±z veri anahtarlarÄ±yla gÃ¶sterir. */}
         <Card className="lg:col-span-2 p-5">
           <div className="flex items-center justify-between mb-5">
             <h3 className="font-semibold text-sm text-foreground flex items-center gap-2">
-              <TrendingUp className="w-4 h-4 text-primary" /> Haftalık Trend
+              <TrendingUp className="w-4 h-4 text-primary" /> {t('home.weeklyTrend')}
             </h3>
           </div>
           {loading ? (
@@ -211,16 +222,17 @@ export default function Home() {
                   contentStyle={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, fontSize: 12 }}
                   labelStyle={{ color: 'var(--foreground)' }}
                 />
-                <Area type="monotone" dataKey="Dogru" stroke="#22c55e" strokeWidth={2} fill="url(#colorValid)" />
-                <Area type="monotone" dataKey="Hatali" stroke="#ef4444" strokeWidth={2} fill="url(#colorInvalid)" />
+                <Area type="monotone" dataKey="valid" name={t('pt.valid')} stroke="#22c55e" strokeWidth={2} fill="url(#colorValid)" />
+                <Area type="monotone" dataKey="invalid" name={t('pt.invalid')} stroke="#ef4444" strokeWidth={2} fill="url(#colorInvalid)" />
               </AreaChart>
             </ResponsiveContainer>
           )}
         </Card>
 
-        {/* Quick stats */}
-        <Card className="p-5">
-          <h3 className="font-semibold text-sm text-foreground mb-4">Durum Dagılımı</h3>
+        {/* SECTION: HOME_DISTRIBUTION */}
+        {/* PURPOSE: Durum daÄŸÄ±lÄ±mÄ±nÄ± kompakt yÃ¼kseklikte ve deterministik oranlarla gÃ¶sterir. */}
+        <Card className="p-5 self-start">
+          <h3 className="font-semibold text-sm text-foreground mb-4">{t('home.verdictDist')}</h3>
           {loading ? (
             <div className="space-y-3">
               {[1, 2, 3].map(i => <Skeleton key={i} className="h-4 w-full rounded-full" />)}
@@ -228,10 +240,10 @@ export default function Home() {
           ) : (
             <div className="space-y-4">
               {[
-                { label: 'Dogrulanmis', val: valid, total, color: 'bg-emerald-500' },
-                { label: 'Hatali', val: invalid, total, color: 'bg-destructive' },
-                { label: 'Bekleyen', val: pending, total, color: 'bg-amber-500' },
-              ].map(({ label, val, total: t, color }) => (
+                { label: t('home.statValid'), val: valid, total, color: 'bg-emerald-500' },
+                { label: t('home.statInvalid'), val: invalid, total, color: 'bg-destructive' },
+                { label: t('pt.pending'), val: pending, total, color: 'bg-amber-500' },
+              ].map(({ label, val, total: tVal, color }) => (
                 <div key={label}>
                   <div className="flex justify-between text-xs font-medium mb-1.5">
                     <span className="text-muted-foreground">{label}</span>
@@ -240,7 +252,7 @@ export default function Home() {
                   <div className="h-1.5 bg-secondary rounded-full overflow-hidden">
                     <div
                       className={`h-full rounded-full ${color} transition-all duration-700`}
-                      style={{ width: t > 0 ? `${(val / t) * 100}%` : '0%' }}
+                      style={{ width: tVal > 0 ? `${Math.min(100, Math.max(0, (val / tVal) * 100))}%` : '0%' }}
                     />
                   </div>
                 </div>
@@ -254,21 +266,21 @@ export default function Home() {
       <Card className="overflow-hidden">
         <div className="px-5 py-4 border-b border-border/50 flex items-center justify-between">
           <h3 className="font-semibold text-sm text-foreground flex items-center gap-2">
-            <Users className="w-4 h-4 text-primary" /> Yetkili Performansı
+            <Users className="w-4 h-4 text-primary" /> {t('home.staffPerf')}
           </h3>
-          <span className="text-xs text-muted-foreground">{uniqueMods} yetkili</span>
+          <span className="text-xs text-muted-foreground">{uniqueMods} {t('home.moderator').toLowerCase()}</span>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border/50">
                 <th className="py-3 px-5 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">#</th>
-                <th className="py-3 px-3 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Yetkili</th>
-                <th className="py-3 px-3 text-center text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Toplam</th>
-                <th className="py-3 px-3 text-center text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Dogru</th>
-                <th className="py-3 px-3 text-center text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Hatali</th>
-                <th className="py-3 px-3 text-center text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Dogruluk</th>
-                <th className="py-3 px-5 text-center text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Durum</th>
+                <th className="py-3 px-3 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">{t('home.moderator')}</th>
+                <th className="py-3 px-3 text-center text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">{t('home.total')}</th>
+                <th className="py-3 px-3 text-center text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">{t('pt.valid')}</th>
+                <th className="py-3 px-3 text-center text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">{t('pt.invalid')}</th>
+                <th className="py-3 px-3 text-center text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">{t('home.accuracy')}</th>
+                <th className="py-3 px-5 text-center text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">{t('home.status')}</th>
               </tr>
             </thead>
             <tbody>
@@ -287,13 +299,13 @@ export default function Home() {
                   </tr>
                 ))
               ) : staffStats.length === 0 ? (
-                <tr><td colSpan={7} className="py-12 text-center text-muted-foreground text-sm">Veri yok</td></tr>
+                <tr><td colSpan={7} className="py-12 text-center text-muted-foreground text-sm">{t('home.noData')}</td></tr>
               ) : staffStats.map((s, i) => {
                 const status = getReliabilityStatus(s.valid, s.invalid);
                 const statusVariant: any = status === 'Guvenilir' ? 'success' : status === 'Riskli' ? 'destructive' : 'warning';
                 return (
-                  <tr 
-                    key={s.discordId} 
+                  <tr
+                    key={s.discordId}
                     className="border-b border-border/30 hover:bg-secondary/20 cursor-pointer transition-colors"
                     onClick={() => navigate('/cases', { state: { search: s.name } })}
                   >
@@ -301,7 +313,7 @@ export default function Home() {
                     <td className="py-3 px-3">
                       <div className="flex items-center gap-2.5">
                         <img src={s.avatar} alt="" className="w-8 h-8 rounded-full bg-secondary shrink-0" />
-                        <span 
+                        <span
                           className="font-medium text-sm text-foreground hover:text-primary hover:underline cursor-pointer"
                           onClick={(e) => {
                             e.stopPropagation();
@@ -321,7 +333,7 @@ export default function Home() {
                       </span>
                     </td>
                     <td className="py-3 px-5 text-center">
-                      <Badge variant={statusVariant}>{status}</Badge>
+                      <Badge variant={statusVariant}>{translateReliability(status, t)}</Badge>
                     </td>
                   </tr>
                 );

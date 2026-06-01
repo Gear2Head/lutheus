@@ -14,11 +14,12 @@ import {
   Zap,
   HelpCircle,
   ExternalLink,
-  Bot
+  Bot,
+  Wifi
 } from "lucide-react";
 
 export default function GuildDashboardHomePage() {
-  const { selectedGuild, config, channels, roles, commands } = useBotDashboardStore();
+  const { selectedGuild, config, channels, roles, commands, runtimeStatus, recentActions, caseStats } = useBotDashboardStore();
 
   const activeModulesCount = config
     ? Object.values(config.modules).filter(Boolean).length
@@ -92,6 +93,30 @@ export default function GuildDashboardHomePage() {
         })}
       </div>
 
+      {/* SECTION: BOT_RUNTIME_STATUS */}
+      <div className="grid md:grid-cols-3 gap-5">
+        <div className="glass-panel p-5 rounded-2xl">
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-muted-foreground font-medium">Gateway</span>
+            <Wifi className={`w-5 h-5 ${runtimeStatus?.ready ? "text-emerald-400" : "text-red-400"}`} />
+          </div>
+          <h2 className="text-2xl font-bold text-white mt-2">{runtimeStatus?.ready ? "Online" : "Offline"}</h2>
+          <p className="text-[10px] text-muted-foreground mt-1">
+            {runtimeStatus?.latency_ms ? `${runtimeStatus.latency_ms} ms latency` : "Heartbeat bekleniyor"}
+          </p>
+        </div>
+        <div className="glass-panel p-5 rounded-2xl">
+          <span className="text-xs text-muted-foreground font-medium">Toplam Case</span>
+          <h2 className="text-2xl font-bold text-white mt-2">{caseStats?.total ?? 0}</h2>
+          <p className="text-[10px] text-muted-foreground mt-1">{caseStats?.invalidRecent?.length ?? 0} son hatali CUK kaydi</p>
+        </div>
+        <div className="glass-panel p-5 rounded-2xl">
+          <span className="text-xs text-muted-foreground font-medium">Son Aksiyon</span>
+          <h2 className="text-sm font-bold text-white mt-2">{recentActions[0]?.action || "Kayit yok"}</h2>
+          <p className="text-[10px] text-muted-foreground mt-1">{recentActions[0]?.status || "Dashboard aksiyonu bekleniyor"}</p>
+        </div>
+      </div>
+
       {/* Module Overview Section */}
       <div className="space-y-5">
         <div className="flex items-center justify-between">
@@ -105,7 +130,7 @@ export default function GuildDashboardHomePage() {
             return (
               <a
                 key={c.name}
-                href={`/bot/${selectedGuild?.id}/${c.href}`}
+                href={`/bot/${selectedGuild?.id}?tab=${c.href}`}
                 className="group p-6 bg-[#1f2833]/40 hover:bg-[#1f2833]/80 border border-[#2f3e46] hover:border-[#66fcf1]/40 rounded-2xl transition-all duration-300 flex items-start gap-5 hover:-translate-y-0.5"
               >
                 <div className="p-3 bg-[#1c2331] rounded-xl text-[#66fcf1] border border-[#2f3e46] group-hover:border-[#66fcf1]/30 transition-colors">

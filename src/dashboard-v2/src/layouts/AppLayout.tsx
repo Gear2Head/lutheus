@@ -7,44 +7,30 @@ import {
 import { cn } from '../lib/utils';
 import { useState, useRef, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { useLanguage } from '../contexts/LanguageContext';
 import { getRoleLabel, getRoleColor, getAvatarUrl } from '../lib/auth';
 import { getPendingSyncCount, triggerManualSync } from '../lib/supabase';
 
 const NAV_ITEMS = [
-  { icon: LayoutDashboard, label: 'Home', path: '/home' },
-  { icon: ShieldAlert, label: 'Cases', path: '/cases' },
-  { icon: Users, label: 'Staff', path: '/staff' },
-  { icon: Activity, label: 'Scan', path: '/scan' },
-  { icon: Zap, label: 'Pointtrain', path: '/pointtrain' },
-  { icon: BookOpen, label: 'CUK Editörü', path: '/rules' },
-  { icon: Bot, label: 'AI Agent', path: '/ai-agent' },
-  { icon: Shield, label: 'Erişim', path: '/access' },
+  { icon: LayoutDashboard, label: 'Home', path: '/home', translationKey: 'nav.home' },
+  { icon: ShieldAlert, label: 'Cases', path: '/cases', translationKey: 'nav.cases' },
+  { icon: Users, label: 'Staff', path: '/staff', translationKey: 'nav.staff' },
+  { icon: Activity, label: 'Scan', path: '/scan', translationKey: 'nav.scan' },
+  { icon: Zap, label: 'Pointtrain', path: '/pointtrain', translationKey: 'nav.pointtrain' },
+  { icon: BookOpen, label: 'CUK Editörü', path: '/rules', translationKey: 'nav.rules' },
+  { icon: Bot, label: 'AI Agent', path: '/ai-agent', translationKey: 'nav.ai-agent' },
+  { icon: Shield, label: 'Erişim', path: '/access', translationKey: 'nav.access' },
 ];
 
 export default function AppLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const { session, logout, loading } = useAuth();
+  const { t, language } = useLanguage();
   const [profileOpen, setProfileOpen] = useState(false);
   const [pendingSync, setPendingSync] = useState(0);
   const [syncing, setSyncing] = useState(false);
   const profileRef = useRef<HTMLDivElement>(null);
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-screen w-screen bg-background">
-        <div className="flex gap-1.5">
-          {[0, 150, 300].map((d) => (
-            <div
-              key={d}
-              className="w-2 h-2 rounded-full bg-primary animate-bounce"
-              style={{ animationDelay: `${d}ms` }}
-            />
-          ))}
-        </div>
-      </div>
-    );
-  }
 
   const isAuthorized = (path: string) => {
     const role = session?.role?.toLowerCase() || '';
@@ -65,19 +51,19 @@ export default function AppLayout() {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
       if ((window as any).__lutheus_is_dirty) {
         e.preventDefault();
-        e.returnValue = 'Kaydedilmemiş değişiklikleriniz var. Sayfadan ayrılmak istediğinize emin misiniz?';
+        e.returnValue = language === 'tr' ? 'Kaydedilmemiş değişiklikleriniz var. Sayfadan ayrılmak istediğinize emin misiniz?' : 'You have unsaved changes. Are you sure you want to leave?';
         return e.returnValue;
       }
     };
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-  }, []);
+  }, [language]);
 
   const handleNavClick = (e: React.MouseEvent<HTMLAnchorElement>, path: string) => {
     if ((window as any).__lutheus_is_dirty) {
       e.preventDefault();
       window.dispatchEvent(new CustomEvent('lutheus-dirty-navigate', { detail: { path } }));
-      alert('Lütfen kaydetmediğiniz değişiklikleri kaydetmeden veya iptal etmeden sayfadan ayrılmayın!');
+      alert(language === 'tr' ? 'Lütfen kaydetmediğiniz değişiklikleri kaydetmeden veya iptal etmeden sayfadan ayrılmayın!' : 'Please save or cancel your unsaved changes before leaving this page!');
     }
   };
 
@@ -99,6 +85,22 @@ export default function AppLayout() {
     return () => clearInterval(interval);
   }, []);
 
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-screen w-screen bg-background">
+        <div className="flex gap-1.5">
+          {[0, 150, 300].map((d) => (
+            <div
+              key={d}
+              className="w-2 h-2 rounded-full bg-primary animate-bounce"
+              style={{ animationDelay: `${d}ms` }}
+            />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   const handleSync = async () => {
     setSyncing(true);
     try {
@@ -110,9 +112,9 @@ export default function AppLayout() {
   };
 
   const getPageTitle = () => {
-    const all = [...NAV_ITEMS, { label: 'Settings', path: '/settings' }];
+    const all = [...NAV_ITEMS, { label: 'Settings', path: '/settings', translationKey: 'nav.settings' }];
     const item = all.find((n) => location.pathname.startsWith(n.path));
-    return item?.label || 'Dashboard';
+    return item ? t(item.translationKey) : 'Dashboard';
   };
 
   // Block dashboard access entirely for Former Staff (eski_yetkili) or Blocked (blocked) role
@@ -125,18 +127,18 @@ export default function AppLayout() {
             <ShieldAlert className="w-8 h-8" />
           </div>
           <div className="space-y-2">
-            <h1 className="text-2xl font-bold tracking-tight text-foreground">Erişim Engellendi</h1>
+            <h1 className="text-2xl font-bold tracking-tight text-foreground">{t('nav.accessDenied')}</h1>
             <p className="text-sm text-muted-foreground">
               {userRole === 'blocked' 
-                ? 'Hesabınız engellendiği için moderasyon paneline erişim izniniz bulunmamaktadır.'
-                : 'Eski yetkili rütbesine sahip olduğunuz için moderasyon paneline erişim izniniz bulunmamaktadır.'}
+                ? (language === 'tr' ? 'Hesabınız engellendiği için moderasyon paneline erişim izniniz bulunmamaktadır.' : 'You do not have permission to access the moderation panel because your account has been blocked.')
+                : (language === 'tr' ? 'Eski yetkili rütbesine sahip olduğunuz için moderasyon paneline erişim izniniz bulunmamaktadır.' : 'You do not have permission to access the moderation panel because you have the Former Staff role.')}
             </p>
           </div>
           <button
             onClick={() => logout()}
             className="w-full flex items-center justify-center gap-2 h-11 px-4 rounded-[14px] bg-destructive text-destructive-foreground font-semibold hover:bg-destructive/90 transition-colors shadow-lg shadow-destructive/20"
           >
-            <LogOut className="w-4 h-4" /> Çıkış Yap
+            <LogOut className="w-4 h-4" /> {t('nav.logout')}
           </button>
         </div>
       </div>
@@ -173,14 +175,14 @@ export default function AppLayout() {
           <div className="mx-4 mb-2 px-3 py-2 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <WifiOff className="w-3.5 h-3.5 text-amber-400" />
-              <span className="text-[11px] font-semibold text-amber-400">{pendingSync} bekleyen</span>
+              <span className="text-[11px] font-semibold text-amber-400">{pendingSync} {t('nav.pending')}</span>
             </div>
             <button
               onClick={handleSync}
               disabled={syncing}
               className="text-[10px] font-bold text-amber-400 hover:text-amber-300 transition-colors disabled:opacity-50"
             >
-              {syncing ? '...' : 'Senkronize'}
+              {syncing ? '...' : t('nav.sync')}
             </button>
           </div>
         )}
@@ -204,7 +206,7 @@ export default function AppLayout() {
                 }
               >
                 <Icon className="w-4 h-4 shrink-0" />
-                {item.label}
+                {t(item.translationKey)}
               </NavLink>
             );
           })}
@@ -218,7 +220,7 @@ export default function AppLayout() {
                 onClick={() => {
                   if ((window as any).__lutheus_is_dirty) {
                     window.dispatchEvent(new CustomEvent('lutheus-dirty-navigate'));
-                    alert('Lütfen kaydetmediğiniz değişiklikleri kaydetmeden veya iptal etmeden sayfadan ayrılmayın!');
+                    alert(language === 'tr' ? 'Lütfen kaydetmediğiniz değişiklikleri kaydetmeden veya iptal etmeden sayfadan ayrılmayın!' : 'Please save or cancel your unsaved changes before leaving this page!');
                     return;
                   }
                   navigate('/staff', { state: { staffId: session?.profile?.discordId } });
@@ -226,13 +228,13 @@ export default function AppLayout() {
                 }}
                 className="w-full flex items-center gap-3 px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-secondary/60 hover:text-foreground rounded-xl transition-colors text-left"
               >
-                <User className="w-4 h-4" /> Profil Detayları
+                <User className="w-4 h-4" /> {t('nav.profile')}
               </button>
               <button
                 onClick={() => {
                   if ((window as any).__lutheus_is_dirty) {
                     window.dispatchEvent(new CustomEvent('lutheus-dirty-navigate'));
-                    alert('Lütfen kaydetmediğiniz değişiklikleri kaydetmeden veya iptal etmeden sayfadan ayrılmayın!');
+                    alert(language === 'tr' ? 'Lütfen kaydetmediğiniz değişiklikleri kaydetmeden veya iptal etmeden sayfadan ayrılmayın!' : 'Please save or cancel your unsaved changes before leaving this page!');
                     return;
                   }
                   navigate('/settings');
@@ -240,7 +242,7 @@ export default function AppLayout() {
                 }}
                 className="w-full flex items-center gap-3 px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-secondary/60 hover:text-foreground rounded-xl transition-colors text-left mt-0.5"
               >
-                <SettingsIcon className="w-4 h-4" /> Ayarlar
+                <SettingsIcon className="w-4 h-4" /> {t('nav.settings')}
               </button>
               <button
                 onClick={() => {
@@ -249,7 +251,7 @@ export default function AppLayout() {
                 }}
                 className="w-full flex items-center gap-3 px-3 py-2 text-sm font-medium text-destructive hover:bg-destructive/10 rounded-xl transition-colors text-left mt-0.5"
               >
-                <LogOut className="w-4 h-4" /> Çıkış Yap
+                <LogOut className="w-4 h-4" /> {t('nav.logout')}
               </button>
             </div>
           )}
@@ -285,7 +287,7 @@ export default function AppLayout() {
                 ? <WifiOff className="w-3 h-3 text-amber-400" />
                 : <Wifi className="w-3 h-3 text-emerald-400" />}
               <span className="text-[11px] font-medium text-muted-foreground">
-                {pendingSync > 0 ? `${pendingSync} bekleyen` : 'Senkronize'}
+                {pendingSync > 0 ? `${pendingSync} ${t('nav.pending')}` : t('nav.synced')}
               </span>
               {pendingSync > 0 && (
                 <button onClick={handleSync} disabled={syncing} className="ml-1">
@@ -298,7 +300,7 @@ export default function AppLayout() {
               <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
               <input
                 type="text"
-                placeholder="Ara..."
+                placeholder={t('nav.search')}
                 className="h-9 w-full rounded-[12px] bg-card border border-border/50 pl-9 pr-3 text-sm focus:outline-none focus:ring-1 focus:ring-primary/40 transition-all placeholder:text-muted-foreground"
               />
             </div>
@@ -318,9 +320,9 @@ export default function AppLayout() {
                     <div className="mx-auto w-12 h-12 rounded-xl bg-destructive/10 border border-destructive/20 flex items-center justify-center text-destructive">
                       <ShieldAlert className="w-6 h-6" />
                     </div>
-                    <h2 className="text-xl font-bold">Yetkisiz Erişim</h2>
+                    <h2 className="text-xl font-bold">{t('nav.unauthorized')}</h2>
                     <p className="text-sm text-muted-foreground max-w-sm">
-                      Bu sayfadaki verilere ve işlemlere erişim yetkiniz bulunmamaktadır. Lütfen yönetim ile iletişime geçin.
+                      {t('nav.unauthorizedDesc')}
                     </p>
                   </div>
                 );

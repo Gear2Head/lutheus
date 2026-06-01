@@ -13,18 +13,10 @@ import { validateCase, getReliabilityStatus, calculatePerformanceScore } from '.
 import { getRoleLabel, getRoleColor, hasPermission } from '../lib/auth';
 import { formatDate } from '../lib/utils';
 import { useAuth } from '../contexts/AuthContext';
+import { formatStaffName, isGenericStaffName, resolveStaffAvatar, resolveStaffName } from '../lib/staffDisplay';
 
 function getDrawerPosition(): 'right' | 'center' {
   return (localStorage.getItem('panelStyle') || 'side') === 'center' ? 'center' : 'right';
-}
-
-function formatModeratorName(name: string, discordId?: string): string {
-  if (!name) return discordId ? `Yetkili (${discordId.slice(-4)})` : 'Bilinmeyen Yetkili';
-  const clean = name.replace(/\(\)?/g, '').trim();
-  if (clean.toLowerCase().includes('unknown moderator') || clean.toLowerCase().includes('bilinmiyor')) {
-    return discordId ? `Yetkili (${discordId.slice(-4)})` : 'Bilinmeyen Yetkili';
-  }
-  return clean;
 }
 
 interface StaffWithStats {
@@ -87,14 +79,21 @@ export default function Staff() {
     return () => window.removeEventListener('lutheus-dirty-navigate', handleDirtyNav);
   }, []);
 
+  // SECTION: STAFF_PROFILE_SYNC
+  // PURPOSE: Eksik veya generic isimli yetkili profillerini gerçek case adı ve avatarı ile eşitler.
   const syncMissingProfiles = async (casesList: SapphireCase[], profilesList: StaffProfile[]) => {
-    const existingIds = new Set(profilesList.map(p => p.discord_id));
+    const existingProfiles = new Map(profilesList.map(p => [p.discord_id, p]));
     const missingProfiles: { discord_id: string, display_name: string, staff_rank: string, is_active_staff: boolean }[] = [];
+    const profileUpdates: { discord_id: string; display_name?: string; avatar_url?: string }[] = [];
     
     for (const c of casesList) {
       const id = c.author_discord_id;
-      if (id && !existingIds.has(id)) {
-        const displayName = formatModeratorName(c.author_display_name || id, id);
+      if (!id) continue;
+      const displayName = formatStaffName(c.author_display_name, id);
+      const hasRealCaseName = !isGenericStaffName(c.author_display_name, id);
+      const existing = existingProfiles.get(id);
+
+      if (!existing) {
         if (!missingProfiles.some(mp => mp.discord_id === id)) {
           missingProfiles.push({
             discord_id: id,
@@ -103,11 +102,22 @@ export default function Staff() {
             is_active_staff: true
           });
         }
+        continue;
+      }
+
+      const needsName = hasRealCaseName && isGenericStaffName(existing.in_game_name || existing.username, id);
+      const needsAvatar = Boolean(c.author_avatar_url && !existing.avatar_url);
+      if ((needsName || needsAvatar) && !profileUpdates.some((item) => item.discord_id === id)) {
+        profileUpdates.push({
+          discord_id: id,
+          ...(needsName ? { display_name: displayName } : {}),
+          ...(needsAvatar ? { avatar_url: c.author_avatar_url } : {}),
+        });
       }
     }
     
-    if (missingProfiles.length > 0) {
-      console.log(`[Lutheus] Syncing ${missingProfiles.length} missing staff profiles...`);
+    if (missingProfiles.length > 0 || profileUpdates.length > 0) {
+      console.log(`[Lutheus] Syncing ${missingProfiles.length + profileUpdates.length} staff profiles...`);
       await Promise.all(missingProfiles.map(async (mp) => {
         try {
           await supabaseFetch('staff_profiles', 'POST', '', {
@@ -119,6 +129,16 @@ export default function Staff() {
           });
         } catch (err) {
           console.warn('[Lutheus] Profile sync failed for', mp.discord_id, err);
+        }
+      }));
+      await Promise.all(profileUpdates.map(async (update) => {
+        try {
+          const body: Record<string, any> = { updated_at: new Date().toISOString() };
+          if (update.display_name) body.display_name = update.display_name;
+          if (update.avatar_url) body.avatar_url = update.avatar_url;
+          await supabaseFetch('staff_profiles', 'PATCH', `discord_id=eq.${encodeURIComponent(update.discord_id)}`, body);
+        } catch (err) {
+          console.warn('[Lutheus] Profile update failed for', update.discord_id, err);
         }
       }));
       // Reload profiles list
@@ -164,7 +184,7 @@ export default function Staff() {
       map.set(p.discord_id, {
         profile: p,
         discordId: p.discord_id,
-        name: formatModeratorName(p.in_game_name || p.username || p.discord_id, p.discord_id),
+        name: resolveStaffName(p, null),
         avatar: p.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${p.discord_id}`,
         role: p.role,
         total: 0, valid: 0, invalid: 0, pending: 0, accuracy: 0, score: 0,
@@ -181,8 +201,8 @@ export default function Staff() {
         map.set(id, {
           profile: null,
           discordId: id,
-          name: formatModeratorName(c.author_display_name || id, id),
-          avatar: c.author_avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${id}`,
+          name: resolveStaffName(null, c),
+          avatar: resolveStaffAvatar(null, c, id),
           role: 'discord_moderatoru',
           total: 0, valid: 0, invalid: 0, pending: 0, accuracy: 0, score: 0,
           reliability: 'Bekleyen',
@@ -191,12 +211,11 @@ export default function Staff() {
       }
       const s = map.get(id)!;
       // Sync names from cases when profile is missing or display name is fallback
-      const currentNameClean = s.name.toLowerCase();
-      if ((currentNameClean === id.toLowerCase() || currentNameClean.startsWith('yetkili (') || currentNameClean === 'bilinmeyen yetkili') && c.author_display_name) {
-        const candidate = formatModeratorName(c.author_display_name, id);
-        if (!candidate.toLowerCase().startsWith('yetkili (') && candidate.toLowerCase() !== 'bilinmeyen yetkili') {
-          s.name = candidate;
-        }
+      if (isGenericStaffName(s.name, id) && !isGenericStaffName(c.author_display_name, id)) {
+        s.name = formatStaffName(c.author_display_name, id);
+      }
+      if (c.author_avatar_url && s.avatar.includes('dicebear.com')) {
+        s.avatar = c.author_avatar_url;
       }
       s.total++;
       if (c.cuk_verdict === 'valid') s.valid++;

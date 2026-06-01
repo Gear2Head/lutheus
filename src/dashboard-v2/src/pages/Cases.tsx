@@ -14,21 +14,13 @@ import { useAuth } from '../contexts/AuthContext';
 import { hasPermission } from '../lib/auth';
 import { formatDate, minutesToHuman, relativeTime, parseDateSafe } from '../lib/utils';
 import { useToast } from '../contexts/ToastContext';
+import { resolveStaffName } from '../lib/staffDisplay';
 
 type Verdict = 'all' | 'valid' | 'invalid' | 'pending';
 type Period = 'all' | 'today' | 'week' | 'month';
 
 function getDrawerPosition(): 'right' | 'center' {
   return (localStorage.getItem('panelStyle') || 'side') === 'center' ? 'center' : 'right';
-}
-
-function formatModeratorName(name: string, discordId?: string): string {
-  if (!name) return discordId ? `Yetkili (${discordId.slice(-4)})` : 'Bilinmeyen Yetkili';
-  const clean = name.replace(/\(\)?/g, '').trim();
-  if (clean.toLowerCase().includes('unknown moderator') || clean.toLowerCase().includes('bilinmiyor')) {
-    return discordId ? `Yetkili (${discordId.slice(-4)})` : 'Bilinmeyen Yetkili';
-  }
-  return clean;
 }
 
 function getPenaltyIcon(type: string) {
@@ -109,8 +101,10 @@ export default function Cases() {
 
   const getModName = (discordId: string, defaultName: string) => {
     const profile = staffMap.get(discordId);
-    if (profile?.username) return profile.username;
-    return formatModeratorName(defaultName, discordId);
+    return resolveStaffName(profile, {
+      author_discord_id: discordId,
+      author_display_name: defaultName,
+    } as SapphireCase);
   };
 
   useEffect(() => { loadData(); }, []);
@@ -172,13 +166,13 @@ export default function Cases() {
         // Search Filter
         if (search) {
           const s = search.toLowerCase();
-          const authorName = formatModeratorName(c.author_display_name, c.author_discord_id).toLowerCase();
+          const authorName = getModName(c.author_discord_id, c.author_display_name).toLowerCase();
           const authorId = (c.author_discord_id || '').toLowerCase();
           const targetName = (c.punished_user_display_name || '').toLowerCase();
           const targetId = (c.punished_user_discord_id || '').toLowerCase();
           const reason = (c.reason_raw || '').toLowerCase();
           
-          const match = c.case_id.toLowerCase().includes(s)
+          const match = (c.case_id || '').toLowerCase().includes(s)
             || authorName.includes(s)
             || authorId.includes(s)
             || targetName.includes(s)

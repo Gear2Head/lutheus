@@ -2,7 +2,17 @@
 // PURPOSE: Global React state management using Zustand for managing current guild, config changes, dirty state, loading, and menu toggles.
 
 import { create } from "zustand";
-import { DashboardGuild, GuildChannel, GuildRole, GuildCommand, GuildConfig } from "../lib/discord/types";
+import {
+  BotActionAudit,
+  BotAuditLog,
+  BotCaseStats,
+  BotRuntimeStatus,
+  DashboardGuild,
+  GuildChannel,
+  GuildRole,
+  GuildCommand,
+  GuildConfig
+} from "../lib/discord/types";
 import { discordDashboardApi } from "../lib/discord/api";
 
 interface ToastState {
@@ -22,7 +32,11 @@ interface BotDashboardState {
   commands: GuildCommand[];
   isConfigLoading: boolean;
   isSaving: boolean;
-  isMockMode: boolean;
+  loadError: string | null;
+  runtimeStatus: BotRuntimeStatus | null;
+  recentActions: BotActionAudit[];
+  auditLogs: BotAuditLog[];
+  caseStats: BotCaseStats | null;
   sidebarCollapsed: boolean;
   dirty: boolean;
   toast: ToastState;
@@ -32,7 +46,7 @@ interface BotDashboardState {
   selectGuild: (guildId: string) => Promise<void>;
   updateConfig: (updater: (prev: GuildConfig) => GuildConfig) => void;
   saveConfig: () => Promise<void>;
-  triggerBotAction: (action: string, payload?: any) => Promise<{ success: boolean; message?: string }>;
+  triggerBotAction: (action: string, payload?: Record<string, unknown>) => Promise<{ success: boolean; message?: string; actionId?: string }>;
   setSidebarCollapsed: (collapsed: boolean) => void;
   showToast: (message: string, type?: "success" | "error" | "info") => void;
   hideToast: () => void;
@@ -50,7 +64,11 @@ export const useBotDashboardStore = create<BotDashboardState>((set, get) => ({
   commands: [],
   isConfigLoading: false,
   isSaving: false,
-  isMockMode: false,
+  loadError: null,
+  runtimeStatus: null,
+  recentActions: [],
+  auditLogs: [],
+  caseStats: null,
   sidebarCollapsed: false,
   dirty: false,
   toast: { message: "", type: "info", visible: false },
@@ -58,8 +76,8 @@ export const useBotDashboardStore = create<BotDashboardState>((set, get) => ({
   fetchGuilds: async () => {
     set({ isGuildsLoading: true });
     try {
-      const { guilds, isMock } = await discordDashboardApi.fetchGuilds();
-      set({ guilds, isMockMode: isMock });
+      const { guilds } = await discordDashboardApi.fetchGuilds();
+      set({ guilds, loadError: null });
       
       // Auto-select first manageable guild if none is selected
       if (guilds.length > 0 && !get().selectedGuild) {
@@ -69,6 +87,7 @@ export const useBotDashboardStore = create<BotDashboardState>((set, get) => ({
         }
       }
     } catch (err) {
+      set({ loadError: err instanceof Error ? err.message : "Sunucular yuklenemedi" });
       get().showToast("Sunucular yüklenirken bir hata oluştu", "error");
     } finally {
       set({ isGuildsLoading: false });
@@ -87,9 +106,14 @@ export const useBotDashboardStore = create<BotDashboardState>((set, get) => ({
         channels: data.channels,
         roles: data.roles,
         commands: data.commands,
-        isMockMode: get().isMockMode || data.isMock || false,
+        runtimeStatus: data.runtimeStatus,
+        recentActions: data.recentActions,
+        auditLogs: data.auditLogs,
+        caseStats: data.caseStats,
+        loadError: null,
       });
     } catch (err) {
+      set({ loadError: err instanceof Error ? err.message : "Sunucu ayarlari yuklenemedi" });
       get().showToast("Sunucu ayarları yüklenemedi", "error");
     } finally {
       set({ isConfigLoading: false });

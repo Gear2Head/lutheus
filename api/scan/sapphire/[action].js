@@ -406,7 +406,7 @@ async function upsertStaffProfilesForIngest(dedupedCases) {
     const authorIds = Array.from(staffProfiles.keys());
     const { data: existingProfiles, error: existingProfilesError } = await supabase
         .from('staff_profiles')
-        .select('discord_id, staff_rank, permission_group, permission_level')
+        .select('discord_id, staff_rank, permission_group, permission_level, is_active_staff')
         .in('discord_id', authorIds);
 
     if (existingProfilesError) {
@@ -425,7 +425,8 @@ async function upsertStaffProfilesForIngest(dedupedCases) {
             ...p,
             staff_rank: existing.staff_rank || p.staff_rank,
             permission_group: existing.permission_group || p.permission_group,
-            permission_level: existing.permission_level !== undefined ? existing.permission_level : p.permission_level
+            permission_level: existing.permission_level !== undefined ? existing.permission_level : p.permission_level,
+            is_active_staff: existing.is_active_staff !== undefined ? existing.is_active_staff : p.is_active_staff
         };
     });
 

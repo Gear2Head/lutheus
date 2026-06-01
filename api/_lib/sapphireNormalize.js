@@ -23,6 +23,53 @@ function isDiscordId(value) {
     return /^\d{17,20}$/.test(safeString(value));
 }
 
+function parseDurationText(durationStr) {
+    if (durationStr === null || durationStr === undefined || durationStr === '') return null;
+    if (typeof durationStr === 'number') return durationStr;
+
+    let str = String(durationStr).toLowerCase().trim();
+
+    const index = str.search(/\b(in|kalan)\b/i);
+    if (index !== -1) {
+        str = str.substring(0, index).trim();
+    }
+    str = str.replace(/\s*\(\s*$/, '').trim();
+
+    if (str.includes('süresiz') || str.includes('perma') || str.includes('sonsuz') || str.includes('perm') || str.includes('belirsiz') || str.includes('kalıcı') || str.includes('kalici') || str.includes('permanent')) {
+        return Infinity;
+    }
+
+    const patterns = [
+        { regex: /(\d+)\s*(saniye|sec|seconds?|sn|s)(?![a-zA-ZçğıöşüÇĞIÖŞÜ])/i, multiplier: 1 / 60 },
+        { regex: /(\d+)\s*(dakika|min|minutes?|dk|m)(?![a-zA-ZçğıöşüÇĞIÖŞÜ])/i, multiplier: 1 },
+        { regex: /(\d+)\s*(saat|hours?|hour|sa|h)(?![a-zA-ZçğıöşüÇĞIÖŞÜ])/i, multiplier: 60 },
+        { regex: /(\d+)\s*(gün|gun|days?|day|g|d)(?![a-zA-ZçğıöşüÇĞIÖŞÜ])/i, multiplier: 60 * 24 },
+        { regex: /(\d+)\s*(hafta|weeks?|week|hf|w)(?![a-zA-ZçğıöşüÇĞIÖŞÜ])/i, multiplier: 60 * 24 * 7 },
+        { regex: /(\d+)\s*(ay|months?|month)(?![a-zA-ZçğıöşüÇĞIÖŞÜ])/i, multiplier: 60 * 24 * 30 },
+        { regex: /(\d+)\s*(yıl|yil|sene|years?|year|y)(?![a-zA-ZçğıöşüÇĞIÖŞÜ])/i, multiplier: 60 * 24 * 365 }
+    ];
+
+    let totalMinutes = 0;
+    let found = false;
+
+    for (const { regex, multiplier } of patterns) {
+        const matches = str.match(new RegExp(regex.source, 'gi'));
+        if (matches) {
+            for (const match of matches) {
+                const numMatch = match.match(/\d+/);
+                if (numMatch) {
+                    totalMinutes += parseInt(numMatch[0], 10) * multiplier;
+                    found = true;
+                }
+            }
+        }
+    }
+
+    if (str.includes('99 year') || str.includes('99 yıl') || str.includes('99 sene') || str.includes('99y')) return Infinity;
+
+    return found ? totalMinutes : null;
+}
+
 function isLikelyWrongReason(reason) {
     const text = String(reason || '').trim();
     if (!text) return true;
@@ -148,9 +195,40 @@ function normalizeCase(item, guildId) {
     }
     if (!createdAt && createdRaw) {
         try {
-            const parsed = new Date(createdRaw);
-            if (!isNaN(parsed.getTime())) {
-                createdAt = parsed.toISOString();
+            const dateStr = String(createdRaw).trim();
+            if (dateStr.includes('-')) {
+                const d = new Date(dateStr);
+                if (!isNaN(d.getTime())) {
+                    createdAt = d.toISOString();
+                }
+            }
+            if (!createdAt) {
+                const dotParts = dateStr.split('.');
+                if (dotParts.length >= 3) {
+                    const day = parseInt(dotParts[0], 10);
+                    const month = parseInt(dotParts[1], 10) - 1; // 0-indexed month
+                    const yearPart = dotParts[2].trim();
+                    let year = yearPart.split(' ')[0];
+                    const yearNum = parseInt(year, 10);
+                    const timePart = yearPart.includes(' ') ? yearPart.split(' ')[1] : null;
+                    let hours = 0, minutes = 0, seconds = 0;
+                    if (timePart) {
+                        const timeParts = timePart.split(':');
+                        hours = parseInt(timeParts[0], 10) || 0;
+                        minutes = parseInt(timeParts[1], 10) || 0;
+                        seconds = parseInt(timeParts[2], 10) || 0;
+                    }
+                    const parsed = new Date(yearNum, month, day, hours, minutes, seconds);
+                    if (!isNaN(parsed.getTime())) {
+                        createdAt = parsed.toISOString();
+                    }
+                }
+            }
+            if (!createdAt) {
+                const parsed = new Date(createdRaw);
+                if (!isNaN(parsed.getTime())) {
+                    createdAt = parsed.toISOString();
+                }
             }
         } catch (_e) {}
     }
@@ -167,17 +245,35 @@ function normalizeCase(item, guildId) {
         closedAt = toIsoFromMs(item.closed.timestamp);
     }
 
-    const isOpen = typeof item.isOpen === 'boolean' ? item.isOpen : !item.closed;
+    const initialIsOpen = typeof item.isOpen === 'boolean' ? item.isOpen : !item.closed;
 
     // Parse expiring duration metrics
-    const expiresAt = item.expiresAt || (item.expiringTimestamp ? toIsoFromMs(item.expiringTimestamp) : null);
     let durationMs = null;
     if (Number.isFinite(Number(item.durationMs))) {
         durationMs = Number(item.durationMs);
     } else if (Number.isFinite(Number(item.timestamp)) && Number.isFinite(Number(item.expiringTimestamp))) {
         durationMs = Math.max(0, Number(item.expiringTimestamp) - Number(item.timestamp));
+    } else if (duration) {
+        const parsedDur = parseDurationText(duration);
+        if (parsedDur !== Infinity && typeof parsedDur === 'number') {
+            durationMs = parsedDur * 60 * 1000;
+        }
     }
-    const isPermanent = durationMs === null;
+
+    const parsedDurVal = parseDurationText(duration);
+    const isPermanent = (durationMs === null) || (parsedDurVal === Infinity);
+
+    let expiresAt = null;
+    if (item.expiresAt) {
+        expiresAt = item.expiresAt;
+    } else if (item.expiringTimestamp) {
+        expiresAt = toIsoFromMs(item.expiringTimestamp);
+    } else if (!isPermanent && durationMs !== null && createdAt) {
+        expiresAt = new Date(new Date(createdAt).getTime() + durationMs).toISOString();
+    }
+
+    const isExpired = !isPermanent && expiresAt && (new Date() > new Date(expiresAt));
+    const activeIsOpen = initialIsOpen && !isExpired;
 
     const contentHash = calculateContentHash([
         caseId,
@@ -218,7 +314,7 @@ function normalizeCase(item, guildId) {
         createdAt,
         createdRaw,
         sourceUrl,
-        isOpen,
+        isOpen: activeIsOpen,
         closedByDiscordId,
         closedAt,
         expiresAt,

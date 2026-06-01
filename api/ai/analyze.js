@@ -56,6 +56,28 @@ async function consumeQuota(uid, role) {
 async function callGroq(payload) {
     const key = process.env.GROQ_API_KEY;
     if (!key) throw new Error('GROQ_API_KEY_MISSING');
+
+    const model = payload.image ? 'llama-3.2-11b-vision-preview' : (process.env.GROQ_MODEL || 'llama-3.1-8b-instant');
+    const userContent = [];
+
+    // Strip image from text payload to keep tokens low
+    const textPayload = { ...payload };
+    delete textPayload.image;
+
+    userContent.push({
+        type: 'text',
+        text: JSON.stringify(textPayload)
+    });
+
+    if (payload.image) {
+        userContent.push({
+            type: 'image_url',
+            image_url: {
+                url: payload.image
+            }
+        });
+    }
+
     const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
         method: 'POST',
         headers: {
@@ -63,17 +85,40 @@ async function callGroq(payload) {
             'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-            model: process.env.GROQ_MODEL || 'llama-3.1-8b-instant',
-            temperature: 0.2,
-            max_tokens: 500,
+            model,
+            temperature: 0.1,
+            max_tokens: 400,
             messages: [
                 {
                     role: 'system',
-                    content: 'You are a Turkish moderation audit assistant. Return concise JSON with summary, riskReasons, recommendedAction, confidenceNote. Do not override deterministic CUK decisions.'
+                    content: `You are the master Lutheus CUK (Ceza Uygulama Kitapçığı) Audit Assistant. Your job is to semantically analyze Turkish moderation reasons and durations and decide if they strictly follow the CUK rules.
+
+                    Here is the definitive CUK Rulebook:
+                    1. "Yetkililere Saygısızlık" (Keywords: yetkili, adal, admin, mod, ekip, ismini kötüleme, aşağılama, iftira): Min duration is 12 hours (720 minutes). If duration is less than 12 hours, it is INVALID.
+                    2. "Oyunculara Saygısızlık" (Keywords: oyuncu, şahsa, kişiye, üyeye, saygısızlık, hakaret): Min duration is 6 hours (360 minutes). If less than 6 hours, it is INVALID.
+                    3. "Küfür/Hakaret" (Keywords: küfür, argo, uygunsuz kelime/mesaj/içerik): Allowed durations are strictly in [15, 30, 60, 120, 240, 480, 720, 960, 1440, 1920, 2880] minutes.
+                    4. "Dini/Milli Değerler" (Keywords: dini değer, milli değer, kutsal, atatürk, din, milli, kutsala): Min duration is 7 days (10080 minutes). (Do not match 'dinamik' or similar words with 'din').
+                    5. "Sunucu Dinamiği" (Keywords: sunucu dinamiği, dinamik, sunucu düzeni, sohbet bozmak, sohbet bütünlüğünü bozmak, kanalın amacı, flood, spam, polemik, toksiklik, toxic, kışkırtma): Allowed durations are strictly in [15, 30, 60, 120, 180, 240, 360, 480, 720, 960, 1440, 1920, 2880, 5760] minutes.
+                    6. "Reklam" (Keywords: reklam, davet linki, discord.gg, youtube.com, üye çekme): Min duration is 24 hours (1440 minutes).
+                    7. "Destek Talebi" (Keywords: destek, bilet, ticket, tekrarlı, troll): Min duration is 1 hour (60 minutes).
+                    8. "Yönetim Kararı" / "Discord ToS": Always approved.
+
+                    Analyze the input reason semantically. Even if the exact keyword is not present, map it if the meaning is identical (e.g. "sohbet bütünlüğünü bozacak davranış" -> Sunucu Dinamiği).
+                    If an image (e.g., screenshot of game chat or discord logs) is attached, run OCR or extract relevant text/violations from the image to audit the case.
+
+                    Return a JSON object containing:
+                    {
+                      "summary": "Short Turkish summary of the audit.",
+                      "valid": true/false,
+                      "categoryMatched": "The matched category name above (or 'Diğer')",
+                      "riskReasons": "Why the penalty is invalid/wrong if valid is false, otherwise null.",
+                      "recommendedAction": "Action details, correct duration suggestion.",
+                      "confidenceNote": "Note explaining semantic classification logic."
+                    }`
                 },
                 {
                     role: 'user',
-                    content: JSON.stringify(payload)
+                    content: userContent
                 }
             ],
             response_format: { type: 'json_object' }
@@ -94,7 +139,7 @@ module.exports = async function handler(req, res) {
     }
 
     try {
-        const actor = await requirePermission(req, PERMISSIONS.REPORTS_REVIEW);
+        const actor = await requirePermission(req, PERMISSIONS.DASHBOARD_VIEW);
         await consumeQuota(actor.uid, actor.role);
         const analysis = await callGroq(req.body || {});
         res.status(200).json({ success: true, role: actor.role, analysis });

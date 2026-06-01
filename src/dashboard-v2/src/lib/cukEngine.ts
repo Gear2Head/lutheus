@@ -50,6 +50,35 @@ export function validateCase(reasonRaw: string, durationMinutes?: number | null)
     return { valid: true, score: 1.0, message: 'Discord ToS ihlali, kalıcı işlem onaylandı.', categoryMatched: 'Discord ToS' };
   }
 
+  // Dini / Milli Değerler
+  if (['dini değer', 'milli değer', 'kutsal', 'atatürk', 'din', 'milli', 'kutsala'].some((k) => {
+    if (k === 'din' && (reason.includes('dinamik') || reason.includes('dinamig') || reason.includes('dinamiğ'))) {
+      return false;
+    }
+    return reason.includes(k);
+  })) {
+    if (mins === 10080 || mins === 0 || mins >= 10080) {
+      return { valid: true, score: 1.0, message: 'Süre ve tür kurallarla uyumlu.', categoryMatched: 'Dini/Milli Değerler' };
+    }
+    return { valid: false, score: 0, message: 'Geçersiz süre. Dini/Milli değerlere hakaret min 7 Gün olmalıdır.', categoryMatched: 'Dini/Milli Değerler' };
+  }
+
+  // Reklam
+  if (['reklam', 'davet linki', 'discord.gg', 'youtube.com', 'üye çekme'].some((k) => reason.includes(k))) {
+    if (mins === 1440 || mins === 0 || mins >= 1440) {
+      return { valid: true, score: 1.0, message: 'Süre ve tür kurallarla uyumlu.', categoryMatched: 'Reklam' };
+    }
+    return { valid: false, score: 0, message: 'Geçersiz süre. Reklam için min 24 Saat olmalıdır.', categoryMatched: 'Reklam' };
+  }
+
+  // Destek Talebi
+  if (['destek', 'bilet', 'ticket', 'tekrarlı', 'troll'].some((k) => reason.includes(k))) {
+    if ([60, 1440, 0].includes(mins) || mins >= 60) {
+      return { valid: true, score: 1.0, message: 'Süre ve tür kurallarla uyumlu.', categoryMatched: 'Destek Talebi' };
+    }
+    return { valid: false, score: 0, message: 'Geçersiz süre. Destek talebi ihlali min 1 Saat olmalıdır.', categoryMatched: 'Destek Talebi' };
+  }
+
   // Yetkililere Saygısızlık
   if (['yetkili', 'adal', 'doğukan', 'admin', 'mod', 'üst yönetim', 'ekip', 'ismini kötüleme', 'aşağılama', 'iftira'].some((k) => reason.includes(k))) {
     const allowed = [720, 1440, 2880, 0];
@@ -77,19 +106,6 @@ export function validateCase(reasonRaw: string, durationMinutes?: number | null)
     return { valid: false, score: 0, message: 'Geçersiz süre. Küfür/Hakaret için süre belirlenen kademelerde olmalıdır.', categoryMatched: 'Küfür/Hakaret' };
   }
 
-  // Dini / Milli Değerler
-  if (['dini değer', 'milli değer', 'kutsal', 'atatürk', 'din', 'milli', 'kutsala'].some((k) => {
-    if (k === 'din' && (reason.includes('dinamik') || reason.includes('dinamig') || reason.includes('dinamiğ'))) {
-      return false;
-    }
-    return reason.includes(k);
-  })) {
-    if (mins === 10080 || mins === 0 || mins >= 10080) {
-      return { valid: true, score: 1.0, message: 'Süre ve tür kurallarla uyumlu.', categoryMatched: 'Dini/Milli Değerler' };
-    }
-    return { valid: false, score: 0, message: 'Geçersiz süre. Dini/Milli değerlere hakaret min 7 Gün olmalıdır.', categoryMatched: 'Dini/Milli Değerler' };
-  }
-
   // Sunucu Dinamiği
   if (['sunucu dinamiği', 'dinamik', 'sunucu düzeni', 'kanalın amacı', 'ekran', 'flood', 'spam', 'polemik'].some((k) => reason.includes(k))) {
     const allowed = [15, 30, 60, 120, 180, 240, 360, 480, 720, 960, 1440, 1920, 2880, 5760, 0];
@@ -97,22 +113,6 @@ export function validateCase(reasonRaw: string, durationMinutes?: number | null)
       return { valid: true, score: 1.0, message: 'Süre ve tür kurallarla uyumlu.', categoryMatched: 'Sunucu Dinamiği' };
     }
     return { valid: false, score: 0, message: 'Geçersiz süre eşleşmesi (Sunucu Dinamiği)', categoryMatched: 'Sunucu Dinamiği' };
-  }
-
-  // Reklam
-  if (['reklam', 'davet linki', 'discord.gg', 'youtube.com', 'üye çekme'].some((k) => reason.includes(k))) {
-    if (mins === 1440 || mins === 0 || mins >= 1440) {
-      return { valid: true, score: 1.0, message: 'Süre ve tür kurallarla uyumlu.', categoryMatched: 'Reklam' };
-    }
-    return { valid: false, score: 0, message: 'Geçersiz süre. Reklam için min 24 Saat olmalıdır.', categoryMatched: 'Reklam' };
-  }
-
-  // Destek Talebi
-  if (['destek', 'bilet', 'ticket', 'tekrarlı', 'troll'].some((k) => reason.includes(k))) {
-    if ([60, 1440, 0].includes(mins) || mins >= 60) {
-      return { valid: true, score: 1.0, message: 'Süre ve tür kurallarla uyumlu.', categoryMatched: 'Destek Talebi' };
-    }
-    return { valid: false, score: 0, message: 'Geçersiz süre. Destek talebi ihlali min 1 Saat olmalıdır.', categoryMatched: 'Destek Talebi' };
   }
 
   return { valid: true, score: 0.8, message: 'Tanımlanamayan ceza kategorisi. Olası manuel işlem.', categoryMatched: 'Diğer' };

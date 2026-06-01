@@ -306,12 +306,55 @@ export function triggerManualSync(): Promise<{ synced: number; errors: number }>
   return Promise.resolve({ synced: 0, errors: 0 });
 }
 
-/** Fetch cases: prefers Supabase, falls back to local storage. */
+/** Fetch cases: merges Supabase and local storage cases, deduplicating by case_id. */
 export async function getCases(limit = 100): Promise<SapphireCase[]> {
+  let dbCases: SapphireCase[] = [];
   try {
-    return await getRecentCases(limit);
-  } catch {
-    console.warn('[Lutheus] Supabase unavailable, using local cases');
-    return getLocalCases();
+    dbCases = await getRecentCases(limit);
+  } catch (err) {
+    console.warn('[Lutheus] Supabase unavailable:', err);
   }
+
+  let localCases: SapphireCase[] = [];
+  try {
+    localCases = await getLocalCases();
+  } catch (err) {
+    console.warn('[Lutheus] Failed to read local cases:', err);
+  }
+
+  // Merge and deduplicate by case_id
+  const mergedMap = new Map<string, SapphireCase>();
+  for (const c of dbCases) {
+    mergedMap.set(c.case_id, c);
+  }
+  for (const c of localCases) {
+    mergedMap.set(c.case_id, c);
+  }
+
+  // Convert to array and sort by created_at_sapphire desc
+  const sorted = Array.from(mergedMap.values()).sort((a, b) => {
+    const timeA = new Date(a.created_at_sapphire).getTime() || 0;
+    const timeB = new Date(b.created_at_sapphire).getTime() || 0;
+    return timeB - timeA;
+  });
+
+  return sorted.slice(0, limit);
+}
+
+/** Purge only cases from both local storage and Supabase database. */
+export async function clearAllCasesFromDbAndLocal(): Promise<void> {
+  // 1. Clear local cases and queue
+  if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+    await new Promise<void>((resolve) => chrome.storage.local.set({ cases: [] }, () => resolve()));
+    await new Promise<void>((resolve) => chrome.storage.local.set({ lutheusIngestQueue: [] }, () => resolve()));
+  }
+  try {
+    localStorage.setItem('cases', '[]');
+    localStorage.setItem('lutheusIngestQueue', '[]');
+  } catch {
+    // localStorage may be unavailable in restricted extension contexts.
+  }
+
+  // 2. Clear from Supabase
+  await supabaseFetch('sapphire_cases', 'DELETE', 'case_id=neq.0');
 }

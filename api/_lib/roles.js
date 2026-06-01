@@ -72,6 +72,7 @@ const ROLE_PERMISSIONS = Object.freeze({
     [ROLES.DISCORD_MODERATORU]: [
         PERMISSIONS.DASHBOARD_VIEW,
         PERMISSIONS.REPORTS_VIEW,
+        PERMISSIONS.REPORTS_REVIEW,
         PERMISSIONS.PENALTIES_VIEW,
         PERMISSIONS.BLACKLIST_VIEW
     ],
@@ -86,6 +87,23 @@ const ROLE_PERMISSIONS = Object.freeze({
     [ROLES.PENDING]: [],
     [ROLES.BLOCKED]: []
 });
+
+const DEFAULT_GROQ_LIMITS = Object.freeze({
+    [ROLES.KURUCU]: 500,
+    [ROLES.ADMIN]: 350,
+    [ROLES.YONETICI]: 250,
+    [ROLES.GENEL_SORUMLU]: 225,
+    [ROLES.DISCORD_YONETICISI]: 210,
+    [ROLES.KIDEMLI]: 175,
+    [ROLES.KIDEMLI_DISCORD_MODERATORU]: 160,
+    [ROLES.SENIOR_MODERATOR]: 150,
+    [ROLES.DISCORD_MODERATORU]: 40,
+    [ROLES.DISCORD_DESTEK_EKIBI]: 10,
+    [ROLES.VIEWER]: 0,
+    [ROLES.PENDING]: 0,
+    [ROLES.BLOCKED]: 0
+});
+
 
 function asciiRole(role) {
     return String(role || '')
@@ -151,6 +169,7 @@ module.exports = {
     ROLES,
     PERMISSIONS,
     ROLE_PERMISSIONS,
+    DEFAULT_GROQ_LIMITS,
     normalizeRole,
     isOwnerIdentity,
     hasPermission

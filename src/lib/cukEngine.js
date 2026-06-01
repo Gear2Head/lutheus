@@ -52,7 +52,7 @@ export function parseDuration(durationStr) {
     str = str.replace(/\s*\(\s*$/, '').trim();
 
     // Özel durum: Süresiz / Ban
-    if (str.includes('süresiz') || str.includes('perma') || str.includes('sonsuz') || str.includes('perm') || str.includes('belirsiz')) {
+    if (str.includes('süresiz') || str.includes('perma') || str.includes('sonsuz') || str.includes('perm') || str.includes('belirsiz') || str.includes('kalıcı') || str.includes('kalici') || str.includes('permanent')) {
         return Infinity;
     }
 

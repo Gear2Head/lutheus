@@ -1,11 +1,14 @@
-import { useEffect, useState } from 'react';
+﻿import { useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { getRoleLabel, getRoleColor, getAvatarUrl } from '../lib/auth';
 import { Card } from '../components/ui/Card';
 import { Accordion } from '../components/ui/Accordion';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
-import { Moon, Monitor, User, Key, Settings2, Bot, AlertTriangle, Bell } from 'lucide-react';
+import { useToast } from '../contexts/ToastContext';
+import { useLanguage } from '../contexts/LanguageContext';
+import { clearAllCasesFromDbAndLocal } from '../lib/supabase';
+import { Moon, Monitor, User, Key, Settings2, Bot, AlertTriangle, Bell, Info } from 'lucide-react';
 
 const THEMES = [
   { id: 'dark', name: 'Apple Dark', preview: 'bg-zinc-900 border-zinc-700' },
@@ -41,6 +44,8 @@ function setChromeLocal(key: string, val: string | object): Promise<void> {
 
 export default function Settings() {
   const { session, logout } = useAuth();
+  const { showToast } = useToast();
+  const { language, setLanguage, t } = useLanguage();
 
   const [currentTheme, setCurrentTheme] = useState<string>(() => {
     for (const cls of ['dark', 'light', 'lavender', 'corporate']) {
@@ -56,6 +61,7 @@ export default function Settings() {
 
   const [webhookUrl, setWebhookUrl] = useState('');
   const [botChannelId, setBotChannelId] = useState('');
+  const [purging, setPurging] = useState(false);
 
   useEffect(() => {
     getChromeLocal<typeof settings>('settings').then((s) => {
@@ -80,11 +86,13 @@ export default function Settings() {
 
   const saveSettings = () => {
     setChromeLocal('settings', settings);
+    showToast(t('settings.subtitle'), 'success');
   };
 
   const saveBotConfig = () => {
     setChromeLocal('webhookUrl', webhookUrl);
     setChromeLocal('botLogChannelId', botChannelId);
+    showToast(t('settings.subtitle'), 'success');
   };
 
   const syncProfiles = () => {
@@ -93,23 +101,86 @@ export default function Settings() {
     }
   };
 
+  const handlePurgeCases = async () => {
+    if (!confirm(language === 'tr' ? 'Sadece cezalarÄ± silmek istediÄŸinize emin misiniz? Yetkili detaylarÄ± korunacaktÄ±r.' : 'Are you sure you want to delete cases only? Staff details will be preserved.')) {
+      return;
+    }
+    setPurging(true);
+    try {
+      await clearAllCasesFromDbAndLocal();
+      showToast(language === 'tr' ? 'Cezalar baÅŸarÄ±yla temizlendi.' : 'Cases successfully purged.', 'success');
+    } catch (err: any) {
+      showToast(err.message, 'error');
+    } finally {
+      setPurging(false);
+    }
+  };
+
   const avatarUrl = getAvatarUrl(session);
   const roleColor = session ? getRoleColor(session.role) : '#64748b';
   const roleLabel = session ? getRoleLabel(session.role) : '';
-  const displayName = session?.profile?.displayName || session?.profile?.username || '—';
+  const displayName = session?.profile?.displayName || session?.profile?.username || 'â€”';
+
+  // State helper for checkboxes info popovers
+  const [activeTooltip, setActiveTooltip] = useState<string | null>(null);
+
+  const InfoIconTooltip = ({ id, text }: { id: string; text: string }) => {
+    const isVisible = activeTooltip === id;
+    return (
+      <div className="relative inline-flex items-center ml-2">
+        <button
+          type="button"
+          onMouseEnter={() => setActiveTooltip(id)}
+          onMouseLeave={() => setActiveTooltip(null)}
+          onClick={(e) => { e.preventDefault(); setActiveTooltip(isVisible ? null : id); }}
+          className="text-muted-foreground hover:text-primary transition-colors p-0.5 focus:outline-none"
+        >
+          <Info className="w-3.5 h-3.5" />
+        </button>
+        {isVisible && (
+          <div className="absolute left-6 top-1/2 -translate-y-1/2 w-64 p-2.5 text-xs text-foreground bg-card border border-border/80 rounded-xl shadow-2xl z-50 animate-in fade-in slide-in-from-left-2">
+            {text}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div className="max-w-4xl mx-auto space-y-8 animate-in pb-6 pt-2">
       <div>
-        <h2 className="text-2xl font-bold tracking-tight">Ayarlar</h2>
-        <p className="text-sm text-muted-foreground mt-0.5">Sistem tercihleri, entegrasyonlar ve erişim kontrolü.</p>
+        <h2 className="text-2xl font-bold tracking-tight">{t('settings.title')}</h2>
+        <p className="text-sm text-muted-foreground mt-0.5">{t('settings.subtitle')}</p>
+      </div>
+
+      {/* SECTION: LANGUAGE_SETTINGS */}
+      {/* PURPOSE: Dashboard-v2 ve extension sidepanel ortak dil seÃ§imini yÃ¶netir. */}
+      <div className="space-y-4">
+        <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">{t('settings.langSelect')}</div>
+        <Card className="p-4 flex items-center justify-between">
+          <span className="text-sm font-medium text-muted-foreground">{t('settings.langLabel')}</span>
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => { setLanguage('en'); showToast(t('settings.langChangedEn'), 'info'); }}
+              className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl border text-xs font-semibold transition-all ${language === 'en' ? 'border-primary bg-primary/10 text-primary ring-2 ring-primary/20' : 'border-border/50 bg-background/50 hover:bg-secondary'}`}
+            >
+              EN · {t('settings.langEnglish')}
+            </button>
+            <button
+              onClick={() => { setLanguage('tr'); showToast(t('settings.langChangedTr'), 'info'); }}
+              className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl border text-xs font-semibold transition-all ${language === 'tr' ? 'border-primary bg-primary/10 text-primary ring-2 ring-primary/20' : 'border-border/50 bg-background/50 hover:bg-secondary'}`}
+            >
+              TR · {t('settings.langTurkish')}
+            </button>
+          </div>
+        </Card>
       </div>
 
       {/* General */}
       <div className="space-y-4">
-        <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Genel</div>
+        <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">{t('settings.general')}</div>
 
-        <Accordion title={<span className="flex items-center gap-3 text-sm"><User className="w-4 h-4 text-emerald-500" /> Hesap ve Erisim</span>} defaultOpen>
+        <Accordion title={<span className="flex items-center gap-3 text-sm"><User className="w-4 h-4 text-emerald-500" /> {t('settings.account')}</span>} defaultOpen>
           <div className="flex items-center justify-between p-4 bg-secondary/50 rounded-2xl border border-border/50 mt-3">
             <div className="flex items-center gap-3">
               <div className="w-11 h-11 rounded-full bg-muted overflow-hidden">
@@ -117,26 +188,26 @@ export default function Settings() {
               </div>
               <div>
                 <div className="font-semibold text-sm text-foreground">{displayName}</div>
-                <div className="text-[10px] font-bold uppercase tracking-wider mt-0.5" style={{ color: roleColor }}>{roleLabel} • {session?.provider?.toUpperCase()}</div>
+                <div className="text-[10px] font-bold uppercase tracking-wider mt-0.5" style={{ color: roleColor }}>{roleLabel} â€¢ {session?.provider?.toUpperCase()}</div>
               </div>
             </div>
-            <Button variant="outline" size="sm" onClick={logout}>Cikis Yap</Button>
+            <Button variant="outline" size="sm" onClick={logout}>{t('nav.logout')}</Button>
           </div>
         </Accordion>
 
-        <Accordion title={<span className="flex items-center gap-3 text-sm"><Monitor className="w-4 h-4 text-blue-500" /> Gorünüm</span>}>
+        <Accordion title={<span className="flex items-center gap-3 text-sm"><Monitor className="w-4 h-4 text-blue-500" /> {t('settings.appearance')}</span>}>
           <div className="space-y-5 pt-3">
             {/* Theme picker */}
             <div>
-              <div className="text-xs font-semibold text-foreground mb-3">Tema</div>
+              <div className="text-xs font-semibold text-foreground mb-3">{t('settings.theme')}</div>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                {THEMES.map((t) => (
+                {THEMES.map((tTheme) => (
                   <button
-                    key={t.id}
-                    onClick={() => applyTheme(t.id)}
-                    className={`h-20 rounded-2xl border flex flex-col justify-end p-3 cursor-pointer transition-all ${t.preview} ${currentTheme === t.id ? 'ring-2 ring-primary ring-offset-2 ring-offset-background opacity-100' : 'opacity-70 hover:opacity-100'}`}
+                    key={tTheme.id}
+                    onClick={() => applyTheme(tTheme.id)}
+                    className={`h-20 rounded-2xl border flex flex-col justify-end p-3 cursor-pointer transition-all ${tTheme.preview} ${currentTheme === tTheme.id ? 'ring-2 ring-primary ring-offset-2 ring-offset-background opacity-100' : 'opacity-70 hover:opacity-100'}`}
                   >
-                    <span className="text-xs font-semibold text-left">{t.name}</span>
+                    <span className="text-xs font-semibold text-left">{tTheme.name}</span>
                   </button>
                 ))}
               </div>
@@ -144,9 +215,9 @@ export default function Settings() {
 
             {/* Panel layout */}
             <div>
-              <div className="text-xs font-semibold text-foreground mb-3">Panel Yerlasimi</div>
+              <div className="text-xs font-semibold text-foreground mb-3">{t('settings.layout')}</div>
               <div className="grid grid-cols-2 gap-3">
-                {[['side', 'Sag Panel (Side)'], ['center', 'Orta Modal (Center)']].map(([val, label]) => (
+                {[['side', t('settings.layoutSide')], ['center', t('settings.layoutCenter')]].map(([val, label]) => (
                   <button
                     key={val}
                     onClick={() => savePanelStyle(val)}
@@ -163,13 +234,13 @@ export default function Settings() {
 
       {/* System */}
       <div className="space-y-4">
-        <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Sistem</div>
+        <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">{t('settings.system')}</div>
 
-        <Accordion title={<span className="flex items-center gap-3 text-sm"><Settings2 className="w-4 h-4 text-slate-500" /> Genel Ayarlar</span>}>
+        <Accordion title={<span className="flex items-center gap-3 text-sm"><Settings2 className="w-4 h-4 text-slate-500" /> {t('settings.generalSettings')}</span>}>
           <div className="space-y-4 pt-3">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-muted-foreground">Sunucu ID</label>
+                <label className="text-xs font-medium text-muted-foreground">{t('settings.guildId')}</label>
                 <Input
                   value={settings.guildId}
                   onChange={(e) => setSettings((s) => ({ ...s, guildId: e.target.value }))}
@@ -177,7 +248,7 @@ export default function Settings() {
                 />
               </div>
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-muted-foreground">Tarama Gecikmesi (ms)</label>
+                <label className="text-xs font-medium text-muted-foreground">{t('settings.scanDelay')}</label>
                 <Input
                   type="number"
                   value={settings.scanDelay}
@@ -185,36 +256,39 @@ export default function Settings() {
                 />
               </div>
             </div>
-            <div className="space-y-2">
+            <div className="space-y-3 pt-1">
               {[
-                ['cukEnabled', 'CUK Dogrulama Aktif'],
-                ['autoValidate', 'Otomatik Ceza Dogrulama'],
-              ].map(([key, label]) => (
-                <label key={key} className="flex items-center gap-2 text-sm cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={(settings as any)[key]}
-                    onChange={(e) => setSettings((s: any) => ({ ...s, [key]: e.target.checked }))}
-                    className="rounded"
-                  />
-                  <span className="text-muted-foreground">{label}</span>
-                </label>
+                ['cukEnabled', t('settings.cukEnabled'), t(`tooltip.cukEnabled.${settings.cukEnabled}`)],
+                ['autoValidate', t('settings.autoValidate'), t(`tooltip.autoValidate.${settings.autoValidate}`)],
+              ].map(([key, label, tooltip]) => (
+                <div key={key} className="flex items-center">
+                  <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={(settings as any)[key]}
+                      onChange={(e) => setSettings((s: any) => ({ ...s, [key]: e.target.checked }))}
+                      className="rounded accent-primary"
+                    />
+                    <span className="text-muted-foreground">{label}</span>
+                  </label>
+                  <InfoIconTooltip id={key} text={tooltip} />
+                </div>
               ))}
             </div>
-            <Button size="sm" onClick={saveSettings}>Kaydet</Button>
+            <Button size="sm" onClick={saveSettings}>{t('settings.save')}</Button>
           </div>
         </Accordion>
       </div>
 
       {/* Integrations */}
       <div className="space-y-4">
-        <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Entegrasyonlar</div>
+        <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">{t('settings.integrations')}</div>
 
-        <Accordion title={<span className="flex items-center gap-3 text-sm"><Key className="w-4 h-4 text-amber-600" /> Webhook ve API</span>}>
+        <Accordion title={<span className="flex items-center gap-3 text-sm"><Key className="w-4 h-4 text-amber-600" /> {t('settings.webhookApi')}</span>}>
           <div className="space-y-4 pt-3">
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-foreground">Discord Webhook URL</label>
-              <p className="text-[11px] text-muted-foreground">Botun tarama raporlarını göndereceği kanal.</p>
+              <label className="text-xs font-medium text-foreground">{t('settings.webhookUrl')}</label>
+              <p className="text-[11px] text-muted-foreground">{t('settings.webhookUrlDesc')}</p>
               <div className="flex gap-2">
                 <input
                   type="password"
@@ -223,14 +297,14 @@ export default function Settings() {
                   placeholder="https://discord.com/api/webhooks/..."
                   className="flex-1 bg-background border border-border/50 rounded-[12px] px-3 py-2 text-sm font-mono text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/50"
                 />
-                <Button size="sm" onClick={saveBotConfig}>Güncelle</Button>
+                <Button size="sm" onClick={saveBotConfig}>{t('settings.update')}</Button>
               </div>
             </div>
             <div className="space-y-1.5 border-t border-border/50 pt-4">
-              <label className="text-xs font-medium text-foreground">Bot Log Kanal ID</label>
+              <label className="text-xs font-medium text-foreground">{t('settings.botLogChannel')}</label>
               <div className="flex gap-2">
-                <Input value={botChannelId} onChange={(e) => setBotChannelId(e.target.value)} placeholder="Kanal ID girin..." />
-                <Button size="sm" onClick={syncProfiles} variant="ghost">Profilleri Esitle</Button>
+                <Input value={botChannelId} onChange={(e) => setBotChannelId(e.target.value)} placeholder="Channel ID..." />
+                <Button size="sm" onClick={syncProfiles} variant="ghost">{t('settings.syncProfiles')}</Button>
               </div>
             </div>
           </div>
@@ -239,12 +313,21 @@ export default function Settings() {
 
       {/* Danger zone */}
       <div className="space-y-4">
-        <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Tehlikeli Bölge</div>
-        <div className="p-5 rounded-2xl border border-destructive/20 bg-destructive/5">
-          <h4 className="font-semibold text-destructive mb-1">Fabrika Ayarlarına Sıfırla</h4>
-          <p className="text-xs text-destructive/80 mb-4">Tüm case geçmişi, yetkili profilleri ve loglar silinir. Bu işlem geri alınamaz.</p>
-          <Button variant="destructive" size="sm">Sistemi Sıfırla</Button>
-        </div>
+        <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">{t('settings.dangerZone')}</div>
+        <Card className="p-5 border-destructive/20 bg-destructive/5 space-y-6">
+          <div>
+            <h4 className="font-semibold text-destructive mb-1">{t('settings.purgeCasesTitle')}</h4>
+            <p className="text-xs text-destructive/80 mb-3">{t('settings.purgeCasesDesc')}</p>
+            <Button variant="destructive" size="sm" onClick={handlePurgeCases} disabled={purging}>
+              {purging ? t('nav.syncing') : t('settings.purgeCasesBtn')}
+            </Button>
+          </div>
+          <div className="border-t border-destructive/10 pt-5">
+            <h4 className="font-semibold text-destructive mb-1">{t('settings.resetTitle')}</h4>
+            <p className="text-xs text-destructive/80 mb-3">{t('settings.resetDesc')}</p>
+            <Button variant="destructive" size="sm" disabled>{t('settings.resetBtn')}</Button>
+          </div>
+        </Card>
       </div>
     </div>
   );

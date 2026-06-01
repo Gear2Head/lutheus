@@ -1,16 +1,17 @@
 import { useEffect, useState, useMemo } from 'react';
-import { Download, Copy, RefreshCw, Trophy } from 'lucide-react';
+import { Download, Copy, Trophy } from 'lucide-react';
 import { Card } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
 import { Skeleton } from '../components/ui/Skeleton';
 import { EmptyState } from '../components/ui/EmptyState';
 import { getCases, getStaffProfiles, SapphireCase, StaffProfile } from '../lib/supabase';
-import { validateCase, calculatePerformanceScore, getReliabilityStatus } from '../lib/cukEngine';
-import { getRoleLabel, getRoleColor, hasPermission } from '../lib/auth';
+import { calculatePerformanceScore, getReliabilityStatus } from '../lib/cukEngine';
+import { getRoleLabel, getRoleColor } from '../lib/auth';
 import { parseDateSafe } from '../lib/utils';
 import { useToast } from '../contexts/ToastContext';
 import { useAuth } from '../contexts/AuthContext';
+import { useLanguage } from '../contexts/LanguageContext';
 
 type Period = '7' | '14' | '30' | 'all';
 
@@ -35,7 +36,6 @@ function buildRows(cases: SapphireCase[], periodDays: number | null, staffProfil
   // Exclude management roles: 'kurucu', 'admin', 'yonetici', 'genel_sorumlu', 'discord_yoneticisi'
   const managementRoles = new Set(['kurucu', 'admin', 'yonetici', 'genel_sorumlu', 'discord_yoneticisi']);
   
-  // Build a map of discord_id -> staff profile
   const staffMap = new Map<string, StaffProfile>();
   for (const sp of staffProfiles) {
     staffMap.set(sp.discord_id, sp);
@@ -52,7 +52,7 @@ function buildRows(cases: SapphireCase[], periodDays: number | null, staffProfil
     // Check if the author is management staff
     const profile = staffMap.get(id);
     const roleStr = (profile?.role || 'discord_moderatoru').toLowerCase();
-    if (managementRoles.has(roleStr)) {
+    if (managementRoles.has(roleStr) || roleStr === 'eski_yetkili' || roleStr === 'blocked' || profile?.status === 'INACTIVE') {
       continue;
     }
 
@@ -84,8 +84,8 @@ function buildRows(cases: SapphireCase[], periodDays: number | null, staffProfil
     .map((r, i) => ({ ...r, rank: i + 1 }));
 }
 
-function exportCSV(rows: PointtrainRow[]) {
-  const headers = 'Sira,Yetkili,Toplam,Dogru,Hatali,Bekleyen,Dogruluk%,Skor,Guvenilirlik';
+function exportCSV(rows: PointtrainRow[], t: any) {
+  const headers = `${t('pt.rank')},${t('home.moderator')},${t('home.total')},${t('pt.valid')},${t('pt.invalid')},${t('pt.pending')},${t('home.accuracy')}%,${t('pt.score')},${t('pt.reliability')}`;
   const lines = rows.map((r) =>
     `${r.rank},"${r.name}",${r.sapphireCases},${r.valid},${r.invalid},${r.pending},${r.accuracy},${r.score},"${r.reliability}"`,
   );
@@ -99,16 +99,17 @@ function exportCSV(rows: PointtrainRow[]) {
   URL.revokeObjectURL(url);
 }
 
-function exportMarkdown(rows: PointtrainRow[]): string {
+function exportMarkdown(rows: PointtrainRow[], t: any): string {
   const lines = rows.map((r) =>
-    `${r.rank}. **${r.name}** — Toplam: ${r.sapphireCases} | Dogru: ${r.valid} | Hatali: ${r.invalid} | %${r.accuracy} | Skor: ${r.score}`,
+    `${r.rank}. **${r.name}** — ${t('home.total')}: ${r.sapphireCases} | ${t('pt.valid')}: ${r.valid} | ${t('pt.invalid')}: ${r.invalid} | %${r.accuracy} | ${t('pt.score')}: ${r.score}`,
   );
-  return `**Lutheus Pointtrain Raporu**\n${'━'.repeat(30)}\n${lines.join('\n')}`;
+  return `**Lutheus Pointtrain Report**\n${'━'.repeat(30)}\n${lines.join('\n')}`;
 }
 
 export default function Pointtrain() {
   const { session } = useAuth();
   const { showToast } = useToast();
+  const { t } = useLanguage();
   const [cases, setCases] = useState<SapphireCase[]>([]);
   const [staffProfiles, setStaffProfiles] = useState<StaffProfile[]>([]);
   const [loading, setLoading] = useState(true);
@@ -127,7 +128,7 @@ export default function Pointtrain() {
       })
       .catch((err) => {
         console.error(err);
-        showToast('Veriler yuklenirken bir hata olustu', 'error');
+        showToast('Veriler yuklenirken hata olustu', 'error');
       })
       .finally(() => setLoading(false));
   };
@@ -145,18 +146,18 @@ export default function Pointtrain() {
   const avgAccuracy = rows.length > 0 ? Math.round(rows.reduce((s, r) => s + r.accuracy, 0) / rows.length) : 0;
 
   const copyMarkdown = () => {
-    navigator.clipboard.writeText(exportMarkdown(rows))
+    navigator.clipboard.writeText(exportMarkdown(rows, t))
       .then(() => {
-        showToast('Rapor Discord formatinda panoya kopyalandi', 'success');
+        showToast('Rapor panoya kopyalandi', 'success');
       })
       .catch(() => {
-        showToast('Kopyalama basarisiz oldu', 'error');
+        showToast('Kopyalama basarisiz', 'error');
       });
   };
 
   const handleExportCSV = () => {
-    exportCSV(rows);
-    showToast('CSV raporu indiriliyor', 'success');
+    exportCSV(rows, t);
+    showToast('CSV indiriliyor', 'success');
   };
 
   const reliabilityVariant = (r: string): any =>
@@ -166,17 +167,19 @@ export default function Pointtrain() {
     <div className="space-y-5 animate-in pb-6">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pt-2">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">Pointtrain Raporu</h2>
-          <p className="text-sm text-muted-foreground mt-0.5">{rows.length} yetkili, {totalCases} kayıt</p>
+          <h2 className="text-2xl font-bold tracking-tight">{t('pt.title')}</h2>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            {t('pt.subtitle').replace('{rows}', String(rows.length)).replace('{total}', String(totalCases))}
+          </p>
         </div>
          <div className="flex gap-2">
           {isMgmtOrSenior && (
             <>
               <Button variant="ghost" size="sm" onClick={copyMarkdown} disabled={loading}>
-                <Copy className="w-3.5 h-3.5" /> Discord Kopyala
+                <Copy className="w-3.5 h-3.5" /> {t('pt.copyDiscord')}
               </Button>
               <Button variant="outline" size="sm" onClick={handleExportCSV} disabled={loading}>
-                <Download className="w-3.5 h-3.5" /> CSV
+                <Download className="w-3.5 h-3.5" /> {t('pt.csv')}
               </Button>
             </>
           )}
@@ -186,10 +189,10 @@ export default function Pointtrain() {
       {/* Summary stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {[
-          { label: 'Toplam Ceza', val: totalCases, color: 'text-foreground' },
-          { label: 'Dogru', val: totalValid, color: 'text-emerald-400' },
-          { label: 'Hatali', val: totalInvalid, color: 'text-destructive' },
-          { label: 'Ort. Dogruluk', val: `%${avgAccuracy}`, color: avgAccuracy >= 90 ? 'text-emerald-400' : avgAccuracy >= 75 ? 'text-amber-400' : 'text-destructive' },
+          { label: t('home.statTotal'), val: totalCases, color: 'text-foreground' },
+          { label: t('pt.valid'), val: totalValid, color: 'text-emerald-400' },
+          { label: t('pt.invalid'), val: totalInvalid, color: 'text-destructive' },
+          { label: t('pt.avgAccuracy'), val: `%${avgAccuracy}`, color: avgAccuracy >= 90 ? 'text-emerald-400' : avgAccuracy >= 75 ? 'text-amber-400' : 'text-destructive' },
         ].map(({ label, val, color }) => (
           <Card key={label} className="p-4 text-center">
             {loading ? (
@@ -204,12 +207,11 @@ export default function Pointtrain() {
 
       {/* Period filter */}
       <div className="flex gap-2.5">
-        {([['7', 'Son 7 Gün'], ['14', 'Son 14 Gün'], ['30', 'Son 30 Gün'], ['all', 'Tümü']] as [Period, string][]).map(([val, label]) => (
+        {([['7', t('pt.period7')], ['14', t('pt.period14')], ['30', t('pt.period30')], ['all', t('pt.periodAll')]] as [Period, string][]).map(([val, label]) => (
           <button
             key={val}
             onClick={() => {
               setPeriod(val);
-              showToast(`${label} secildi`, 'info');
             }}
             className={`px-4 py-2 rounded-full text-xs font-bold transition-all duration-200 border-2 ${
               period === val 
@@ -228,14 +230,14 @@ export default function Pointtrain() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border/50">
-                <th className="py-3 px-4 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">#</th>
-                <th className="py-3 px-3 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Yetkili</th>
-                <th className="py-3 px-3 text-center text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Toplam</th>
-                <th className="py-3 px-3 text-center text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Dogru</th>
-                <th className="py-3 px-3 text-center text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Hatali</th>
-                <th className="py-3 px-3 text-center text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Dogruluk</th>
-                <th className="py-3 px-3 text-center text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Skor</th>
-                <th className="py-3 px-4 text-center text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Durum</th>
+                <th className="py-3 px-4 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">{t('pt.rank')}</th>
+                <th className="py-3 px-3 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">{t('home.moderator')}</th>
+                <th className="py-3 px-3 text-center text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">{t('home.total')}</th>
+                <th className="py-3 px-3 text-center text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">{t('pt.valid')}</th>
+                <th className="py-3 px-3 text-center text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">{t('pt.invalid')}</th>
+                <th className="py-3 px-3 text-center text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">{t('home.accuracy')}</th>
+                <th className="py-3 px-3 text-center text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">{t('pt.score')}</th>
+                <th className="py-3 px-4 text-center text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">{t('pt.reliability')}</th>
               </tr>
             </thead>
             <tbody>
@@ -248,7 +250,7 @@ export default function Pointtrain() {
                   </tr>
                 ))
               ) : rows.length === 0 ? (
-                <tr><td colSpan={8}><EmptyState icon={<Trophy className="w-6 h-6" />} title="Veri yok" description="Seçili dönemde kayıt bulunamadı." /></td></tr>
+                <tr><td colSpan={8}><EmptyState icon={<Trophy className="w-6 h-6" />} title={t('home.noData')} description="" /></td></tr>
               ) : rows.map((r) => (
                 <tr key={r.discordId} className="border-b border-border/30 hover:bg-secondary/20 transition-colors">
                   <td className="py-3 px-4">

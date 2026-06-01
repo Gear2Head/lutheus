@@ -1,4 +1,4 @@
-import {
+﻿import {
     Storage,
     DEFAULT_POINTTRAIN_CHANNELS,
     DEFAULT_POINT_WEIGHTS
@@ -37,6 +37,7 @@ const DOM = {
     statusDot: document.getElementById('statusDot'),
     profileAvatar: document.getElementById('profileAvatar'),
     profileName: document.getElementById('profileName'),
+    languageSelect: document.getElementById('languageSelect'),
     totalCases: document.getElementById('totalCases'),
     totalMods: document.getElementById('totalMods'),
     scannedPagesVal: document.getElementById('scannedPagesVal'),
@@ -112,8 +113,32 @@ const state = {
     pointtrainRunning: false,
     scannedPages: 0,
     latestPointtrainRun: null,
+    language: 'tr',
     currentModeratorStats: []
 };
+
+const SIDE_PANEL_I18N = {
+    tr: {
+        languageChangedTitle: 'Dil',
+        languageChangedMessage: 'Dil TÃ¼rkÃ§e olarak ayarlandÄ±',
+        ready: 'HazÄ±r',
+        scanAllPages: 'TÃ¼m sayfalar otomatik taranacak',
+        manualPageInput: 'Manuel sayfa giriÅŸi aktif',
+        autoMode: 'Otomatik Mod'
+    },
+    en: {
+        languageChangedTitle: 'Language',
+        languageChangedMessage: 'Language set to English',
+        ready: 'Ready',
+        scanAllPages: 'All pages will be scanned automatically',
+        manualPageInput: 'Manual page input enabled',
+        autoMode: 'Auto Mode'
+    }
+};
+
+function text(key) {
+    return SIDE_PANEL_I18N[state.language]?.[key] || SIDE_PANEL_I18N.tr[key] || key;
+}
 
 const Toast = {
     container: null,
@@ -178,6 +203,24 @@ async function sendRuntimeMessage(message) {
 
 async function copyText(text) {
     await navigator.clipboard.writeText(text);
+}
+
+// SECTION: LANGUAGE_SYNC
+// PURPOSE: Sidepanel dil seÃ§imini dashboard-v2 ile ortak Chrome storage anahtarÄ±nda tutar.
+async function loadLanguage() {
+    const stored = await new Promise((resolve) => chrome.storage.local.get(['language'], resolve));
+    const lang = stored?.language === 'en' ? 'en' : 'tr';
+    state.language = lang;
+    if (DOM.languageSelect) DOM.languageSelect.value = lang;
+    localStorage.setItem('language', lang);
+}
+
+async function saveLanguage(lang) {
+    state.language = lang === 'en' ? 'en' : 'tr';
+    await new Promise((resolve) => chrome.storage.local.set({ language: state.language }, resolve));
+    localStorage.setItem('language', state.language);
+    if (DOM.languageSelect) DOM.languageSelect.value = state.language;
+    Toast.info(text('languageChangedTitle'), text('languageChangedMessage'));
 }
 
 function setStatus(status) {
@@ -702,7 +745,7 @@ function renderPointtrainRun(run) {
         DOM.pointtrainSummary.innerHTML = `
             <div class="comp-card" style="grid-column: span 3;">
                 <div class="comp-label">Pointtrain Hazir Degil</div>
-                <div class="comp-value" style="font-size: 13px; opacity: 0.6;">Henüz bir tarama yapilmadi</div>
+                <div class="comp-value" style="font-size: 13px; opacity: 0.6;">HenÃ¼z bir tarama yapilmadi</div>
             </div>
         `;
         DOM.pointtrainResultList.innerHTML = '';
@@ -956,6 +999,7 @@ function bindEvents() {
     });
 
     DOM.btnQuickScan?.addEventListener('click', () => switchSection('scan'));
+    DOM.languageSelect?.addEventListener('change', (event) => saveLanguage(event.target.value));
     DOM.btnStartScan?.addEventListener('click', runScan);
     DOM.btnStopScan?.addEventListener('click', stopScan);
     DOM.btnToday?.addEventListener('click', () => applyScanPreset('today'));
@@ -1003,16 +1047,16 @@ function bindEvents() {
             DOM.toggleAutofill.style.background = 'var(--accent)';
             DOM.toggleAutofill.style.color = '#fff';
             DOM.pageInput.value = '';
-            DOM.pageInput.placeholder = 'Otomatik (tüm sayfalar)';
+            DOM.pageInput.placeholder = 'Otomatik (tÃ¼m sayfalar)';
             DOM.pageInput.disabled = true;
-            Toast.info('Auto Mod', 'Tüm sayfalar otomatik taranacak');
+            Toast.info(text('autoMode'), text('scanAllPages'));
         } else {
             DOM.toggleAutofill.classList.remove('active');
             DOM.toggleAutofill.style.background = '';
             DOM.toggleAutofill.style.color = '';
-            DOM.pageInput.placeholder = 'Örn: 5 veya 1-10';
+            DOM.pageInput.placeholder = 'Ã–rn: 5 veya 1-10';
             DOM.pageInput.disabled = false;
-            Toast.info('Auto Mod', 'Manuel sayfa girişi aktif');
+            Toast.info(text('autoMode'), text('manualPageInput'));
         }
     });
 
@@ -1040,12 +1084,18 @@ function bindEvents() {
 
 async function init() {
     Toast.init();
+    await loadLanguage();
 
     // Register storage change listener to reload sidepanel when session state updates
     if (typeof chrome !== 'undefined' && chrome.storage?.onChanged) {
         chrome.storage.onChanged.addListener((changes, areaName) => {
             if (areaName === 'local' && changes.lutheusAuthSession) {
                 window.location.reload();
+            }
+            if (areaName === 'local' && changes.language) {
+                state.language = changes.language.newValue === 'en' ? 'en' : 'tr';
+                if (DOM.languageSelect) DOM.languageSelect.value = state.language;
+                localStorage.setItem('language', state.language);
             }
         });
     }

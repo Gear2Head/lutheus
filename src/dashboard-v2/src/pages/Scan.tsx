@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
-import { Play, Square, Settings2, Calendar, Activity, RefreshCw, Database, WifiOff } from 'lucide-react';
+import { Play, Square, Settings2, Calendar, Activity, RefreshCw, Database, WifiOff, Info } from 'lucide-react';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Accordion } from '../components/ui/Accordion';
+import { useLanguage } from '../contexts/LanguageContext';
 import { getPendingSyncCount, triggerManualSync } from '../lib/supabase';
 
 interface ScanProgress {
@@ -32,6 +33,7 @@ function sendToServiceWorker(action: string, options?: object): Promise<any> {
 }
 
 export default function Scan() {
+  const { t, language } = useLanguage();
   const [progress, setProgress] = useState<ScanProgress>({
     status: 'idle',
     currentPage: 0,
@@ -156,11 +158,36 @@ export default function Scan() {
     ? Math.min(100, Math.round((progress.currentPage / progress.totalPages) * 100))
     : 0;
 
+  // Tooltip Helper State
+  const [activeTooltip, setActiveTooltip] = useState<string | null>(null);
+
+  const InfoIconTooltip = ({ id, text }: { id: string; text: string }) => {
+    const isVisible = activeTooltip === id;
+    return (
+      <div className="relative inline-flex items-center ml-2">
+        <button
+          type="button"
+          onMouseEnter={() => setActiveTooltip(id)}
+          onMouseLeave={() => setActiveTooltip(null)}
+          onClick={(e) => { e.preventDefault(); setActiveTooltip(isVisible ? null : id); }}
+          className="text-muted-foreground hover:text-primary transition-colors p-0.5 focus:outline-none"
+        >
+          <Info className="w-3.5 h-3.5" />
+        </button>
+        {isVisible && (
+          <div className="absolute left-6 top-1/2 -translate-y-1/2 w-64 p-2.5 text-xs text-foreground bg-card border border-border/80 rounded-xl shadow-2xl z-50 animate-in fade-in slide-in-from-left-2">
+            {text}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="max-w-3xl mx-auto space-y-6 animate-in pb-6">
       <div className="pt-2">
-        <h2 className="text-2xl font-bold tracking-tight">Scan Kontrol</h2>
-        <p className="text-sm text-muted-foreground mt-0.5">Sapphire'dan veri çekme ve yerel senkronizasyon.</p>
+        <h2 className="text-2xl font-bold tracking-tight">{t('scan.title')}</h2>
+        <p className="text-sm text-muted-foreground mt-0.5">{t('scan.subtitle')}</p>
       </div>
 
       {/* Main scan card */}
@@ -168,17 +195,17 @@ export default function Scan() {
         <div className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             <div className="space-y-2">
-              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Hedef Sayfa</label>
+              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{t('scan.targetPage')}</label>
               <Input
                 value={targetPages}
                 onChange={(e) => setTargetPages(e.target.value)}
                 placeholder="örn. 5 veya 1-10"
                 disabled={isRunning}
               />
-              <p className="text-[11px] text-muted-foreground">5 = sadece 5. sayfa, 1-10 = aralık</p>
+              <p className="text-[11px] text-muted-foreground">{t('scan.targetPageDesc')}</p>
             </div>
             <div className="space-y-2">
-              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Tarih Filtresi</label>
+              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{t('scan.dateFilter')}</label>
               <div className="flex items-center gap-2">
                 <div className="relative flex-1">
                   <Calendar className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
@@ -191,7 +218,7 @@ export default function Scan() {
                 </div>
               </div>
               <div className="flex gap-1.5 mt-1">
-                {['Gün', 'Hafta', 'Ay', 'Tümü'].map((label, i) => {
+                {[(language === 'tr' ? 'Gün' : 'Day'), (language === 'tr' ? 'Hafta' : 'Week'), (language === 'tr' ? 'Ay' : 'Month'), (language === 'tr' ? 'Tümü' : 'All')].map((label, i) => {
                   const presets = ['day', 'week', 'month', 'all'];
                   return (
                     <button
@@ -210,39 +237,42 @@ export default function Scan() {
 
           <div className="h-px bg-border/50" />
 
-          <Accordion title={<span className="flex items-center gap-2 text-sm"><Settings2 className="w-4 h-4" /> Gelismis Ayarlar</span>}>
+          <Accordion title={<span className="flex items-center gap-2 text-sm"><Settings2 className="w-4 h-4" /> {t('scan.advanced')}</span>}>
             <div className="space-y-4 pt-2">
-              <label className="flex items-start gap-3 p-3 rounded-xl border border-border/50 bg-secondary/30 cursor-pointer hover:bg-secondary/50 transition-colors">
+              <div className="flex items-start gap-3 p-3 rounded-xl border border-border/50 bg-secondary/30 cursor-pointer hover:bg-secondary/50 transition-colors relative">
                 <input
                   type="checkbox"
+                  id="detailedMode"
                   checked={detailedMode}
                   onChange={(e) => setDetailedMode(e.target.checked)}
                   disabled={isRunning}
                   className="mt-1"
                 />
-                <div>
-                  <div className="font-semibold text-sm text-foreground">Detaylı Tarama Modu</div>
-                  <div className="text-xs text-muted-foreground mt-0.5">Her case detay sayfasını açar. Daha yavaş ama tam kanıt toplar.</div>
+                <div className="flex-1">
+                  <label htmlFor="detailedMode" className="font-semibold text-sm text-foreground cursor-pointer">{t('scan.detailed')}</label>
+                  <div className="text-xs text-muted-foreground mt-0.5">{t('scan.detailedDesc')}</div>
                 </div>
-              </label>
+                <InfoIconTooltip id="detailedMode" text={t(`tooltip.detailedMode.${detailedMode}`)} />
+              </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-muted-foreground">Detay Limiti</label>
+                  <label className="text-xs font-medium text-muted-foreground">{t('scan.detailLimit')}</label>
                   <Input type="number" value={detailLimit} onChange={(e) => setDetailLimit(Number(e.target.value))} disabled={isRunning} />
-                  <p className="text-[10px] text-muted-foreground">0 = tüm cases</p>
+                  <p className="text-[10px] text-muted-foreground">{t('scan.detailLimitDesc')}</p>
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-muted-foreground">Gecikme (ms)</label>
+                  <label className="text-xs font-medium text-muted-foreground">{t('scan.delay')}</label>
                   <Input type="number" value={delay} onChange={(e) => setDelay(Number(e.target.value))} disabled={isRunning} />
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <label className="flex items-center gap-2 text-sm">
+              <div className="space-y-2 flex items-center">
+                <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
                   <input type="checkbox" checked={openAdminOnDone} onChange={(e) => setOpenAdminOnDone(e.target.checked)} disabled={isRunning} />
-                  <span className="text-muted-foreground">Tamamlandığında Admin Paneli Aç</span>
+                  <span className="text-muted-foreground">{t('scan.openAdmin')}</span>
                 </label>
+                <InfoIconTooltip id="openAdminOnDone" text={t(`tooltip.openAdminOnDone.${openAdminOnDone}`)} />
               </div>
             </div>
           </Accordion>
@@ -250,11 +280,11 @@ export default function Scan() {
           <div className="flex flex-col sm:flex-row gap-3 items-center pt-2">
             {!isRunning ? (
               <Button size="lg" className="w-full sm:w-auto min-w-[180px]" onClick={handleStartScan}>
-                <Play className="w-4 h-4 fill-current" /> Taramayı Baslat
+                <Play className="w-4 h-4 fill-current" /> {t('scan.start')}
               </Button>
             ) : (
               <Button size="lg" variant="destructive" className="w-full sm:w-auto" onClick={handleStopScan}>
-                <Square className="w-4 h-4 fill-current" /> Durdur
+                <Square className="w-4 h-4 fill-current" /> {t('scan.stop')}
               </Button>
             )}
           </div>
@@ -267,7 +297,7 @@ export default function Scan() {
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-semibold flex items-center gap-2 text-sm">
               <Activity className={`w-4 h-4 text-primary ${isRunning ? 'animate-pulse' : ''}`} />
-              {isRunning ? 'Aktif Tarama' : progress.status === 'done' ? 'Tamamlandı' : 'Hata'}
+              {isRunning ? t('scan.activeScan') : progress.status === 'done' ? t('scan.completed') : t('scan.error')}
             </h3>
             <span className="font-mono text-sm text-primary font-bold">{pct}%</span>
           </div>
@@ -279,7 +309,7 @@ export default function Scan() {
           </div>
           <div className="flex justify-between text-xs text-muted-foreground">
             <span>Sayfa {progress.currentPage}/{progress.totalPages} — {progress.casesFound} kayıt</span>
-            <span>Gecen: {progress.elapsed}s</span>
+            <span>{t('scan.elapsed')}: {progress.elapsed}s</span>
           </div>
         </Card>
       )}
@@ -289,16 +319,16 @@ export default function Scan() {
         <div className="flex items-center justify-between mb-4">
           <div>
             <h3 className="font-semibold text-sm text-foreground flex items-center gap-2">
-              <Database className="w-4 h-4 text-primary" /> Yerel Senkronizasyon
+              <Database className="w-4 h-4 text-primary" /> {t('scan.localSync')}
             </h3>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Tarama verileri önce yerel depoya kaydedilir, sonra Supabase'e gönderilir.
+              {t('scan.localSyncDesc')}
             </p>
           </div>
           {pendingSync > 0 && (
             <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-500/10 border border-amber-500/20">
               <WifiOff className="w-3.5 h-3.5 text-amber-400" />
-              <span className="text-xs font-bold text-amber-400">{pendingSync} bekleyen</span>
+              <span className="text-xs font-bold text-amber-400">{pendingSync} {t('nav.pending')}</span>
             </div>
           )}
         </div>
@@ -311,14 +341,14 @@ export default function Scan() {
             className="flex-1 sm:flex-none"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${syncing ? 'animate-spin' : ''}`} />
-            {syncing ? 'Senkronize ediliyor...' : 'Elle Senkronize Et'}
+            {syncing ? t('scan.syncing') : t('scan.syncManual')}
           </Button>
         </div>
         {syncResult && (
           <div className="mt-3 p-3 rounded-xl bg-secondary/30 border border-border/50">
             <p className="text-xs text-muted-foreground">
-              Senkronize: <span className="text-emerald-400 font-bold">{syncResult.synced}</span>
-              {' '} — Hata: <span className="text-destructive font-bold">{syncResult.errors}</span>
+              {t('nav.synced')}: <span className="text-emerald-400 font-bold">{syncResult.synced}</span>
+              {' '} — {t('scan.error')}: <span className="text-destructive font-bold">{syncResult.errors}</span>
             </p>
           </div>
         )}

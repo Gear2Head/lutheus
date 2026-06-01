@@ -600,6 +600,36 @@ async function handleStaffRoleConfig(req, res) {
 
 const DISCORD_API = 'https://discord.com/api/v10';
 const BOT_TOKEN = () => process.env.DISCORD_BOT_TOKEN || process.env.DISCORD_TOKEN || '';
+const MANAGE_GUILD = 0x20;
+const ADMINISTRATOR = 0x8;
+
+function hasManageGuildPermission(guild = {}) {
+    const permissions = Number(guild.permissions || 0);
+    return guild.owner === true || (permissions & MANAGE_GUILD) !== 0 || (permissions & ADMINISTRATOR) !== 0;
+}
+
+function botGuildIconUrl(guild) {
+    return guild.icon
+        ? `https://cdn.discordapp.com/icons/${guild.id}/${guild.icon}.png?size=128`
+        : `https://cdn.discordapp.com/embed/avatars/${Number(guild.id || 0) % 5}.png`;
+}
+
+async function assertManageableInstalledGuild(actor, guildId) {
+    const [botGuilds, storedGuilds] = await Promise.all([
+        fetchBotGuilds(),
+        actor.discordId ? fetchUserDiscordGuilds(actor.discordId) : Promise.resolve([])
+    ]);
+    const installed = botGuilds.some((guild) => guild.id === guildId);
+    if (!installed) {
+        throw Object.assign(new Error('BOT_NOT_INSTALLED_IN_GUILD'), { statusCode: 403 });
+    }
+    const manageable = Array.isArray(storedGuilds)
+        ? storedGuilds.some((guild) => guild.id === guildId && hasManageGuildPermission(guild))
+        : false;
+    if (!manageable) {
+        throw Object.assign(new Error('GUILD_MANAGE_PERMISSION_REQUIRED'), { statusCode: 403 });
+    }
+}
 
 // Fetch all guilds where bot is installed via bot token
 async function fetchBotGuilds() {
@@ -652,7 +682,7 @@ async function fetchGuildChannels(guildId) {
     const channels = await res.json();
     return channels
         .filter(c => c.type === 0 || c.type === 5)
-        .map(c => ({ id: c.id, name: c.name, type: c.type === 5 ? 'announcement' : 'text' }));
+        .map(c => ({ id: c.id, name: c.name, type: c.type, parentId: c.parent_id || null }));
 }
 
 // Fetch guild roles from Discord API
@@ -667,7 +697,8 @@ async function fetchGuildRoles(guildId) {
         .map(r => ({
             id: r.id,
             name: r.name,
-            color: r.color ? `#${r.color.toString(16).padStart(6, '0')}` : '#99aab5'
+            color: r.color || 0,
+            rawPosition: r.position || 0
         }));
 }
 
@@ -681,6 +712,7 @@ async function fetchBotCommands(guildId) {
     if (!res.ok) return [];
     const cmds = await res.json();
     return cmds.map(c => ({
+        id: c.id,
         name: c.name,
         description: c.description || '',
         category: 'moderation',
@@ -697,6 +729,9 @@ function defaultConfigs(guildId = '') {
         prefix: "!",
         dashboardAccessRole: "",
         dataRetentionDays: 30,
+        logChannelId: '',
+        alertChannelId: '',
+        statsChannelId: '',
         modules: {
             autoModeration: false,
             moderation: false,
@@ -735,6 +770,104 @@ function defaultConfigs(guildId = '') {
     };
 }
 
+function configFromRow(row, guildId) {
+    if (!row) return defaultConfigs(guildId);
+    return {
+        ...defaultConfigs(guildId),
+        guildId,
+        language: row.language || 'tr',
+        timezone: row.timezone || 'Europe/Istanbul',
+        prefix: row.prefix || '!',
+        dashboardAccessRole: row.dashboard_access_role_id || '',
+        dataRetentionDays: Number(row.data_retention_days || 30),
+        logChannelId: row.log_channel_id || '',
+        alertChannelId: row.alert_channel_id || '',
+        statsChannelId: row.stats_channel_id || '',
+        modules: { ...defaultConfigs(guildId).modules, ...(row.modules || {}) },
+        welcomeSettings: { ...defaultConfigs(guildId).welcomeSettings, ...(row.welcome_settings || {}) },
+        joinRolesSettings: { ...defaultConfigs(guildId).joinRolesSettings, ...(row.join_roles_settings || {}) },
+        loggingSettings: { ...defaultConfigs(guildId).loggingSettings, ...(row.logging_settings || {}) },
+        commandSettings: row.command_settings || {},
+        webhookSettings: row.webhook_settings || {},
+        isActive: row.is_active !== false,
+        updatedAt: row.updated_at || null
+    };
+}
+
+function rowFromConfig(guildId, config, actor) {
+    return {
+        guild_id: guildId,
+        log_channel_id: config.logChannelId || config.loggingSettings?.channelId || null,
+        alert_channel_id: config.alertChannelId || null,
+        stats_channel_id: config.statsChannelId || null,
+        dashboard_access_role_id: config.dashboardAccessRole || null,
+        timezone: config.timezone || 'Europe/Istanbul',
+        language: config.language || 'tr',
+        prefix: config.prefix || '!',
+        data_retention_days: Number(config.dataRetentionDays || 30),
+        modules: config.modules || {},
+        welcome_settings: config.welcomeSettings || {},
+        join_roles_settings: config.joinRolesSettings || {},
+        logging_settings: config.loggingSettings || {},
+        command_settings: config.commandSettings || {},
+        webhook_settings: config.webhookSettings || {},
+        is_active: config.isActive !== false,
+        setup_completed_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        updated_by: actor.discordId || actor.uid || actor.email || null
+    };
+}
+
+async function getBotGuildConfig(guildId) {
+    const { data, error } = await supabase
+        .from('bot_guild_config')
+        .select('*')
+        .eq('guild_id', guildId)
+        .maybeSingle();
+    if (error) throw error;
+    return configFromRow(data, guildId);
+}
+
+async function insertBotAction({ guildId, action, actor, payload = {}, status = 'pending', result = {} }) {
+    const { data, error } = await supabase
+        .from('bot_action_audit')
+        .insert([{
+            guild_id: guildId,
+            action,
+            status,
+            requested_by_discord_id: actor.discordId || null,
+            requested_by_uid: actor.uid || null,
+            payload,
+            result,
+            updated_at: new Date().toISOString(),
+            processed_at: status === 'pending' ? null : new Date().toISOString()
+        }])
+        .select('*')
+        .single();
+    if (error) throw error;
+    return data;
+}
+
+async function fetchDashboardLiveData(guildId) {
+    const [runtime, recentActions, caseCounts, invalidCases, auditLogs] = await Promise.all([
+        supabase.from('bot_runtime_status').select('*').eq('guild_id', guildId).maybeSingle(),
+        supabase.from('bot_action_audit').select('*').eq('guild_id', guildId).order('created_at', { ascending: false }).limit(20),
+        supabase.from('sapphire_cases').select('case_id,cuk_verdict', { count: 'exact', head: true }).eq('guild_id', guildId),
+        supabase.from('sapphire_cases').select('case_id,author_display_name,reason_raw,cuk_verdict,scraped_at').eq('guild_id', guildId).eq('cuk_verdict', 'invalid').order('scraped_at', { ascending: false }).limit(10),
+        supabase.from('audit_logs').select('id,action,target_type,actor_discord_id,metadata,created_at').order('created_at', { ascending: false }).limit(20)
+    ]);
+
+    return {
+        runtimeStatus: runtime.data || null,
+        recentActions: recentActions.data || [],
+        caseStats: {
+            total: caseCounts.count || 0,
+            invalidRecent: invalidCases.data || []
+        },
+        auditLogs: auditLogs.data || []
+    };
+}
+
 async function sendDiscordMessage(channelId, content, embed = null) {
     const body = { content };
     if (embed) body.embeds = [embed];
@@ -764,74 +897,35 @@ async function handleDiscordBotGuilds(req, res) {
     try {
         const actor = await requirePermission(req, 'discord_bot:view');
 
-        const botGuilds = await fetchBotGuilds().catch(() => []);
+        const botGuilds = await fetchBotGuilds();
         const botGuildIds = new Set(botGuilds.map(g => g.id));
 
         let userManageableGuilds = [];
         if (actor.discordId) {
             const storedGuilds = await fetchUserDiscordGuilds(actor.discordId);
             if (storedGuilds && Array.isArray(storedGuilds)) {
-                // Filter manageable guilds only (MANAGE_GUILD: 0x20, ADMINISTRATOR: 0x8)
-                userManageableGuilds = storedGuilds.filter(g => 
-                    (Number(g.permissions) & 0x20) !== 0 || 
-                    (Number(g.permissions) & 0x8) !== 0
-                );
+                userManageableGuilds = storedGuilds.filter(hasManageGuildPermission);
             }
         }
 
-        let guilds = [];
-
-        if (userManageableGuilds.length > 0) {
-            // Fetch guild details for the installed manageable guilds in parallel to get exact member count
-            const installedManageableGuildIds = userManageableGuilds
-                .filter(g => botGuildIds.has(g.id))
-                .map(g => g.id);
-            
-            const detailsPromises = installedManageableGuildIds.map(id => fetchGuildDetails(id).catch(() => null));
-            const detailsList = await Promise.all(detailsPromises);
-            const detailsMap = new Map(detailsList.filter(Boolean).map(g => [g.id, g]));
-
-            // Map each user manageable guild
-            guilds = userManageableGuilds.map(g => {
-                const botInstalled = botGuildIds.has(g.id);
-                // Try to find the guild in detailsMap to get latest approximate member count if installed
+        const installedManageableGuildIds = userManageableGuilds.filter(g => botGuildIds.has(g.id)).map(g => g.id);
+        const detailsList = await Promise.all(installedManageableGuildIds.map(id => fetchGuildDetails(id).catch(() => null)));
+        const detailsMap = new Map(detailsList.filter(Boolean).map(g => [g.id, g]));
+        const guilds = userManageableGuilds
+            .filter(g => botGuildIds.has(g.id))
+            .map(g => {
                 const botG = detailsMap.get(g.id);
-                const manageable =
-                    (Number(g.permissions || 0) & 0x20) !== 0 ||
-                    (Number(g.permissions || 0) & 0x8) !== 0 ||
-                    g.owner === true;
                 return {
                     id: g.id,
-                    name: g.name,
+                    name: botG?.name || g.name,
                     memberCount: botG?.approximate_member_count || botG?.member_count || 0,
-                    botInstalled: botInstalled,
-                    manageable,
-                    permissions: String(g.permissions || '0'),
-                    owner: Boolean(g.owner),
-                    iconUrl: g.icon
-                        ? `https://cdn.discordapp.com/icons/${g.id}/${g.icon}.png?size=128`
-                        : `https://cdn.discordapp.com/embed/avatars/${Number(g.id) % 5}.png`
-                };
-            });
-        } else {
-            // Fallback: If no stored oauth guilds, show the bot's actual guilds directly
-            const detailPromises = botGuilds.slice(0, 25).map(bg => fetchGuildDetails(bg.id).catch(() => null));
-            const details = await Promise.all(detailPromises);
-            guilds = details
-                .filter(Boolean)
-                .map(g => ({
-                    id: g.id,
-                    name: g.name,
-                    memberCount: g.approximate_member_count || g.member_count || 0,
                     botInstalled: true,
                     manageable: true,
-                    permissions: '0',
-                    owner: false,
-                    iconUrl: g.icon
-                        ? `https://cdn.discordapp.com/icons/${g.id}/${g.icon}.png?size=128`
-                        : `https://cdn.discordapp.com/embed/avatars/${Number(g.id) % 5}.png`
-                }));
-        }
+                    permissions: String(g.permissions || '0'),
+                    owner: Boolean(g.owner),
+                    iconUrl: botGuildIconUrl(botG || g)
+                };
+            });
 
         return ok(res, { guilds });
     } catch (err) {
@@ -853,33 +947,30 @@ async function handleDiscordBotDashboard(req, res) {
 
     try {
         if (req.method === 'GET') {
-            await requirePermission(req, 'discord_bot:view');
+            const actor = await requirePermission(req, 'discord_bot:view');
+            await assertManageableInstalledGuild(actor, guildId);
 
-            const [configRow, channels, roles, commands] = await Promise.all([
-                supabase.from('app_settings').select('*').eq('key', `bot_guild_config_${guildId}`).maybeSingle(),
+            const [config, channels, roles, commands, liveData] = await Promise.all([
+                getBotGuildConfig(guildId),
                 fetchGuildChannels(guildId),
                 fetchGuildRoles(guildId),
-                fetchBotCommands(guildId)
+                fetchBotCommands(guildId),
+                fetchDashboardLiveData(guildId)
             ]);
 
-            const configs = configRow?.data ? (configRow.data.value?.configs || configRow.data.value?.config || configRow.data.value) : defaultConfigs(guildId);
-            return ok(res, { config: configs, channels, roles, commands });
+            return ok(res, { config, channels, roles, commands, ...liveData });
         } else {
             const actor = await requirePermission(req, 'discord_bot:update');
+            await assertManageableInstalledGuild(actor, guildId);
             const configs = req.body?.configs || req.body?.config || req.body;
             if (!configs || typeof configs !== 'object') {
                 return badRequest(res, 'CONFIGS_REQUIRED');
             }
 
-            await supabase.from('app_settings').upsert([{
-                key: `bot_guild_config_${guildId}`,
-                value: {
-                    guildId,
-                    configs,
-                    updatedAt: new Date().toISOString(),
-                    updatedBy: actor.discordId || actor.uid
-                }
-            }], { onConflict: 'key' });
+            const { error } = await supabase
+                .from('bot_guild_config')
+                .upsert([rowFromConfig(guildId, configs, actor)], { onConflict: 'guild_id' });
+            if (error) throw error;
 
             await addAudit('bot_guild_config_updated', actor, { guildId });
             return ok(res, { success: true });
@@ -907,8 +998,50 @@ async function handleDiscordBotAction(req, res) {
             return badRequest(res, 'MISSING_ACTION');
         }
 
-        const { data: row } = await supabase.from('app_settings').select('*').eq('key', `bot_guild_config_${guildId}`).maybeSingle();
-        const configs = row ? row.value.configs : {};
+        await assertManageableInstalledGuild(actor, guildId);
+        const configs = await getBotGuildConfig(guildId);
+
+        if (action === 'test_welcome') {
+            const channelId = configs?.welcomeSettings?.channelId;
+            if (!channelId) return badRequest(res, 'WELCOME_CHANNEL_NOT_SET');
+            const formatted = (configs?.welcomeSettings?.welcomeMessage || 'Hos geldin {user}!')
+                .replace(/{user}/g, `<@${actor.discordId || '0'}>`)
+                .replace(/{username}/g, 'TestUser')
+                .replace(/{server}/g, 'Sunucu')
+                .replace(/{memberCount}/g, '?');
+            await sendDiscordMessage(channelId, configs?.welcomeSettings?.embedEnabled ? null : formatted, configs?.welcomeSettings?.embedEnabled ? {
+                title: 'Lutheus Test Welcome',
+                description: formatted,
+                color: 0x9d7bfe
+            } : null);
+            const result = { ok: true, success: true, message: 'Welcome test sent' };
+            await insertBotAction({ guildId, action, actor, payload, status: 'completed', result });
+            await addAudit(`discord_bot_action:${action}`, actor, { guildId, payload });
+            return ok(res, result);
+        }
+
+        if (action === 'test_alert') {
+            const channelId = configs.alertChannelId || payload.channelId;
+            if (!channelId) return badRequest(res, 'ALERT_CHANNEL_NOT_SET');
+            await sendDiscordMessage(channelId, null, {
+                title: 'Lutheus CUK Test Alert',
+                description: 'Dashboard uzerinden gercek Discord kanalina test uyarisi gonderildi.',
+                color: 0xef4444
+            });
+            const result = { ok: true, success: true, message: 'Alert test sent' };
+            await insertBotAction({ guildId, action, actor, payload, status: 'completed', result });
+            await addAudit(`discord_bot_action:${action}`, actor, { guildId, payload });
+            return ok(res, result);
+        }
+
+        if (['force_sync', 'sync_commands', 'lockdown', 'unlockdown'].includes(action)) {
+            const row = await insertBotAction({ guildId, action, actor, payload, status: 'pending' });
+            const result = { ok: true, success: true, message: 'Action queued for bot runtime', actionId: row.id };
+            await addAudit(`discord_bot_action:${action}`, actor, { guildId, payload });
+            return ok(res, result);
+        }
+
+        return badRequest(res, 'UNKNOWN_ACTION');
 
         let result = { ok: true };
 
@@ -937,7 +1070,7 @@ async function handleDiscordBotAction(req, res) {
 
             result = { ok: true, message: 'Welcome test sent' };
         } else if (action === 'reset_config') {
-            await supabase.from('app_settings').delete().eq('key', `bot_guild_config_${guildId}`);
+            await supabase.from('bot_guild_config').delete().eq('guild_id', guildId);
             result = { ok: true, message: 'Config reset' };
         } else {
             return badRequest(res, 'UNKNOWN_ACTION');

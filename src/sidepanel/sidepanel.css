@@ -17,13 +17,13 @@
 }
 
 :root {
-    /* Core Colors - High Contrast Dark */
-    --bg-deep: #060608;
-    --bg-main: #0b0b0e;
-    --bg-sidebar: #060608;
-    --bg-card: #111115;
-    --bg-card-solid: #111115;
-    --bg-input: #16161c;
+    /* Core Colors - High Contrast Dark Glassmorphism */
+    --bg-deep: rgba(5, 5, 5, 0.85);
+    --bg-main: rgba(11, 11, 14, 0.65);
+    --bg-sidebar: rgba(6, 6, 8, 0.65);
+    --bg-card: rgba(15, 15, 15, 0.88);
+    --bg-card-solid: rgba(15, 15, 15, 0.95);
+    --bg-input: rgba(255, 255, 255, 0.04);
     --bg-hover: rgba(255, 255, 255, 0.07);
 
     /* Text Colors - Higher Contrast */
@@ -77,10 +77,11 @@
 }
 
 body {
-    background-image: url('../../public/background.png');
+    background-image: linear-gradient(rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.5)), url('../../public/background.png');
     background-size: cover;
     background-position: center;
     background-repeat: no-repeat;
+    background-attachment: fixed;
     color: var(--text-primary);
     font-family: var(--font-main);
     height: 100vh;
@@ -98,10 +99,10 @@ body {
 /* ========================================
    SIDEBAR
    ======================================== */
-..sidebar {
+.sidebar {
     width: 64px;
-    background: rgba(6, 6, 8, 0.45);
-    backdrop-filter: blur(16px);
+    background: rgba(6, 6, 8, 0.65);
+    backdrop-filter: blur(24px);
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -183,7 +184,7 @@ body {
     padding: 20px 24px;
     overflow: hidden;
     background: rgba(11, 11, 14, 0.65);
-    backdrop-filter: blur(16px);
+    backdrop-filter: blur(24px);
 }
 
 /* ========================================
@@ -396,6 +397,7 @@ body {
    ======================================== */
 .card {
     background: var(--bg-card);
+    backdrop-filter: blur(20px);
     border-radius: var(--radius-lg);
     padding: 20px;
     border: 1px solid var(--border-color);
@@ -1393,6 +1395,25 @@ small {
     display: flex;
     align-items: center;
     gap: 12px;
+}
+
+/* SECTION: LANGUAGE_SELECTOR */
+/* PURPOSE: Extension sidepanel dil seçimini kompakt header kontrolü olarak gösterir. */
+.language-select {
+    height: 34px;
+    padding: 0 10px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-color);
+    background: var(--bg-card);
+    color: var(--text-primary);
+    font-size: 12px;
+    font-weight: 700;
+    outline: none;
+}
+
+.language-select:focus {
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 2px rgba(124, 90, 245, 0.18);
 }
 
 .profile-area {

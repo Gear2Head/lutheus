@@ -5,7 +5,10 @@ import {
     Routes,
     EmbedBuilder,
     ActivityType,
-    Partials
+    Partials,
+    SlashCommandBuilder,
+    PermissionFlagsBits,
+    ChannelType
 } from 'discord.js';
 import { createServer } from 'node:http';
 import { supabase, botToken, logChannelId, guildId } from './botConfig.js';
@@ -76,6 +79,33 @@ function startHealthServer() {
 }
 
 const commands = [
+    {
+        data: new SlashCommandBuilder()
+            .setName('setup')
+            .setDescription('Lutheus bot guild kanal ayarlarini gercek veritabanina kaydeder.')
+            .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+            .addChannelOption(option => option.setName('log_channel').setDescription('Moderasyon log kanali').addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement).setRequired(true))
+            .addChannelOption(option => option.setName('alert_channel').setDescription('CUK alert kanali').addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement).setRequired(true))
+            .addChannelOption(option => option.setName('stats_channel').setDescription('Pointtrain istatistik kanali').addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement).setRequired(false)),
+        async execute(interaction: any) {
+            const logChannel = interaction.options.getChannel('log_channel', true);
+            const alertChannel = interaction.options.getChannel('alert_channel', true);
+            const statsChannel = interaction.options.getChannel('stats_channel', false);
+            await supabase.from('bot_guild_config').upsert([{
+                guild_id: interaction.guildId,
+                log_channel_id: logChannel.id,
+                alert_channel_id: alertChannel.id,
+                stats_channel_id: statsChannel?.id || null,
+                modules: { moderation: true, logging: true },
+                logging_settings: { channelId: logChannel.id, events: { memberBan: true, memberUnban: true, memberJoin: true, memberLeave: true, messageDelete: true, messageEdit: true, roleUpdate: false, channelUpdate: false } },
+                is_active: true,
+                setup_completed_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+                updated_by: interaction.user.id
+            }], { onConflict: 'guild_id' });
+            await interaction.reply({ content: 'Lutheus bot ayarlari kaydedildi.', ephemeral: true });
+        }
+    },
     EmergencyLockdownCommand,
     QueryCaseCommand,
     QueryStaffCommand,
@@ -91,6 +121,73 @@ const commands = [
     ModLogsCommand,
     UnbanCommand,
 ];
+
+function mapDbConfig(row: any) {
+    const modules = row.modules || {};
+    const welcomeSettings = row.welcome_settings || {};
+    const loggingSettings = row.logging_settings || {};
+    return {
+        guildId: row.guild_id,
+        language: row.language || 'tr',
+        timezone: row.timezone || 'Europe/Istanbul',
+        prefix: row.prefix || '!',
+        logChannelId: row.log_channel_id || '',
+        alertChannelId: row.alert_channel_id || '',
+        statsChannelId: row.stats_channel_id || '',
+        dashboardAccessRole: row.dashboard_access_role_id || '',
+        dataRetentionDays: Number(row.data_retention_days || 30),
+        modules,
+        welcomeSettings,
+        welcome: {
+            enabled: Boolean(modules.welcomeMessages),
+            channelId: welcomeSettings.channelId || '',
+            message: welcomeSettings.welcomeMessage || 'Hos geldin {user}!',
+            goodbyeMessage: welcomeSettings.goodbyeMessage || '{username} sunucudan ayrildi.',
+            embedEnabled: Boolean(welcomeSettings.embedEnabled),
+            dmEnabled: Boolean(welcomeSettings.sendDm)
+        },
+        joinRolesSettings: row.join_roles_settings || {},
+        loggingSettings,
+        logging: {
+            enabled: Boolean(modules.logging),
+            channelId: row.log_channel_id || loggingSettings.channelId || ''
+        },
+        commandSettings: row.command_settings || {},
+        commands: row.command_settings || {},
+        webhookSettings: row.webhook_settings || {},
+    };
+}
+
+async function writeRuntimeHeartbeat(commandSyncStatus = 'ready') {
+    const rows = client.guilds.cache.map((guild) => ({
+        guild_id: guild.id,
+        bot_user_id: client.user?.id || null,
+        bot_tag: client.user?.tag || null,
+        ready: client.isReady(),
+        latency_ms: Math.max(0, Math.round(client.ws.ping || 0)),
+        uptime_seconds: Math.round(process.uptime()),
+        last_heartbeat_at: new Date().toISOString(),
+        command_sync_status: commandSyncStatus,
+        last_error: lastError || null,
+        updated_at: new Date().toISOString()
+    }));
+    if (rows.length) {
+        await supabase.from('bot_runtime_status').upsert(rows, { onConflict: 'guild_id' });
+    }
+}
+
+async function completeBotAction(id: string, status: 'completed' | 'failed', result: Record<string, unknown>, error = '') {
+    await supabase
+        .from('bot_action_audit')
+        .update({
+            status,
+            result,
+            error: error || null,
+            processed_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+        })
+        .eq('id', id);
+}
 
 async function registerSlashCommands() {
     if (!botToken) {
@@ -309,17 +406,15 @@ function startSupabasePolling() {
     const pollConfigs = async () => {
         try {
             const { data: rows, error } = await supabase
-                .from('app_settings')
+                .from('bot_guild_config')
                 .select('*')
-                .like('key', 'bot_guild_config_%');
+                .eq('is_active', true);
 
             if (error) return;
 
             if (rows) {
                 rows.forEach(row => {
-                    const guildId = row.key.replace('bot_guild_config_', '');
-                    const val = row.value || {};
-                    guildConfigsCache[guildId] = val.configs || val;
+                    guildConfigsCache[row.guild_id] = mapDbConfig(row);
                 });
                 console.log(`Discord Bot: Loaded configs cache for ${rows.length} guilds.`);
             }
@@ -329,6 +424,52 @@ function startSupabasePolling() {
     };
     pollConfigs();
     setInterval(pollConfigs, 30000);
+
+    const pollDashboardActions = async () => {
+        try {
+            const { data: rows, error } = await supabase
+                .from('bot_action_audit')
+                .select('*')
+                .eq('status', 'pending')
+                .order('created_at', { ascending: true })
+                .limit(10);
+            if (error || !rows?.length) return;
+
+            for (const row of rows) {
+                await supabase.from('bot_action_audit').update({ status: 'processing', updated_at: new Date().toISOString() }).eq('id', row.id);
+                try {
+                    if (row.action === 'sync_commands') {
+                        await registerSlashCommands();
+                        await supabase.from('bot_runtime_status').update({
+                            last_command_sync_at: new Date().toISOString(),
+                            command_sync_status: 'synced',
+                            updated_at: new Date().toISOString()
+                        }).eq('guild_id', row.guild_id);
+                        await completeBotAction(row.id, 'completed', { synced: true });
+                    } else if (row.action === 'force_sync') {
+                        await syncModeratorProfiles(row.requested_by_discord_id || 'dashboard');
+                        await completeBotAction(row.id, 'completed', { syncedProfiles: true });
+                    } else if (row.action === 'lockdown' || row.action === 'unlockdown') {
+                        const enabled = row.action === 'lockdown';
+                        guildConfigsCache[row.guild_id] = {
+                            ...(guildConfigsCache[row.guild_id] || {}),
+                            lockdown: enabled
+                        };
+                        await completeBotAction(row.id, 'completed', { lockdown: enabled });
+                    } else {
+                        await completeBotAction(row.id, 'failed', {}, 'UNKNOWN_ACTION');
+                    }
+                } catch (err: any) {
+                    await completeBotAction(row.id, 'failed', {}, err.message || 'ACTION_FAILED');
+                }
+            }
+        } catch (err: any) {
+            console.error('Discord Bot: Dashboard action polling failed:', err.message);
+        }
+    };
+    setInterval(pollDashboardActions, 10000);
+    setInterval(() => writeRuntimeHeartbeat().catch((err: any) => console.warn('Discord Bot: heartbeat write failed:', err.message)), 15000);
+    writeRuntimeHeartbeat().catch(() => null);
 }
 
 async function sendCaseEmbedLog(data: any) {

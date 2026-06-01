@@ -1,7 +1,7 @@
 "use client";
 
 // SECTION: STATE_STORE
-// PURPOSE: Welcome and goodbye message template editor including variable mappings and preview mock rendering.
+// PURPOSE: Welcome and goodbye message template editor including variable mappings and Discord preview rendering.
 
 import { useBotDashboardStore } from "@/store/bot-dashboard-store";
 import { MessageSquare, HelpCircle, Eye, AlertCircle } from "lucide-react";
@@ -167,7 +167,7 @@ export default function WelcomeMessagesPage() {
               <span>Canlı Önizleme (Mock)</span>
             </h3>
 
-            {/* Discord message mockup */}
+            {/* Discord message preview */}
             <div className="bg-[#0b0c10] border border-[#2f3e46] rounded-xl p-4 space-y-4">
               <div className="flex items-start gap-3">
                 <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-[#66fcf1] to-purple-600 flex items-center justify-center text-xs font-bold text-[#0b0c10]">

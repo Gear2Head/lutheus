@@ -5,14 +5,12 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useBotDashboardStore } from "@/store/bot-dashboard-store";
 import { getStoredSession, LutheusSession } from "@/lib/auth/session";
 import { GuildSwitcher } from "./guild-switcher";
 import { Shield, User, LogOut } from "lucide-react";
 
 export function GuildTopbar() {
   const [session, setSession] = useState<LutheusSession | null>(null);
-  const { isMockMode } = useBotDashboardStore();
 
   useEffect(() => {
     setSession(getStoredSession());
@@ -43,14 +41,6 @@ export function GuildTopbar() {
       </div>
 
       <div className="flex items-center gap-4">
-        {/* Mock Indicator */}
-        {isMockMode && (
-          <span className="hidden md:inline-flex items-center gap-1.5 px-3 py-1 bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs font-semibold rounded-full">
-            <span className="w-1.5 h-1.5 bg-amber-400 rounded-full animate-ping" />
-            Lokal / Mock Modu
-          </span>
-        )}
-
         {/* User Info / Profile */}
         {session ? (
           <div className="flex items-center gap-3">

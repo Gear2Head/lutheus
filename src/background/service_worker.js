@@ -676,7 +676,9 @@ function readClosedAt(entry) {
         if (ts) {
             try {
                 return new Date(ts).toISOString();
-            } catch (_e) {}
+            } catch (_e) {
+                // Invalid Sapphire timestamps are ignored and normalized as null.
+            }
         }
     }
     return null;

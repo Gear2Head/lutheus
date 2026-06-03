@@ -449,6 +449,7 @@ async function handleStaffProfiles(req, res) {
             avatarUrl: row.avatar_url || row.raw_payload?.avatar || row.raw_payload?.avatarUrl || null,
             role: normalizeRole(row.staff_rank || row.raw_payload?.role || 'pending'),
             isActiveStaff: row.is_active_staff !== false,
+            accessStatus: row.access_status || 'pending',
             permissionGroup: row.permission_group,
             permissionLevel: row.permission_level,
             removalReason: row.removal_reason || null,
@@ -465,6 +466,9 @@ async function handleStaffProfiles(req, res) {
             const discordId = row.author_discord_id;
             if (!discordId || existingIds.has(discordId)) continue;
             existingIds.add(discordId);
+            // SECTION: SAPPHIRE_AUTHOR_PENDING
+            // PURPOSE: Automatically detected Sapphire case authors must NOT become approved/active staff.
+            // They are inserted as pending/unapproved with sapphire-author source flag.
             authorItems.push({
                 id: discordId,
                 discordId,
@@ -476,10 +480,11 @@ async function handleStaffProfiles(req, res) {
                 username: null,
                 avatar: row.author_avatar_url || null,
                 avatarUrl: row.author_avatar_url || null,
-                role: 'discord_destek_ekibi',
-                isActiveStaff: true,
-                permissionGroup: 'support',
-                permissionLevel: 25,
+                role: 'pending',
+                isActiveStaff: false,
+                accessStatus: 'pending',
+                permissionGroup: 'pending',
+                permissionLevel: 0,
                 rawPayload: { source: 'sapphire-author' },
                 source: 'sapphire-author',
                 updatedAt: row.created_at_sapphire,
@@ -1202,6 +1207,172 @@ async function handleRepairDates(req, res) {
     return ok(res, { success: true, count: repairedCount });
 }
 
+// SECTION: STAFF_ACCESS_REQUESTS
+// PURPOSE: GET pending access requests, PATCH approve/reject. Only management can approve.
+async function handleStaffAccessRequests(req, res) {
+    if (req.method === 'GET') {
+        await requirePermission(req, PERMISSIONS.STAFF_ACCESS_APPROVE);
+        const { data: rows, error } = await supabase
+            .from('staff_profiles')
+            .select('discord_id, display_name, username, avatar_url, staff_rank, access_status, access_requested_at, raw_payload')
+            .eq('access_status', 'pending')
+            .order('access_requested_at', { ascending: true });
+        if (error) return serverError(res, error);
+        return ok(res, { items: (rows || []).map((r) => ({
+            discordId: r.discord_id,
+            displayName: r.display_name || r.username || `User ${r.discord_id}`,
+            avatarUrl: r.avatar_url || null,
+            staffRank: r.staff_rank || 'pending',
+            accessStatus: r.access_status,
+            requestedAt: r.access_requested_at
+        })) });
+    }
+
+    if (req.method === 'PATCH') {
+        const actor = await requirePermission(req, PERMISSIONS.STAFF_ACCESS_APPROVE);
+        const { discordId, action, role, rejectionReason } = req.body || {};
+
+        if (!discordId || !/^\d{17,20}$/.test(discordId)) return badRequest(res, 'INVALID_DISCORD_ID');
+        if (!['approve', 'reject', 'block'].includes(action)) return badRequest(res, 'INVALID_ACTION');
+
+        const now = new Date().toISOString();
+        let profileUpdate = {};
+        let newAccessStatus;
+
+        if (action === 'approve') {
+            const assignedRole = normalizeRole(role || 'discord_moderatoru');
+            const permission = profilePermissionForRole(assignedRole);
+            newAccessStatus = 'approved';
+            profileUpdate = {
+                access_status: 'approved',
+                access_approved_at: now,
+                access_approved_by_discord_id: actor.discordId || null,
+                staff_rank: assignedRole,
+                permission_group: permission.permission_group,
+                permission_level: permission.permission_level,
+                is_active_staff: true,
+                updated_at: now
+            };
+
+            // Upsert role_cache atomically
+            const roleCacheRow = {
+                discord_id: discordId,
+                staff_rank: assignedRole,
+                active: true,
+                source: 'admin_approved',
+                last_synced_at: now,
+                updated_at: now
+            };
+            const { error: rcError } = await supabase.from('role_cache').upsert([roleCacheRow], { onConflict: 'discord_id' });
+            if (rcError) console.warn('[admin] role_cache upsert on approve failed:', rcError.message);
+        } else if (action === 'reject') {
+            newAccessStatus = 'rejected';
+            profileUpdate = {
+                access_status: 'rejected',
+                access_rejected_at: now,
+                access_rejection_reason: rejectionReason || 'Yonetici tarafindan reddedildi',
+                is_active_staff: false,
+                updated_at: now
+            };
+        } else if (action === 'block') {
+            newAccessStatus = 'blocked';
+            profileUpdate = {
+                access_status: 'blocked',
+                staff_rank: 'blocked',
+                permission_group: 'blocked',
+                permission_level: -1,
+                is_active_staff: false,
+                updated_at: now
+            };
+        }
+
+        const { error } = await supabase.from('staff_profiles').update(profileUpdate).eq('discord_id', discordId);
+        if (error) return serverError(res, error);
+
+        await addAudit(`staff_access_${action}d`, actor, { discordId, action, role, rejectionReason });
+        return ok(res, { discordId, action, accessStatus: newAccessStatus });
+    }
+
+    res.setHeader('Allow', 'GET,PATCH');
+    return res.status(405).json({ ok: false, error: 'METHOD_NOT_ALLOWED' });
+}
+
+// SECTION: ANNOUNCEMENTS
+// PURPOSE: CRUD for announcements; POST saves draft and queues bot_action_audit dispatch.
+async function handleAnnouncements(req, res) {
+    if (req.method === 'GET') {
+        await requirePermission(req, PERMISSIONS.ANNOUNCEMENT_MANAGE);
+        const { data: rows, error } = await supabase
+            .from('announcements')
+            .select('*')
+            .order('created_at', { ascending: false })
+            .limit(50);
+        if (error) return serverError(res, error);
+        return ok(res, { items: rows || [] });
+    }
+
+    if (req.method === 'POST') {
+        const actor = await requirePermission(req, PERMISSIONS.ANNOUNCEMENT_MANAGE);
+        const { title, body_markdown, target_roles } = req.body || {};
+        if (!title || !body_markdown) return badRequest(res, 'TITLE_AND_BODY_REQUIRED');
+
+        const now = new Date().toISOString();
+        const { data: row, error } = await supabase.from('announcements').insert([{
+            title,
+            body_markdown,
+            target_roles: target_roles || ['discord_moderatoru', 'kidemli_discord_moderatoru', 'senior_moderator', 'discord_destek_ekibi'],
+            created_by_discord_id: actor.discordId || null,
+            status: 'draft',
+            created_at: now,
+            updated_at: now
+        }]).select('*').single();
+        if (error) return serverError(res, error);
+
+        await addAudit('announcement_created', actor, { id: row.id, title });
+        return ok(res, { item: row });
+    }
+
+    if (req.method === 'PATCH') {
+        const actor = await requirePermission(req, PERMISSIONS.ANNOUNCEMENT_MANAGE);
+        const { id, action, title, body_markdown, target_roles } = req.body || {};
+        if (!id) return badRequest(res, 'ANNOUNCEMENT_ID_REQUIRED');
+
+        const now = new Date().toISOString();
+        let updatePayload = { updated_at: now };
+        if (title) updatePayload.title = title;
+        if (body_markdown) updatePayload.body_markdown = body_markdown;
+        if (target_roles) updatePayload.target_roles = target_roles;
+
+        if (action === 'publish') {
+            updatePayload.status = 'published';
+            updatePayload.published_at = now;
+
+            // Queue dispatch via bot_action_audit for bot to pick up
+            const guildId = process.env.DISCORD_GUILD_ID || '';
+            if (guildId) {
+                await insertBotAction({
+                    guildId,
+                    action: 'dispatch_announcement',
+                    actor,
+                    payload: { announcementId: id, targetRoles: updatePayload.target_roles || target_roles },
+                    status: 'pending'
+                });
+            }
+        } else if (action === 'archive') {
+            updatePayload.status = 'archived';
+        }
+
+        const { error } = await supabase.from('announcements').update(updatePayload).eq('id', id);
+        if (error) return serverError(res, error);
+
+        await addAudit(`announcement_${action || 'updated'}`, actor, { id, action });
+        return ok(res, { success: true, id, action });
+    }
+
+    res.setHeader('Allow', 'GET,POST,PATCH');
+    return res.status(405).json({ ok: false, error: 'METHOD_NOT_ALLOWED' });
+}
+
 module.exports = async function handler(req, res) {
     res.setHeader('Cache-Control', 'no-store');
 
@@ -1214,14 +1385,19 @@ module.exports = async function handler(req, res) {
         if (route === 'role-policy') return await handleRolePolicy(req, res);
         if (route === 'staff-role-config') return await handleStaffRoleConfig(req, res);
         if (route === 'staff-profiles') return await handleStaffProfiles(req, res);
+        if (route === 'staff-access-requests') return await handleStaffAccessRequests(req, res);
         if (route === 'discord-bot-guilds') return await handleDiscordBotGuilds(req, res);
         if (route === 'discord-bot-dashboard') return await handleDiscordBotDashboard(req, res);
         if (route === 'discord-bot-action') return await handleDiscordBotAction(req, res);
         if (route === 'repair-dates') return await handleRepairDates(req, res);
+        if (route === 'announcements') return await handleAnnouncements(req, res);
 
         return res.status(404).json({ ok: false, error: 'NOT_FOUND', route });
     } catch (error) {
-        if (error.statusCode === 403) return forbidden(res);
+        if (error.statusCode === 403) {
+            const code = error.code || 'AUTH_FORBIDDEN_ROLE';
+            return res.status(403).json({ ok: false, error: code, message: error.message || 'Forbidden' });
+        }
         if (error.statusCode === 401) {
             return res.status(401).json({ ok: false, error: 'AUTH_REQUIRED' });
         }

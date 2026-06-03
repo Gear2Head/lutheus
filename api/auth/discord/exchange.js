@@ -103,6 +103,20 @@ module.exports = async function handler(req, res) {
         const roleInfo = await resolveDiscordRole(discordUser, avatarUrl);
         const role = roleInfo.role;
 
+        // SECTION: PENDING_AUTH_WRITE
+        // PURPOSE: Check if existing approved profile exists before overwriting role.
+        // New logins without an approved profile must remain pending.
+        let { data: existingProfile } = await supabase
+            .from('staff_profiles')
+            .select('access_status, is_active_staff, staff_rank')
+            .eq('discord_id', discordUser.id)
+            .maybeSingle();
+
+        const isApproved = existingProfile?.access_status === 'approved' && existingProfile?.is_active_staff === true;
+        const effectiveRole = isApproved ? role : 'pending';
+        const effectivePermissionGroup = isApproved ? roleInfo.permissionGroup : 'pending';
+        const effectivePermissionLevel = isApproved ? roleInfo.permissionLevel : 0;
+
         const profile = {
             uid,
             provider: 'discord',
@@ -111,8 +125,8 @@ module.exports = async function handler(req, res) {
             globalName: discordUser.global_name || discordUser.username || null,
             displayName: discordUser.global_name || discordUser.username || null,
             avatar: avatarUrl,
-            role,
-            status: 'active'
+            role: effectiveRole,
+            status: isApproved ? 'active' : 'pending'
         };
 
         const userProfile = {
@@ -121,14 +135,19 @@ module.exports = async function handler(req, res) {
             display_name: discordUser.global_name || discordUser.username || null,
             username: discordUser.username || null,
             avatar_url: avatarUrl,
-            staff_rank: role,
-            permission_group: roleInfo.permissionGroup,
-            permission_level: roleInfo.permissionLevel,
-            is_active_staff: role !== 'pending' && role !== 'blocked',
+            staff_rank: effectiveRole,
+            permission_group: effectivePermissionGroup,
+            permission_level: effectivePermissionLevel,
+            is_active_staff: isApproved,
+            access_status: existingProfile?.access_status || 'pending',
             last_seen_at: new Date().toISOString(),
             raw_payload: profile,
             updated_at: new Date().toISOString()
         };
+        // Only set access_requested_at for brand-new profiles
+        if (!existingProfile) {
+            userProfile.access_requested_at = new Date().toISOString();
+        }
 
         try {
             await supabase.from('staff_profiles').upsert([userProfile], { onConflict: 'discord_id' });

@@ -108,35 +108,60 @@ async function resolveActorFromToken(req) {
         }
     }
 
-    // 3. roleCache check
+    // SECTION: DB_ACCESS_STATUS_CHECK
+    // PURPOSE: DB access_status and is_active_staff are verified BEFORE JWT claim fallback.
+    // This prevents pending/rejected users with a stale JWT from gaining elevated access.
+    let dbRowFound = false;
+
+    // 3. roleCache check — requires active=true AND access_status=approved on staff_profiles
     if (!role && discordId) {
         const roleRow = await maybeSingleSafe(supabase
             .from('role_cache')
-            .select('*')
+            .select('staff_rank, active, discord_id')
             .eq('discord_id', discordId)
             .eq('active', true), 'role_cache');
 
         if (roleRow?.staff_rank) {
-            role = roleRow.staff_rank;
-            source = 'roleCache';
+            dbRowFound = true;
+            // Verify access_status on staff_profiles before granting role from cache
+            const profileCheck = await maybeSingleSafe(supabase
+                .from('staff_profiles')
+                .select('access_status, is_active_staff')
+                .eq('discord_id', discordId), 'staff_profiles_access_check');
+
+            if (profileCheck?.access_status === 'approved' && profileCheck?.is_active_staff === true) {
+                role = roleRow.staff_rank;
+                source = 'roleCache';
+            } else if (roleRow.staff_rank === 'blocked' || roleRow.staff_rank === 'eski_yetkili') {
+                role = roleRow.staff_rank;
+                source = 'roleCache_blocked';
+            }
+            // else: access_status not approved — fall through, do not grant role
         }
     }
 
-    // 4. staff_profiles check
+    // 4. staff_profiles check — requires is_active_staff=true AND access_status=approved
     if (!role && discordId) {
         const profileRow = await maybeSingleSafe(supabase
             .from('staff_profiles')
-            .select('*')
-            .eq('discord_id', discordId)
-            .eq('is_active_staff', true), 'staff_profiles');
+            .select('staff_rank, is_active_staff, access_status')
+            .eq('discord_id', discordId), 'staff_profiles');
 
-        if (profileRow?.staff_rank) {
-            role = profileRow.staff_rank;
-            source = 'staff_profiles';
+        if (profileRow) {
+            dbRowFound = true;
+            if (profileRow.staff_rank === 'blocked' || profileRow.staff_rank === 'eski_yetkili') {
+                role = profileRow.staff_rank;
+                source = 'staff_profiles';
+            } else if (profileRow.is_active_staff === true && profileRow.access_status === 'approved' && profileRow.staff_rank) {
+                role = profileRow.staff_rank;
+                source = 'staff_profiles';
+            }
+            // else: access_status not approved — fall through to pending
         }
     }
 
-    if (!role) {
+    // 5. JWT claim fallback — ONLY if no DB row was found at all (offline/first-time bootstrap edge case)
+    if (!role && !dbRowFound) {
         const claimRole = extractAppRole(decoded);
         if (claimRole !== 'pending') {
             role = claimRole;

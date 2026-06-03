@@ -126,8 +126,17 @@ async function resolveDiscordRole(discordUser, avatarUrl = null) {
     if (roleRow?.staff_rank === 'blocked' || roleRow?.staff_rank === 'eski_yetkili') {
         return getRoleConfig(roleRow.staff_rank);
     }
-    if (roleRow?.active === true && roleRow?.staff_rank) {
-        return getRoleConfig(roleRow.staff_rank);
+    if (roleRow?.active === true && roleRow?.staff_rank && roleRow?.staff_rank !== 'pending') {
+        // SECTION: ROLE_CACHE_ACCESS_CHECK
+        // PURPOSE: Verify access_status on staff_profiles before granting non-pending role from cache.
+        const profileForRoleRow = await maybeSingleSafe(
+            supabase.from('staff_profiles').select('access_status, is_active_staff').eq('discord_id', discordId),
+            'staff_profiles_access_check'
+        );
+        if (profileForRoleRow?.access_status === 'approved' && profileForRoleRow?.is_active_staff === true) {
+            return getRoleConfig(roleRow.staff_rank);
+        }
+        // Profile not yet approved: fall through to pending
     }
 
     const profileRow = await maybeSingleSafe(
@@ -140,14 +149,27 @@ async function resolveDiscordRole(discordUser, avatarUrl = null) {
     if (profileRow?.staff_rank === 'blocked' || profileRow?.staff_rank === 'eski_yetkili') {
         return getRoleConfig(profileRow.staff_rank);
     }
-    if (profileRow?.is_active_staff === true && profileRow?.staff_rank) {
+    // SECTION: PROFILE_ACCESS_CHECK
+    // PURPOSE: access_status AND is_active_staff must both pass before granting an active role.
+    if (profileRow?.is_active_staff === true && profileRow?.access_status === 'approved' && profileRow?.staff_rank) {
         return getRoleConfig(profileRow.staff_rank);
     }
 
+    // SECTION: SEEDED_ROLE_MEMBERS
+    // PURPOSE: Auto-seed is disabled for normal logins. Only bootstrap/owner roles bypass this.
+    // The SEEDED_ROLE_MEMBERS list is kept for migration/admin repair contexts, not automatic login grants.
+    // To grant access to a staff member, use the admin approval workflow instead.
     const seeded = SEEDED_ROLE_MEMBERS.find((member) => member.id === discordId);
     if (seeded) {
-        await seedRoleCache(discordUser, seeded, avatarUrl);
-        return getRoleConfig(seeded.role);
+        // Only seed if user has no profile yet (first-time bootstrap), not to override pending status
+        const existingProfile = await maybeSingleSafe(
+            supabase.from('staff_profiles').select('access_status').eq('discord_id', discordId),
+            'staff_profiles_seed_check'
+        );
+        if (!existingProfile) {
+            // First login: write as pending, do not auto-approve via seed
+            await seedRoleCache(discordUser, { ...seeded, role: 'pending' }, avatarUrl);
+        }
     }
 
     return getRoleConfig('pending');

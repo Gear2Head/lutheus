@@ -45,7 +45,13 @@ const PERMISSIONS = Object.freeze({
     AUDIT_LOGS_VIEW: 'audit_logs:view',
     SECURITY_EVENTS_VIEW: 'security_events:view',
     AI_SETTINGS_VIEW: 'ai_settings:view',
-    AI_SETTINGS_UPDATE: 'ai_settings:update'
+    AI_SETTINGS_UPDATE: 'ai_settings:update',
+    // SECTION: ACCESS_APPROVAL
+    // PURPOSE: Separate permission for approving/rejecting staff access requests.
+    STAFF_ACCESS_APPROVE: 'staff:access_approve',
+    // SECTION: ANNOUNCEMENTS
+    // PURPOSE: Separate permission for creating and publishing Discord announcements.
+    ANNOUNCEMENT_MANAGE: 'announcement:manage'
 });
 
 const MANAGEMENT_PERMISSIONS = [

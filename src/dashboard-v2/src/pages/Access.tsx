@@ -1,16 +1,18 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { hasPermission } from '../lib/auth';
-import { getAuditLogs, AuditLog, supabaseFetch } from '../lib/supabase';
+import { getAuditLogs, AuditLog } from '../lib/supabase';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Skeleton } from '../components/ui/Skeleton';
 import { Badge } from '../components/ui/Badge';
-import { RefreshCw, Plus, Trash2, Shield, AlertTriangle } from 'lucide-react';
+import { RefreshCw, Plus, Trash2, Shield, AlertTriangle, Check, X, Ban } from 'lucide-react';
 import { formatDateTime } from '../lib/utils';
 import { ConfirmationModal } from '../components/ui/ConfirmationModal';
 import { useToast } from '../contexts/ToastContext';
+// SECTION: ADMIN_API_CLIENT_IMPORT
+// PURPOSE: All staff/role/allowlist mutations must go through /api/admin/* endpoints, not direct Supabase REST.
 
 interface AllowlistEntry {
   id: string;
@@ -50,27 +52,49 @@ export default function Access() {
   const [lockdownConfirm, setLockdownConfirm] = useState(false);
   const [repairing, setRepairing] = useState(false);
 
+  // SECTION: PENDING_REQUESTS_STATE
+  // PURPOSE: Staff access approval workflow — pending requests loaded from admin API.
+  const canApproveAccess = hasPermission(session?.role || '', 'staff:access_approve');
+  const [pendingRequests, setPendingRequests] = useState<any[]>([]);
+  const [pendingLoading, setPendingLoading] = useState(false);
+  const [approveRole, setApproveRole] = useState<Record<string, string>>({});
+  const [actionTarget, setActionTarget] = useState<string | null>(null);
+
   const loadData = async () => {
     setLoading(true);
     try {
-      const [al, rc, lg] = await Promise.all([
-        supabaseFetch<AllowlistEntry[]>('google_allowlist', 'GET', 'order=created_at.desc').catch(() => []),
-        supabaseFetch<any[]>('role_cache', 'GET', 'order=updated_at.desc').catch(() => []),
+      // SECTION: ADMIN_API_READS
+      // PURPOSE: Read operations go through /api/admin/* to avoid direct client access to critical tables.
+      const { AdminApiClient } = await import('../../../lib/adminApiClient.js') as any;
+      const [alPayload, rcPayload, lg] = await Promise.all([
+        AdminApiClient.listGoogleAllowlist().catch(() => []),
+        AdminApiClient.listRoleCache().catch(() => []),
         getAuditLogs(30).catch(() => []),
       ]);
-      setAllowlist(al || []);
+      setAllowlist(alPayload || []);
       
-      const mappedRoleCache = (rc || []).map((r) => {
-        const payload = r.raw_payload || {};
+      const mappedRoleCache = (rcPayload || []).map((r: any) => {
+        const discordId = r.discordId || String(r.identityKey || r.id || '').replace(/^discord:/, '');
         return {
-          identity: `discord:${r.discord_id}`,
-          display_name: r.display_name || payload.displayName || payload.name || `User ${r.discord_id}`,
-          role: r.staff_rank || 'discord_moderatoru',
-          created_at: r.updated_at || r.last_synced_at || new Date().toISOString()
+          identity: `discord:${discordId}`,
+          display_name: r.displayName || r.name || `User ${discordId}`,
+          role: r.role || 'discord_moderatoru',
+          created_at: r.updatedAt || new Date().toISOString()
         };
       });
       setRoleCache(mappedRoleCache);
       setLogs(lg);
+
+      // SECTION: PENDING_REQUESTS_LOAD
+      if (canApproveAccess) {
+        setPendingLoading(true);
+        try {
+          const reqs = await AdminApiClient.listStaffAccessRequests();
+          setPendingRequests(reqs || []);
+        } catch (_e) { /* non-fatal */ } finally {
+          setPendingLoading(false);
+        }
+      }
     } finally {
       setLoading(false);
     }
@@ -82,13 +106,17 @@ export default function Access() {
     if (!newEmail.trim()) return;
     setSaving(true);
     try {
-      await supabaseFetch('google_allowlist', 'POST', '', {
-        email: newEmail.trim().toLowerCase(),
+      // SECTION: ADMIN_API_ALLOWLIST
+      // PURPOSE: Google allowlist writes go through /api/admin/google-allowlist (service-role), not direct REST.
+      const { AdminApiClient } = await import('../../../lib/adminApiClient.js');
+      await AdminApiClient.setGoogleAllowlist(newEmail.trim().toLowerCase(), {
         dashboard_access_role: newEmailRole,
         active: true,
       });
       setNewEmail('');
       await loadData();
+    } catch (err: any) {
+      showToast(`Allowlist eklenemedi: ${err?.message || err}`, 'error');
     } finally {
       setSaving(false);
     }
@@ -99,34 +127,21 @@ export default function Access() {
     setSaving(true);
     try {
       const discordId = newIdentity.trim().replace(/^discord:/, '');
-      
-      // Upsert profile in staff_profiles first to satisfy the FK constraint on role_cache
-      await supabaseFetch('staff_profiles', 'POST', '', {
-        discord_id: discordId,
-        display_name: newName.trim(),
-        staff_rank: newRole,
-        is_active_staff: true,
-        updated_at: new Date().toISOString()
-      }).catch(err => console.warn('staff_profile create failed/exists:', err));
-
-      await supabaseFetch('role_cache', 'POST', '', {
-        discord_id: discordId,
-        staff_rank: newRole,
-        active: true,
-        source: 'manual_or_cache',
-        raw_payload: {
-          identityKey: newIdentity.trim(),
-          discordId,
-          displayName: newName.trim(),
-          role: newRole,
-          isActiveStaff: true,
-          updatedAt: new Date().toISOString()
-        },
-        updated_at: new Date().toISOString()
+      const identityKey = `discord:${discordId}`;
+      // SECTION: ADMIN_API_ROLE_CACHE
+      // PURPOSE: role_cache and staff_profiles writes go through /api/admin/role-cache (service-role), not direct REST.
+      const { AdminApiClient } = await import('../../../lib/adminApiClient.js');
+      await AdminApiClient.setRoleCache(identityKey, {
+        discordId,
+        displayName: newName.trim(),
+        role: newRole,
+        isActiveStaff: true,
       });
       setNewIdentity('');
       setNewName('');
       await loadData();
+    } catch (err: any) {
+      showToast(`Rol cache eklenemedi: ${err?.message || err}`, 'error');
     } finally {
       setSaving(false);
     }
@@ -136,16 +151,39 @@ export default function Access() {
     if (!deleteTarget) return;
     setSaving(true);
     try {
+      // SECTION: ADMIN_API_DELETE
+      // PURPOSE: Deletes go through /api/admin/* service-role endpoints.
+      const { AdminApiClient } = await import('../../../lib/adminApiClient.js');
       if (deleteTarget.type === 'allow') {
-        await supabaseFetch('google_allowlist', 'DELETE', `email=eq.${encodeURIComponent(deleteTarget.id)}`);
+        await AdminApiClient.deleteGoogleAllowlist(deleteTarget.id);
       } else {
-        const discordId = deleteTarget.id.replace(/^discord:/, '');
-        await supabaseFetch('role_cache', 'DELETE', `discord_id=eq.${encodeURIComponent(discordId)}`);
+        const identityKey = deleteTarget.id.startsWith('discord:') ? deleteTarget.id : `discord:${deleteTarget.id}`;
+        await AdminApiClient.deleteRoleCache(identityKey);
       }
       setDeleteTarget(null);
       await loadData();
+    } catch (err: any) {
+      showToast(`Silme islemi basarisiz: ${err?.message || err}`, 'error');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleAccessAction = async (discordId: string, action: 'approve' | 'reject' | 'block') => {
+    setActionTarget(discordId);
+    try {
+      const { AdminApiClient } = await import('../../../lib/adminApiClient.js') as any;
+      const role = approveRole[discordId] || 'discord_moderatoru';
+      const rejectionReason = action === 'reject' ? 'Yonetici tarafindan reddedildi' : undefined;
+      await AdminApiClient.approveStaffAccess(discordId, action, role, rejectionReason);
+      
+      const actionMsg = action === 'approve' ? 'onaylandi' : action === 'reject' ? 'reddedildi' : 'engellendi';
+      showToast(`Erisim talebi ${actionMsg}.`, 'success');
+      await loadData();
+    } catch (err: any) {
+      showToast(`Islem basarisiz: ${err?.message || err}`, 'error');
+    } finally {
+      setActionTarget(null);
     }
   };
 
@@ -187,9 +225,102 @@ export default function Access() {
   return (
     <div className="space-y-5 animate-in pb-6">
       <div className="pt-2">
-        <h2 className="text-2xl font-bold tracking-tight">Erisim Yönetimi</h2>
-        <p className="text-sm text-muted-foreground mt-0.5">Google izin listesi, rol önbelleği ve audit log.</p>
+        <h2 className="text-2xl font-bold tracking-tight">Erisim Yonetimi</h2>
+        <p className="text-sm text-muted-foreground mt-0.5">Google izin listesi, rol onbellegi, erisim onaylari ve audit log.</p>
       </div>
+
+      {/* SECTION: PENDING_ACCESS_REQUESTS_PANEL */}
+      {canApproveAccess && (
+        <Card className="overflow-hidden">
+          <div className="px-5 py-4 border-b border-border/50 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Shield className="w-4 h-4 text-amber-400" />
+              <span className="font-semibold text-sm">Bekleyen Erisim Talepleri</span>
+              {pendingRequests.length > 0 && (
+                <span className="ml-1 px-2 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-400 text-[11px] font-bold">
+                  {pendingRequests.length}
+                </span>
+              )}
+            </div>
+            <button onClick={loadData} className="text-muted-foreground hover:text-foreground transition-colors">
+              <RefreshCw className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          <div className="divide-y divide-border/30">
+            {pendingLoading ? (
+              <div className="px-5 py-4 space-y-3">
+                {[1,2].map(i => <Skeleton key={i} className="h-12 w-full rounded-xl" />)}
+              </div>
+            ) : pendingRequests.length === 0 ? (
+              <div className="px-5 py-8 text-center">
+                <Check className="w-8 h-8 text-emerald-400 mx-auto mb-2" />
+                <p className="text-sm font-medium text-muted-foreground">Bekleyen talep yok.</p>
+              </div>
+            ) : (
+              pendingRequests.map(req => (
+                <div key={req.discordId} className="px-5 py-4 flex items-center gap-4 flex-wrap">
+                  <div className="flex items-center gap-3 min-w-0 flex-1">
+                    {req.avatarUrl ? (
+                      <img src={req.avatarUrl} alt="" className="w-9 h-9 rounded-full bg-secondary" />
+                    ) : (
+                      <div className="w-9 h-9 rounded-full bg-secondary flex items-center justify-center text-sm font-bold text-muted-foreground">
+                        {(req.displayName || '?')[0].toUpperCase()}
+                      </div>
+                    )}
+                    <div className="min-w-0">
+                      <div className="font-semibold text-sm text-foreground truncate">{req.displayName}</div>
+                      <div className="text-[11px] font-mono text-muted-foreground">{req.discordId}</div>
+                      {req.requestedAt && (
+                        <div className="text-[10px] text-muted-foreground/70 mt-0.5">{formatDateTime(req.requestedAt)}</div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 flex-wrap shrink-0">
+                    <select
+                      value={approveRole[req.discordId] || 'discord_moderatoru'}
+                      onChange={e => setApproveRole(prev => ({ ...prev, [req.discordId]: e.target.value }))}
+                      className="h-8 px-2 rounded-lg bg-secondary/50 border border-border/50 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                    >
+                      <option value="discord_destek_ekibi">Destek Ekibi</option>
+                      <option value="discord_moderatoru">Moderator</option>
+                      <option value="kidemli_discord_moderatoru">Kidemli Mod</option>
+                      <option value="senior_moderator">Senior Mod</option>
+                      <option value="discord_yoneticisi">Yonetici</option>
+                      <option value="viewer">Viewer</option>
+                    </select>
+                    <button
+                      onClick={() => handleAccessAction(req.discordId, 'approve')}
+                      disabled={actionTarget === req.discordId}
+                      title="Onayla"
+                      className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-bold hover:bg-emerald-500/20 transition-all disabled:opacity-40"
+                    >
+                      <Check className="w-3.5 h-3.5" /> Onayla
+                    </button>
+                    <button
+                      onClick={() => handleAccessAction(req.discordId, 'reject')}
+                      disabled={actionTarget === req.discordId}
+                      title="Reddet"
+                      className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-secondary/60 border border-border/50 text-muted-foreground text-xs font-bold hover:text-foreground hover:bg-secondary transition-all disabled:opacity-40"
+                    >
+                      <X className="w-3.5 h-3.5" /> Reddet
+                    </button>
+                    <button
+                      onClick={() => handleAccessAction(req.discordId, 'block')}
+                      disabled={actionTarget === req.discordId}
+                      title="Engelle"
+                      className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-xs font-bold hover:bg-destructive/20 transition-all disabled:opacity-40"
+                    >
+                      <Ban className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </Card>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         {/* Google Allowlist */}

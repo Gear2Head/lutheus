@@ -1,4 +1,4 @@
-﻿import { lazy, Suspense } from 'react';
+import { lazy, Suspense } from 'react';
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import { ToastProvider } from './contexts/ToastContext';
@@ -14,6 +14,8 @@ const Pointtrain = lazy(() => import('./pages/Pointtrain'));
 const Rules = lazy(() => import('./pages/Rules'));
 const AiAgent = lazy(() => import('./pages/AiAgent'));
 const Access = lazy(() => import('./pages/Access'));
+const Announcements = lazy(() => import('./pages/Announcements'));
+const BotSetup = lazy(() => import('./pages/BotSetup'));
 const Settings = lazy(() => import('./pages/Settings'));
 
 function PageLoader() {
@@ -49,6 +51,8 @@ export default function App() {
                 <Route path="rules" element={<Suspense fallback={<PageLoader />}><Rules /></Suspense>} />
                 <Route path="ai-agent" element={<Suspense fallback={<PageLoader />}><AiAgent /></Suspense>} />
                 <Route path="access" element={<Suspense fallback={<PageLoader />}><Access /></Suspense>} />
+                <Route path="announcements" element={<Suspense fallback={<PageLoader />}><Announcements /></Suspense>} />
+                <Route path="bot-setup" element={<Suspense fallback={<PageLoader />}><BotSetup /></Suspense>} />
                 <Route path="settings" element={<Suspense fallback={<PageLoader />}><Settings /></Suspense>} />
               </Route>
             </Routes>

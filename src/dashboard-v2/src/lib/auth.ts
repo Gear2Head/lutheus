@@ -124,7 +124,10 @@ export function hasPermission(role: string, permission: string): boolean {
     permission.endsWith(':update') || 
     permission.endsWith(':delete') || 
     permission.endsWith(':create') ||
-    ['penalties:update', 'staff:update', 'rules:update', 'access:update'].includes(permission)
+    [
+      'penalties:update', 'staff:update', 'rules:update', 'access:update',
+      'announcement:manage', 'staff:access_approve', 'staff:assign_role'
+    ].includes(permission)
   ) {
     return MANAGEMENT_ROLES.has(normalizedRole);
   }

@@ -251,5 +251,66 @@ export const AdminApiClient = {
     async getSapphireScanStatus(jobId) {
         const payload = await request(`/api/scan/sapphire/status?jobId=${encodeURIComponent(jobId)}`);
         return payload.job;
+    },
+
+    // SECTION: STAFF_ACCESS_REQUESTS
+    // PURPOSE: Admin approval workflow for pending staff access requests.
+    async listStaffAccessRequests() {
+        const payload = await request('/api/admin/staff-access-requests');
+        return payload.items || [];
+    },
+
+    async approveStaffAccess(discordId, action, role, rejectionReason) {
+        return request('/api/admin/staff-access-requests', {
+            method: 'PATCH',
+            body: JSON.stringify({ discordId, action, role, rejectionReason })
+        });
+    },
+
+    // SECTION: ANNOUNCEMENTS
+    // PURPOSE: Create and publish admin announcements to Discord staff via bot DM.
+    async listAnnouncements() {
+        const payload = await request('/api/admin/announcements');
+        return payload.items || [];
+    },
+
+    async createAnnouncement(title, body_markdown, target_roles) {
+        const payload = await request('/api/admin/announcements', {
+            method: 'POST',
+            body: JSON.stringify({ title, body_markdown, target_roles })
+        });
+        return payload.item;
+    },
+
+    async publishAnnouncement(id, targetRoles) {
+        return request('/api/admin/announcements', {
+            method: 'PATCH',
+            body: JSON.stringify({ id, action: 'publish', target_roles: targetRoles })
+        });
+    },
+
+    // SECTION: DISCORD_BOT_DASHBOARD
+    // PURPOSE: Control Discord bot settings, channel mappings, and trigger diagnostics/actions.
+    async listDiscordBotGuilds() {
+        const payload = await request('/api/admin/discord-bot-guilds');
+        return payload.guilds || [];
+    },
+
+    async getDiscordBotDashboard(guildId) {
+        return request(`/api/admin/discord-bot-dashboard?guildId=${encodeURIComponent(guildId)}`);
+    },
+
+    async saveDiscordBotConfig(guildId, config) {
+        return request('/api/admin/discord-bot-dashboard', {
+            method: 'POST',
+            body: JSON.stringify({ guildId, config })
+        });
+    },
+
+    async triggerDiscordBotAction(guildId, action, payload = {}) {
+        return request('/api/admin/discord-bot-action', {
+            method: 'POST',
+            body: JSON.stringify({ guildId, action, payload })
+        });
     }
 };

@@ -9,7 +9,7 @@ import { CopyButton } from '../components/ui/CopyButton';
 import { EmptyState } from '../components/ui/EmptyState';
 import { Input } from '../components/ui/Input';
 import { Button } from '../components/ui/Button';
-import { getCases, getStaffProfiles, SapphireCase, StaffProfile, updateStaffProfile, supabaseFetch } from '../lib/supabase';
+import { getCases, getStaffProfiles, SapphireCase, StaffProfile, updateStaffProfile } from '../lib/supabase';
 import { validateCase, getReliabilityStatus, calculatePerformanceScore } from '../lib/cukEngine';
 import { getRoleLabel, getRoleColor, hasPermission } from '../lib/auth';
 import { formatDate } from '../lib/utils';
@@ -84,7 +84,7 @@ export default function Staff() {
   // PURPOSE: Eksik veya generic isimli yetkili profillerini gerçek case adı ve avatarı ile eşitler.
   const syncMissingProfiles = async (casesList: SapphireCase[], profilesList: StaffProfile[]) => {
     const existingProfiles = new Map(profilesList.map(p => [p.discord_id, p]));
-    const missingProfiles: { discord_id: string, display_name: string, staff_rank: string, is_active_staff: boolean }[] = [];
+    const missingProfiles: { discord_id: string, display_name: string, staff_rank: string, is_active_staff: boolean, access_status?: string, source_flags?: string[] }[] = [];
     const profileUpdates: { discord_id: string; display_name?: string; avatar_url?: string }[] = [];
     
     for (const c of casesList) {
@@ -96,11 +96,16 @@ export default function Staff() {
 
       if (!existing) {
         if (!missingProfiles.some(mp => mp.discord_id === id)) {
+          // SECTION: SAPPHIRE_AUTHOR_PENDING
+          // PURPOSE: Sapphire-detected case authors must NOT be approved/active automatically.
+          // They are inserted as pending/unapproved with sapphire-author source flag.
           missingProfiles.push({
             discord_id: id,
             display_name: displayName,
-            staff_rank: 'discord_moderatoru',
-            is_active_staff: true
+            staff_rank: 'pending',
+            is_active_staff: false,
+            access_status: 'pending',
+            source_flags: ['sapphire-author']
           });
         }
         continue;
@@ -121,13 +126,18 @@ export default function Staff() {
       console.log(`[Lutheus] Syncing ${missingProfiles.length + profileUpdates.length} staff profiles...`);
       await Promise.all(missingProfiles.map(async (mp) => {
         try {
-          await supabaseFetch('staff_profiles', 'POST', '', {
+          // SECTION: ADMIN_API_STAFF_SYNC
+          // PURPOSE: Missing profile writes go through updateStaffProfile (upsert), not raw POST.
+          // access_status is kept pending; admin must manually approve.
+          await updateStaffProfile(mp.discord_id, {
             discord_id: mp.discord_id,
             display_name: mp.display_name,
             staff_rank: mp.staff_rank,
             is_active_staff: mp.is_active_staff,
+            access_status: mp.access_status,
+            source_flags: mp.source_flags,
             updated_at: new Date().toISOString()
-          });
+          } as any);
         } catch (err) {
           console.warn('[Lutheus] Profile sync failed for', mp.discord_id, err);
         }
@@ -137,7 +147,7 @@ export default function Staff() {
           const body: Record<string, any> = { updated_at: new Date().toISOString() };
           if (update.display_name) body.display_name = update.display_name;
           if (update.avatar_url) body.avatar_url = update.avatar_url;
-          await supabaseFetch('staff_profiles', 'PATCH', `discord_id=eq.${encodeURIComponent(update.discord_id)}`, body);
+          await updateStaffProfile(update.discord_id, body);
         } catch (err) {
           console.warn('[Lutheus] Profile update failed for', update.discord_id, err);
         }

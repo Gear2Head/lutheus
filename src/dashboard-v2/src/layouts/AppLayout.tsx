@@ -2,7 +2,7 @@ import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Users, ShieldAlert, Activity, Settings as SettingsIcon,
   LogOut, Search, Zap, BookOpen, Bot, User, ChevronUp, Shield, RefreshCw,
-  WifiOff, Wifi,
+  WifiOff, Wifi, Megaphone, Sliders,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useState, useRef, useEffect } from 'react';
@@ -20,6 +20,8 @@ const NAV_ITEMS = [
   { icon: BookOpen, label: 'CUK Editörü', path: '/rules', translationKey: 'nav.rules' },
   { icon: Bot, label: 'AI Agent', path: '/ai-agent', translationKey: 'nav.ai-agent' },
   { icon: Shield, label: 'Erişim', path: '/access', translationKey: 'nav.access' },
+  { icon: Megaphone, label: 'Duyurular', path: '/announcements', translationKey: 'nav.announcements' },
+  { icon: Sliders, label: 'Bot Ayarları', path: '/bot-setup', translationKey: 'nav.botSetup' },
 ];
 
 export default function AppLayout() {
@@ -37,7 +39,7 @@ export default function AppLayout() {
     const isMgmt = ['kurucu', 'admin', 'yonetici', 'genel_sorumlu', 'discord_yoneticisi'].includes(role);
     const isSenior = ['kidemli', 'kidemli_discord_moderatoru', 'senior_moderator'].includes(role);
 
-    if (path === '/access' || path === '/rules') {
+    if (path === '/access' || path === '/rules' || path === '/announcements' || path === '/bot-setup') {
       return isMgmt;
     }
     if (path === '/pointtrain' || path === '/scan') {

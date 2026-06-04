@@ -630,8 +630,32 @@ async function assertManageableInstalledGuild(actor, guildId) {
     }
 }
 
+let cachedBotGuilds = null;
+let cachedBotGuildsAt = 0;
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
 // Fetch all guilds where bot is installed via bot token
 async function fetchBotGuilds() {
+    const now = Date.now();
+    if (cachedBotGuilds && (now - cachedBotGuildsAt) < CACHE_TTL_MS) {
+        return cachedBotGuilds;
+    }
+
+    try {
+        const { data, error } = await supabase
+            .from('bot_runtime_status')
+            .select('guild_id');
+
+        if (!error && data && data.length > 0) {
+            const mapped = data.map((r) => ({ id: r.guild_id }));
+            cachedBotGuilds = mapped;
+            cachedBotGuildsAt = now;
+            return mapped;
+        }
+    } catch (dbErr) {
+        console.warn('fetchBotGuilds DB check failed, falling back to Discord API:', dbErr);
+    }
+
     const token = BOT_TOKEN();
     if (!token) {
         console.warn('fetchBotGuilds: Both DISCORD_BOT_TOKEN and DISCORD_TOKEN are missing in process.env!');
@@ -645,10 +669,17 @@ async function fetchBotGuilds() {
     if (!res.ok) {
         const err = await res.text();
         console.error('Bot guilds fetch failed:', err);
+        if (cachedBotGuilds) {
+            console.warn('Using expired cachedBotGuilds as emergency fallback after Discord API error.');
+            return cachedBotGuilds;
+        }
         throw new Error('DISCORD_GUILDS_FETCH_FAILED');
     }
 
-    return res.json();
+    const guilds = await res.json();
+    cachedBotGuilds = guilds;
+    cachedBotGuildsAt = now;
+    return guilds;
 }
 
 // Fetch guild details (member count, icon, etc.)

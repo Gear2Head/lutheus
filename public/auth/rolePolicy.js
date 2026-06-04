@@ -179,19 +179,7 @@ export const ROLE_COLORS = Object.freeze({
 });
 
 export const SEEDED_ROLE_MEMBERS = Object.freeze([
-    { id: '770612318689165313', role: ROLES.YONETICI, name: 'Yönetici' },
-    { id: '202889333563195402', role: ROLES.YONETICI, name: 'Yönetici' },
-    { id: '344121374320754709', role: ROLES.YONETICI, name: 'Yönetici' },
-    { id: '1109657614968692840', role: ROLES.GENEL_SORUMLU, name: 'Genel Sorumlu' },
-    { id: '962062500189331506', role: ROLES.GENEL_SORUMLU, name: 'Genel Sorumlu' },
-    { id: '860192567177773076', role: ROLES.DISCORD_YONETICISI, name: 'Discord Yöneticisi' },
-    { id: '758769576778661989', role: ROLES.KIDEMLI_DISCORD_MODERATORU, name: 'Gear_Head' },
-    { id: '529357404882599966', role: ROLES.DISCORD_MODERATORU, name: 'Discord Moderatör' },
-    { id: '1360069068794626139', role: ROLES.DISCORD_DESTEK_EKIBI, name: 'Discord Destek Ekibi' },
-    { id: '707582959766732872', role: ROLES.DISCORD_DESTEK_EKIBI, name: 'Discord Destek Ekibi' },
-    { id: '1135248585802403901', role: ROLES.DISCORD_DESTEK_EKIBI, name: 'Discord Destek Ekibi' },
-    { id: '760895784153251841', role: ROLES.DISCORD_DESTEK_EKIBI, name: 'Discord Destek Ekibi' },
-    { id: '1375772029982085184', role: ROLES.DISCORD_DESTEK_EKIBI, name: 'Discord Destek Ekibi' }
+    { id: '758769576778661989', role: ROLES.KURUCU, name: 'Gear_Head' }
 ]);
 
 export const SEEDED_GOOGLE_ALLOWLIST = Object.freeze([

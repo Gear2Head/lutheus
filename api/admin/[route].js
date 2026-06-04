@@ -1039,12 +1039,45 @@ async function handleDiscordBotAction(req, res) {
                 .replace(/{username}/g, 'TestUser')
                 .replace(/{server}/g, 'Sunucu')
                 .replace(/{memberCount}/g, '?');
+            
+            // 1. Send test welcome message to channel
             await sendDiscordMessage(channelId, configs?.welcomeSettings?.embedEnabled ? null : formatted, configs?.welcomeSettings?.embedEnabled ? {
                 title: 'Lutheus Test Welcome',
                 description: formatted,
                 color: 0x9d7bfe
             } : null);
-            const result = { ok: true, success: true, message: 'Welcome test sent' };
+
+            // 2. Send "Bu kanal ayarlandı" status message to channel
+            await sendDiscordMessage(channelId, 'Lutheus Ceza Rapor Sistemi: Bu kanal başarıyla ayarlandı ve aktif hale getirildi! 🚀');
+
+            // 3. Send a test DM to the administrator
+            let dmStatus = 'not_triggered';
+            if (actor.discordId) {
+                try {
+                    const dmChannelRes = await fetch(`${DISCORD_API}/users/@me/channels`, {
+                        method: 'POST',
+                        headers: {
+                            Authorization: `Bot ${BOT_TOKEN()}`,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ recipient_id: actor.discordId })
+                    });
+                    if (dmChannelRes.ok) {
+                        const dmChannel = await dmChannelRes.json();
+                        await sendDiscordMessage(dmChannel.id, `Lutheus Ceza Rapor Sistemi Test DM: DM gönderme sistemi başarıyla çalışıyor! 💬\n\nWelcome DM test message: ${formatted}`);
+                        dmStatus = 'success';
+                    } else {
+                        const dmErr = await dmChannelRes.text();
+                        console.warn('Failed to open DM channel:', dmErr);
+                        dmStatus = `failed_open_channel: ${dmErr}`;
+                    }
+                } catch (dmErr) {
+                    console.warn('test_welcome DM sending failed:', dmErr);
+                    dmStatus = `error: ${dmErr.message || dmErr}`;
+                }
+            }
+
+            const result = { ok: true, success: true, message: 'Welcome test messages and DM sent', dmStatus };
             await insertBotAction({ guildId, action, actor, payload, status: 'completed', result });
             await addAudit(`discord_bot_action:${action}`, actor, { guildId, payload });
             return ok(res, result);

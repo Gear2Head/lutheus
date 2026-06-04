@@ -159,7 +159,8 @@ function mapDbConfig(row: any) {
             message: welcomeSettings.welcomeMessage || 'Hos geldin {user}!',
             goodbyeMessage: welcomeSettings.goodbyeMessage || '{username} sunucudan ayrildi.',
             embedEnabled: Boolean(welcomeSettings.embedEnabled),
-            dmEnabled: Boolean(welcomeSettings.sendDm)
+            dmEnabled: Boolean(welcomeSettings.sendDm),
+            dmMessage: welcomeSettings.dmMessage || welcomeSettings.welcomeMessage || 'Hos geldin {user}!'
         },
         joinRolesSettings: row.join_roles_settings || {},
         loggingSettings,

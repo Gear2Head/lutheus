@@ -380,10 +380,11 @@ function buildStaffProfilesFromCases(dedupedCases) {
             discord_id: item.authorId,
             display_name: item.authorName || null,
             avatar_url: item.authorAvatar || null,
-            staff_rank: 'discord_destek_ekibi',
-            permission_group: 'support',
-            permission_level: 25,
-            is_active_staff: true,
+            staff_rank: 'pending',
+            permission_group: 'pending',
+            permission_level: 0,
+            is_active_staff: false,
+            access_status: 'pending',
             last_seen_at: new Date().toISOString(),
             raw_payload: {
                 discordId: item.authorId,
@@ -406,7 +407,7 @@ async function upsertStaffProfilesForIngest(dedupedCases) {
     const authorIds = Array.from(staffProfiles.keys());
     const { data: existingProfiles, error: existingProfilesError } = await supabase
         .from('staff_profiles')
-        .select('discord_id, staff_rank, permission_group, permission_level, is_active_staff')
+        .select('discord_id, display_name, avatar_url, staff_rank, permission_group, permission_level, is_active_staff')
         .in('discord_id', authorIds);
 
     if (existingProfilesError) {
@@ -418,16 +419,40 @@ async function upsertStaffProfilesForIngest(dedupedCases) {
     }
 
     const existingMap = new Map((existingProfiles || []).map((p) => [p.discord_id, p]));
+
+    // SECTION: NAME_DEGRADATION_GUARD
+    // PURPOSE: Prevent Sapphire-parsed degraded names (e.g. "Yetkili[3131]") from overwriting
+    // valid names already stored in the database from Discord login.
+    const DEGRADED_NAME_PATTERNS = [
+        /^yetkili\s*\[/i,
+        /^yetkili\s*\(/i,
+        /^unknown moderator/i,
+        /^bilinmeyen yetkili/i,
+        /^mod\s*\[/i,
+        /^moderator\s*\[/i
+    ];
+    const isDegradedName = (name) => !name || DEGRADED_NAME_PATTERNS.some((rx) => rx.test(name.trim()));
+
     const finalProfiles = Array.from(staffProfiles.values()).map((p) => {
         const existing = existingMap.get(p.discord_id);
         if (!existing) return p;
-        return {
+        // Preserve role/permission data from DB
+        const merged = {
             ...p,
             staff_rank: existing.staff_rank || p.staff_rank,
             permission_group: existing.permission_group || p.permission_group,
             permission_level: existing.permission_level !== undefined ? existing.permission_level : p.permission_level,
             is_active_staff: existing.is_active_staff !== undefined ? existing.is_active_staff : p.is_active_staff
         };
+        // Preserve display_name from DB when incoming name is degraded
+        if (isDegradedName(p.display_name) && existing.display_name && !isDegradedName(existing.display_name)) {
+            merged.display_name = existing.display_name;
+        }
+        // Preserve avatar_url from DB when incoming is empty
+        if (!p.avatar_url && existing.avatar_url) {
+            merged.avatar_url = existing.avatar_url;
+        }
+        return merged;
     });
 
     const { error: staffUpsertError } = await supabase

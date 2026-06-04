@@ -133,10 +133,11 @@ export const QueryStaffCommand = {
 
             await interaction.editReply({ embeds: [embed] });
 
-        } catch (error: any) {
-            console.error('Discord Bot: queryStaff error:', error);
+        } catch (error) {
+            const err = error instanceof Error ? error : new Error(String(error));
+            console.error('Discord Bot: queryStaff error:', err);
             await interaction.editReply({
-                content: `🚨 **İstatistik Sorgu Hatası:** Veriler işlenirken bir hata meydana geldi.\nHata: \`${error.message}\``
+                content: `🚨 **İstatistik Sorgu Hatası:** Veriler işlenirken bir hata meydana geldi.\nHata: \`${err.message}\``
             });
         }
     }

@@ -168,8 +168,18 @@ export async function bulkUpdateVerdict(
 
 // ---------- Staff ----------
 
+interface DbStaffProfile {
+  discord_id: string;
+  display_name?: string | null;
+  username?: string | null;
+  staff_rank?: string | null;
+  is_active_staff?: boolean;
+  created_at?: string | null;
+  avatar_url?: string | null;
+}
+
 export async function getStaffProfiles(): Promise<StaffProfile[]> {
-  const data = await supabaseFetch<any[]>(
+  const data = await supabaseFetch<DbStaffProfile[]>(
     'staff_profiles',
     'GET',
     'order=discord_id.desc',
@@ -190,20 +200,37 @@ export async function getStaffProfiles(): Promise<StaffProfile[]> {
 
 export async function updateStaffProfile(
   discordId: string,
-  updates: Partial<StaffProfile>,
+  updates: Partial<StaffProfile> & {
+    discord_id?: string;
+    display_name?: string;
+    staff_rank?: string;
+    is_active_staff?: boolean;
+    access_status?: string;
+    source_flags?: string[];
+    updated_at?: string;
+  },
 ): Promise<void> {
-  const dbUpdates: Record<string, any> = {};
-  if (updates.in_game_name !== undefined || updates.username !== undefined) {
-    dbUpdates.display_name = updates.in_game_name ?? updates.username;
+  const dbUpdates: Record<string, unknown> = {};
+  if (updates.in_game_name !== undefined || updates.username !== undefined || updates.display_name !== undefined) {
+    dbUpdates.display_name = updates.in_game_name ?? updates.username ?? updates.display_name;
   }
-  if (updates.role !== undefined) {
-    dbUpdates.staff_rank = updates.role;
+  if (updates.role !== undefined || updates.staff_rank !== undefined) {
+    dbUpdates.staff_rank = updates.role ?? updates.staff_rank;
   }
-  if (updates.status !== undefined) {
-    dbUpdates.is_active_staff = updates.status === 'ACTIVE';
+  if (updates.status !== undefined || updates.is_active_staff !== undefined) {
+    dbUpdates.is_active_staff = updates.status !== undefined ? (updates.status === 'ACTIVE') : updates.is_active_staff;
   }
   if (updates.avatar_url !== undefined) {
     dbUpdates.avatar_url = updates.avatar_url;
+  }
+  if (updates.access_status !== undefined) {
+    dbUpdates.access_status = updates.access_status;
+  }
+  if (updates.source_flags !== undefined) {
+    dbUpdates.source_flags = updates.source_flags;
+  }
+  if (updates.updated_at !== undefined) {
+    dbUpdates.updated_at = updates.updated_at;
   }
 
   // Update staff_profiles table
@@ -215,13 +242,15 @@ export async function updateStaffProfile(
   );
 
   // Mirror to role_cache if role or status was modified
-  if (updates.role !== undefined || updates.status !== undefined) {
-    const rcUpdates: Record<string, any> = {};
-    if (updates.role !== undefined) {
-      rcUpdates.staff_rank = updates.role;
+  if (updates.role !== undefined || updates.status !== undefined || updates.staff_rank !== undefined || updates.is_active_staff !== undefined) {
+    const rcUpdates: Record<string, unknown> = {};
+    const resolvedRole = updates.role ?? updates.staff_rank;
+    const resolvedActive = updates.status !== undefined ? (updates.status === 'ACTIVE') : updates.is_active_staff;
+    if (resolvedRole !== undefined) {
+      rcUpdates.staff_rank = resolvedRole;
     }
-    if (updates.status !== undefined) {
-      rcUpdates.active = updates.status === 'ACTIVE';
+    if (resolvedActive !== undefined) {
+      rcUpdates.active = resolvedActive;
     }
     rcUpdates.updated_at = new Date().toISOString();
 

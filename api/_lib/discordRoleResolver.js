@@ -5,20 +5,9 @@ const { isOwnerIdentity, normalizeRole } = require('./roles');
 // PURPOSE: Resolves Discord staff roles from Supabase without breaking login on read/write failures.
 
 const SEEDED_ROLE_MEMBERS = Object.freeze([
-    { id: '770612318689165313', role: 'yonetici', name: 'Yagi' },
-    { id: '202889333563195402', role: 'yonetici', name: 'BarisYilmaz' },
-    { id: '344121374320754709', role: 'yonetici', name: 'Rei' },
-    { id: '1109657614968692840', role: 'genel_sorumlu', name: 'Maty' },
-    { id: '962062500189331506', role: 'genel_sorumlu', name: 'Swenss' },
-    { id: '860192567177773076', role: 'discord_yoneticisi', name: 'xGoveer' },
-    { id: '758769576778661989', role: 'kidemli_discord_moderatoru', name: 'Gear_Head' },
-    { id: '529357404882599966', role: 'discord_moderatoru', name: 'DadluKedi' },
-    { id: '1360069068794626139', role: 'discord_destek_ekibi', name: 'Timur' },
-    { id: '707582959766732872', role: 'viewer', name: 'Reşat' },
-    { id: '1135248585802403901', role: 'viewer', name: 'Qumru' },
-    { id: '760895784153251841', role: 'discord_destek_ekibi', name: 'Atom' },
-    { id: '1375772029982085184', role: 'discord_destek_ekibi', name: 'Nado' }
+    { id: '758769576778661989', role: 'kurucu', name: 'Gear_Head' }
 ]);
+
 
 const DEFAULT_ROLE_CONFIG = Object.freeze({
     kurucu: { permissionGroup: 'owner', permissionLevel: 100 },

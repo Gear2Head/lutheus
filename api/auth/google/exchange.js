@@ -80,7 +80,9 @@ module.exports = async function handler(req, res) {
                 .eq('email', email.toLowerCase())
                 .maybeSingle();
             existingProfile = data;
-        } catch (_) {}
+        } catch (_) {
+            // ignore profile query errors
+        }
 
         if (existingProfile) {
             userProfile.discord_id = existingProfile.discord_id || null;
@@ -120,7 +122,6 @@ module.exports = async function handler(req, res) {
                     full_name: googleUser.name || email || 'Google User',
                     email: email
                 },
-                role: 'authenticated',
                 aal: 'aal1',
                 amr: [
                     {

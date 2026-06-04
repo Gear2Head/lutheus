@@ -60,11 +60,10 @@ export default function Staff() {
   const canManageStaff = session ? hasPermission(session.role, 'staff:update') : false;
   const isDirty = Object.keys(bufferedChanges).length > 0;
 
-  // Expose dirty state globally for route transition & close protection
   useEffect(() => {
-    (window as any).__lutheus_is_dirty = isDirty;
+    window.__lutheus_is_dirty = isDirty;
     return () => {
-      (window as any).__lutheus_is_dirty = false;
+      window.__lutheus_is_dirty = false;
     };
   }, [isDirty]);
 
@@ -137,14 +136,14 @@ export default function Staff() {
             access_status: mp.access_status,
             source_flags: mp.source_flags,
             updated_at: new Date().toISOString()
-          } as any);
+          });
         } catch (err) {
           console.warn('[Lutheus] Profile sync failed for', mp.discord_id, err);
         }
       }));
       await Promise.all(profileUpdates.map(async (update) => {
         try {
-          const body: Record<string, any> = { updated_at: new Date().toISOString() };
+          const body: { display_name?: string; avatar_url?: string; updated_at: string } = { updated_at: new Date().toISOString() };
           if (update.display_name) body.display_name = update.display_name;
           if (update.avatar_url) body.avatar_url = update.avatar_url;
           await updateStaffProfile(update.discord_id, body);
@@ -251,8 +250,9 @@ export default function Staff() {
 
   // Pre-fill drawer selection from router state
   useEffect(() => {
-    if (!loading && location.state && (location.state as any).discordId) {
-      const targetId = (location.state as any).discordId;
+    const state = location.state as { discordId?: string } | null;
+    if (!loading && state?.discordId) {
+      const targetId = state.discordId;
       const found = staffList.find((s) => s.discordId === targetId);
       if (found) {
         setSelected(found);
@@ -373,7 +373,7 @@ export default function Staff() {
         staff_rank: newStaffRole,
         is_active_staff: true,
         status: 'ACTIVE'
-      } as any);
+      });
       setNewDiscordId('');
       setNewDisplayName('');
       setAddOpen(false);
@@ -386,9 +386,9 @@ export default function Staff() {
   };
 
   const reliabilityColor = (r: string) =>
-    r === 'Guvenilir' ? 'text-emerald-400' : r === 'Riskli' ? 'text-destructive' : 'text-amber-400';
+    r === 'Guvenilir' ? 'text-emerald-400' : r === 'Riskli' ? 'text-red-500' : 'text-amber-400';
 
-  const reliabilityVariant = (r: string): any =>
+  const reliabilityVariant = (r: string): 'success' | 'destructive' | 'warning' | 'default' =>
     r === 'Guvenilir' ? 'success' : r === 'Riskli' ? 'destructive' : 'warning';
 
   return (
@@ -498,7 +498,7 @@ export default function Staff() {
                 </div>
                 <div className="h-1.5 bg-secondary rounded-full overflow-hidden">
                   <div
-                    className={`h-full rounded-full transition-all duration-700 ${s.accuracy >= 95 ? 'bg-emerald-500' : s.accuracy >= 80 ? 'bg-amber-500' : 'bg-destructive'}`}
+                    className={`h-full rounded-full transition-all duration-700 ${s.accuracy >= 70 ? 'bg-emerald-500' : s.accuracy >= 50 ? 'bg-amber-500' : 'bg-red-500'}`}
                     style={{ width: `${s.accuracy}%` }}
                   />
                 </div>
@@ -635,7 +635,7 @@ export default function Staff() {
                 { label: 'Toplam Ceza', val: selected.total, color: 'text-foreground' },
                 { label: 'Dogru', val: selected.valid, color: 'text-emerald-400' },
                 { label: 'Hatali', val: selected.invalid, color: 'text-destructive' },
-                { label: 'Dogruluk', val: `%${selected.accuracy}`, color: selected.accuracy >= 95 ? 'text-emerald-400' : selected.accuracy >= 80 ? 'text-amber-400' : 'text-destructive' },
+                { label: 'Dogruluk', val: `%${selected.accuracy}`, color: selected.accuracy >= 70 ? 'text-emerald-400' : selected.accuracy >= 50 ? 'text-amber-400' : 'text-red-500' },
                 { label: 'CUK Skoru', val: selected.score, color: 'text-primary' },
                 { label: 'Güvenilirlik', val: selected.reliability, color: reliabilityColor(selected.reliability) },
               ].map(({ label, val, color }) => (

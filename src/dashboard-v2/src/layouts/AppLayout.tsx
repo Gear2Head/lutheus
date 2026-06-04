@@ -51,7 +51,7 @@ export default function AppLayout() {
   // Block close / reload if there are unsaved changes
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      if ((window as any).__lutheus_is_dirty) {
+      if (window.__lutheus_is_dirty) {
         e.preventDefault();
         e.returnValue = language === 'tr' ? 'Kaydedilmemiş değişiklikleriniz var. Sayfadan ayrılmak istediğinize emin misiniz?' : 'You have unsaved changes. Are you sure you want to leave?';
         return e.returnValue;
@@ -62,7 +62,7 @@ export default function AppLayout() {
   }, [language]);
 
   const handleNavClick = (e: React.MouseEvent<HTMLAnchorElement>, path: string) => {
-    if ((window as any).__lutheus_is_dirty) {
+    if (window.__lutheus_is_dirty) {
       e.preventDefault();
       window.dispatchEvent(new CustomEvent('lutheus-dirty-navigate', { detail: { path } }));
       alert(language === 'tr' ? 'Lütfen kaydetmediğiniz değişiklikleri kaydetmeden veya iptal etmeden sayfadan ayrılmayın!' : 'Please save or cancel your unsaved changes before leaving this page!');
@@ -227,7 +227,7 @@ export default function AppLayout() {
             <div className="absolute bottom-full left-3 right-3 mb-2 bg-card border border-border/50 rounded-[18px] shadow-xl glass-panel z-50 p-1.5 animate-in fade-in">
               <button
                 onClick={() => {
-                  if ((window as any).__lutheus_is_dirty) {
+                  if (window.__lutheus_is_dirty) {
                     window.dispatchEvent(new CustomEvent('lutheus-dirty-navigate'));
                     alert(language === 'tr' ? 'Lütfen kaydetmediğiniz değişiklikleri kaydetmeden veya iptal etmeden sayfadan ayrılmayın!' : 'Please save or cancel your unsaved changes before leaving this page!');
                     return;
@@ -241,7 +241,7 @@ export default function AppLayout() {
               </button>
               <button
                 onClick={() => {
-                  if ((window as any).__lutheus_is_dirty) {
+                  if (window.__lutheus_is_dirty) {
                     window.dispatchEvent(new CustomEvent('lutheus-dirty-navigate'));
                     alert(language === 'tr' ? 'Lütfen kaydetmediğiniz değişiklikleri kaydetmeden veya iptal etmeden sayfadan ayrılmayın!' : 'Please save or cancel your unsaved changes before leaving this page!');
                     return;

@@ -215,8 +215,8 @@ export function getReliabilityStatus(validCount: number, invalidCount: number): 
   const total = validCount + invalidCount;
   if (total === 0) return 'Bekleyen';
   const acc = (validCount / total) * 100;
-  if (acc >= 95) return 'Guvenilir';
-  if (acc >= 80) return 'Izlemede';
+  if (acc >= 70) return 'Guvenilir';
+  if (acc >= 50) return 'Izlemede';
   return 'Riskli';
 }
 

@@ -24,11 +24,11 @@ module.exports = {
     'no-prototype-builtins': 'off',
     'no-useless-escape': 'off',
     'prefer-const': 'off',
-    'no-console': ['warn', { allow: ['warn', 'error', 'log'] }],
+    'no-console': ['warn', { allow: ['warn', 'error', 'log', 'debug', 'info'] }],
     'no-unused-vars': 'off',
     '@typescript-eslint/no-unused-vars': 'off',
     '@typescript-eslint/no-explicit-any': 'warn',
     '@typescript-eslint/no-var-requires': 'off'
   },
-  ignorePatterns: ['dist/', 'node_modules/', '*.min.js', 'webpack.*.js']
+  ignorePatterns: ['dist/', 'dist-web/', 'node_modules/', '*.min.js', 'webpack.*.js']
 };

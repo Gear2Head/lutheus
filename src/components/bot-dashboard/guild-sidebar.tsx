@@ -51,7 +51,7 @@ export function GuildSidebar() {
     { name: "Logging", tab: "logging", icon: ClipboardList },
   ];
 
-  const renderLink = (item: { name: string; tab: string; icon: any }) => {
+  const renderLink = (item: { name: string; tab: string; icon: React.ComponentType<{ className?: string }> }) => {
     const Icon = item.icon;
     const isActive = activeTab === item.tab;
     const href = `/bot/${guildId}?tab=${item.tab}`;

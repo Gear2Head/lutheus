@@ -302,6 +302,8 @@ window.GearTech.Scraper = {
         }
 
         // Extract Duration
+        const durationCol = durationMeta.col;
+        let duration = '';
         if (durationCol) {
             duration = durationCol.innerText.trim();
             const spanWithTitle = durationCol.querySelector('[title]');

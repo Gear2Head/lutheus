@@ -160,7 +160,6 @@ module.exports = async function handler(req, res) {
                     full_name: googleUser.name || email || 'Google User',
                     email: email
                 },
-                role: 'authenticated',
                 aal: 'aal1',
                 amr: [
                     {

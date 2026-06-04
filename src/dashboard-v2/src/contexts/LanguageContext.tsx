@@ -470,27 +470,27 @@ function readStoredLanguage(): Language {
 }
 
 function syncChromeLanguage(lang: Language) {
-  const chromeApi = (globalThis as any).chrome;
-  if (!chromeApi?.storage?.local) return;
-  chromeApi.storage.local.set({ language: lang });
+  if (typeof chrome !== 'undefined' && chrome?.storage?.local) {
+    chrome.storage.local.set({ language: lang });
+  }
 }
 
 export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [language, setLanguageState] = useState<Language>(() => readStoredLanguage());
 
   useEffect(() => {
-    const chromeApi = (globalThis as any).chrome;
-    if (!chromeApi?.storage?.local) return;
-    chromeApi.storage.local.get(['language'], (result: any) => {
-      const stored = result?.language;
-      if (stored === 'tr' || stored === 'en') {
-        setLanguageState(stored);
-        localStorage.setItem('language', stored);
-      } else {
-        syncChromeLanguage(DEFAULT_LANGUAGE);
-        localStorage.setItem('language', DEFAULT_LANGUAGE);
-      }
-    });
+    if (typeof chrome !== 'undefined' && chrome?.storage?.local) {
+      chrome.storage.local.get(['language'], (result) => {
+        const stored = result?.language as string | undefined;
+        if (stored === 'tr' || stored === 'en') {
+          setLanguageState(stored);
+          localStorage.setItem('language', stored);
+        } else {
+          syncChromeLanguage(DEFAULT_LANGUAGE);
+          localStorage.setItem('language', DEFAULT_LANGUAGE);
+        }
+      });
+    }
   }, []);
 
   const setLanguage = (lang: Language) => {

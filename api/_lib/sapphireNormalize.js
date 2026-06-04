@@ -230,7 +230,9 @@ function normalizeCase(item, guildId) {
                     createdAt = parsed.toISOString();
                 }
             }
-        } catch (_e) {}
+        } catch (_e) {
+            // ignore parse errors
+        }
     }
     if (!createdAt) {
         createdAt = new Date().toISOString();

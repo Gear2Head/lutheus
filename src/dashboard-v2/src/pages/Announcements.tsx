@@ -30,6 +30,12 @@ interface Announcement {
   updated_at: string;
 }
 
+interface AdminApiClientType {
+  listAnnouncements(): Promise<Announcement[]>;
+  createAnnouncement(title: string, body: string, targetRoles: string[]): Promise<Announcement>;
+  publishAnnouncement(id: string, targetRoles?: string[]): Promise<void>;
+}
+
 const ROLE_LABELS: Record<string, string> = {
   discord_moderatoru: 'Discord Moderatoru',
   kidemli_discord_moderatoru: 'Kidemli Moderator',
@@ -89,11 +95,12 @@ export default function Announcements() {
   const loadData = async () => {
     setLoading(true);
     try {
-      const { AdminApiClient } = await import('../../../lib/adminApiClient.js') as any;
+      const { AdminApiClient } = await import('../../../lib/adminApiClient.js') as unknown as { AdminApiClient: AdminApiClientType };
       const data = await AdminApiClient.listAnnouncements();
       setItems(data || []);
-    } catch (err: any) {
-      showToast(`Duyurular yuklenemedi: ${err?.message || err}`, 'error');
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      showToast(`Duyurular yuklenemedi: ${errMsg}`, 'error');
     } finally {
       setLoading(false);
     }
@@ -127,7 +134,7 @@ export default function Announcements() {
     if (!title.trim() || !body.trim()) return;
     setSaving(true);
     try {
-      const { AdminApiClient } = await import('../../../lib/adminApiClient.js') as any;
+      const { AdminApiClient } = await import('../../../lib/adminApiClient.js') as unknown as { AdminApiClient: AdminApiClientType };
       const item = await AdminApiClient.createAnnouncement(title.trim(), body.trim(), targetRoles);
       showToast('Duyuru taslak olarak olusturuldu.', 'success');
       setItems(prev => [item, ...prev]);
@@ -135,8 +142,9 @@ export default function Announcements() {
       setBody('');
       setTargetRoles([...ALL_TARGET_ROLES]);
       setCreateOpen(false);
-    } catch (err: any) {
-      showToast(`Duyuru olusturulamadi: ${err?.message || err}`, 'error');
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      showToast(`Duyuru olusturulamadi: ${errMsg}`, 'error');
     } finally {
       setSaving(false);
     }
@@ -145,12 +153,13 @@ export default function Announcements() {
   const handlePublish = async (id: string) => {
     setSaving(true);
     try {
-      const { AdminApiClient } = await import('../../../lib/adminApiClient.js') as any;
+      const { AdminApiClient } = await import('../../../lib/adminApiClient.js') as unknown as { AdminApiClient: AdminApiClientType };
       await AdminApiClient.publishAnnouncement(id, items.find(i => i.id === id)?.target_roles);
       showToast('Duyuru yayinlandi ve bot dispatch kuyruklandi.', 'success');
       await loadData();
-    } catch (err: any) {
-      showToast(`Yayinlama basarisiz: ${err?.message || err}`, 'error');
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      showToast(`Yayinlama basarisiz: ${errMsg}`, 'error');
     } finally {
       setSaving(false);
     }
@@ -159,7 +168,7 @@ export default function Announcements() {
   const handleArchive = async (id: string) => {
     setSaving(true);
     try {
-      const { AdminApiClient } = await import('../../../lib/adminApiClient.js') as any;
+      const { AdminApiClient } = await import('../../../lib/adminApiClient.js') as unknown as { AdminApiClient: AdminApiClientType };
       const res = await fetch('/api/admin/announcements', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.idToken}` },
@@ -168,8 +177,9 @@ export default function Announcements() {
       if (!res.ok) throw new Error((await res.json()).error || 'API_ERROR');
       showToast('Duyuru arsivlendi.', 'success');
       await loadData();
-    } catch (err: any) {
-      showToast(`Arsivleme basarisiz: ${err?.message || err}`, 'error');
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      showToast(`Arsivleme basarisiz: ${errMsg}`, 'error');
     } finally {
       setSaving(false);
     }

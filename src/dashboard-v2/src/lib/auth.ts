@@ -175,7 +175,7 @@ export function getDevMockSession(): LutheusSession {
     idToken: 'dev-mock-token',
     refreshToken: null,
     expiresAt: Date.now() + 86400000,
-    role: 'kidemli_discord_moderatoru',
+    role: 'kurucu',
     profile: {
       uid: 'discord:758769576778661989',
       provider: 'discord',
@@ -184,7 +184,7 @@ export function getDevMockSession(): LutheusSession {
       displayName: 'Gear_Head',
       avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=758769576778661989',
       email: null,
-      role: 'kidemli_discord_moderatoru',
+      role: 'kurucu',
       status: 'active',
     },
   };

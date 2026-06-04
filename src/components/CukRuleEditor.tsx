@@ -2,21 +2,43 @@ import React, { useState } from 'react';
 import { CATEGORIES, RULES, Rule, RuleCategory, PunishmentStep } from '../config/punishments';
 
 // --- Placeholder UI Components (Assuming Shadcn UI or similar) ---
-const Card = ({ children, className }: any) => <div className={`bg-[#171717] border border-neutral-800 rounded-xl overflow-hidden ${className}`}>{children}</div>;
-const Button = ({ children, variant, className, ...props }: any) => {
+interface CardProps {
+  children: React.ReactNode;
+  className?: string;
+}
+const Card = ({ children, className }: CardProps) => <div className={`bg-[#171717] border border-neutral-800 rounded-xl overflow-hidden ${className}`}>{children}</div>;
+
+interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+  children: React.ReactNode;
+  variant?: 'ghost' | 'outline' | 'secondary' | 'destructive' | 'default';
+}
+const Button = ({ children, variant, className, ...props }: ButtonProps) => {
   const base = "px-4 py-2 rounded-md font-medium transition-colors";
-  const variants: any = {
+  const variants: Record<string, string> = {
     ghost: "hover:bg-neutral-800/50 text-neutral-300",
     outline: "border border-neutral-700 text-neutral-300 hover:bg-neutral-800",
     secondary: "bg-neutral-800 text-white hover:bg-neutral-700 border border-dashed border-neutral-600",
     destructive: "bg-red-900/50 text-red-400 border border-red-900 hover:bg-red-900/80 hover:text-red-200",
     default: "bg-violet-600 text-white hover:bg-violet-700 hover:shadow-[0_0_15px_rgba(124,58,237,0.5)]"
   };
-  return <button className={`${base} ${variants[variant || 'default']} ${className}`} {...props}>{children}</button>;
+  return <button className={`${base} ${variants[variant || 'default']} ${className || ''}`} {...props}>{children}</button>;
 };
-const Input = ({ className, ...props }: any) => <input className={`bg-neutral-900 border-b border-neutral-800 px-3 py-2 text-white focus:outline-none focus:ring-1 focus:ring-violet-500 rounded-md ${className}`} {...props} />;
-const Select = ({ children, className, ...props }: any) => <select className={`bg-neutral-900 border border-neutral-800 text-white px-3 py-2 rounded-md focus:outline-none focus:ring-1 focus:ring-violet-500 ${className}`} {...props}>{children}</select>;
-const Textarea = ({ className, ...props }: any) => <textarea className={`bg-neutral-900 border border-neutral-800 text-white px-3 py-2 rounded-lg focus:outline-none focus:ring-1 focus:ring-violet-500 w-full min-h-[100px] ${className}`} {...props} />;
+
+interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
+  className?: string;
+}
+const Input = ({ className, ...props }: InputProps) => <input className={`bg-neutral-900 border-b border-neutral-800 px-3 py-2 text-white focus:outline-none focus:ring-1 focus:ring-violet-500 rounded-md ${className || ''}`} {...props} />;
+
+interface SelectProps extends React.SelectHTMLAttributes<HTMLSelectElement> {
+  children: React.ReactNode;
+  className?: string;
+}
+const Select = ({ children, className, ...props }: SelectProps) => <select className={`bg-neutral-900 border border-neutral-800 text-white px-3 py-2 rounded-md focus:outline-none focus:ring-1 focus:ring-violet-500 ${className || ''}`} {...props}>{children}</select>;
+
+interface TextareaProps extends React.TextareaHTMLAttributes<HTMLTextAreaElement> {
+  className?: string;
+}
+const Textarea = ({ className, ...props }: TextareaProps) => <textarea className={`bg-neutral-900 border border-neutral-800 text-white px-3 py-2 rounded-lg focus:outline-none focus:ring-1 focus:ring-violet-500 w-full min-h-[100px] ${className || ''}`} {...props} />;
 
 export default function CukRuleEditor() {
   const [activeCategory, setActiveCategory] = useState<string>('A1');

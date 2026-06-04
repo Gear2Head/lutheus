@@ -5,17 +5,21 @@ declare const chrome: {
   runtime: {
     lastError?: { message?: string };
     getURL: (path: string) => string;
-    sendMessage: (message: unknown, callback?: (response: any) => void) => void;
+    sendMessage: (message: unknown, callback?: (response: unknown) => void) => void;
     onMessage: {
-      addListener: (callback: (message: any, sender: any, sendResponse: (response?: any) => void) => boolean | void) => void;
-      removeListener: (callback: (message: any, sender: any, sendResponse: (response?: any) => void) => boolean | void) => void;
+      addListener: (callback: (message: unknown, sender: unknown, sendResponse: (response?: unknown) => void) => boolean | void) => void;
+      removeListener: (callback: (message: unknown, sender: unknown, sendResponse: (response?: unknown) => void) => boolean | void) => void;
     };
   };
   storage: {
     local: {
-      get: (keys: unknown, callback: (result: any) => void) => void;
+      get: (keys: unknown, callback: (result: Record<string, unknown>) => void) => void;
       set: (items: Record<string, unknown>, callback?: () => void) => void;
       remove: (keys: unknown, callback?: () => void) => void;
     };
   };
 };
+
+interface Window {
+  __lutheus_is_dirty?: boolean;
+}

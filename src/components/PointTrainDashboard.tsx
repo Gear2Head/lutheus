@@ -1,17 +1,31 @@
 import React, { useState, useEffect } from 'react';
 
 // --- Placeholder UI Components (Assuming Shadcn UI or similar) ---
-const Card = ({ children, className }: any) => <div className={`bg-[#171717] border border-neutral-800 rounded-xl overflow-hidden ${className}`}>{children}</div>;
-const Button = ({ children, variant, className, ...props }: any) => {
+interface CardProps {
+  children: React.ReactNode;
+  className?: string;
+}
+const Card = ({ children, className }: CardProps) => <div className={`bg-[#171717] border border-neutral-800 rounded-xl overflow-hidden ${className}`}>{children}</div>;
+
+interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+  children: React.ReactNode;
+  variant?: 'ghost' | 'outline' | 'default';
+}
+const Button = ({ children, variant, className, ...props }: ButtonProps) => {
   const base = "px-4 py-2 rounded-md font-medium transition-colors";
-  const variants: any = {
+  const variants: Record<string, string> = {
     ghost: "hover:bg-neutral-800/50 text-neutral-300",
     outline: "border border-neutral-700 text-neutral-300 hover:bg-neutral-800",
     default: "bg-violet-600 text-white hover:bg-violet-700 hover:shadow-[0_0_15px_rgba(124,58,237,0.5)]"
   };
-  return <button className={`${base} ${variants[variant || 'default']} ${className}`} {...props}>{children}</button>;
+  return <button className={`${base} ${variants[variant || 'default']} ${className || ''}`} {...props}>{children}</button>;
 };
-const Select = ({ children, className, ...props }: any) => <select className={`bg-neutral-900 border border-neutral-800 text-white px-3 py-2 rounded-md focus:outline-none focus:ring-1 focus:ring-violet-500 ${className}`} {...props}>{children}</select>;
+
+interface SelectProps extends React.SelectHTMLAttributes<HTMLSelectElement> {
+  children: React.ReactNode;
+  className?: string;
+}
+const Select = ({ children, className, ...props }: SelectProps) => <select className={`bg-neutral-900 border border-neutral-800 text-white px-3 py-2 rounded-md focus:outline-none focus:ring-1 focus:ring-violet-500 ${className || ''}`} {...props}>{children}</select>;
 
 import { fetchPointTrainData, PointTrainResult } from '../services/pointTrainService';
 
@@ -48,13 +62,13 @@ export default function PointTrainDashboard() {
           <p className="text-neutral-500 text-sm mt-1">Haftalık ve aylık ceza arama, yetkili performans ölçümü.</p>
         </div>
         <div className="flex gap-4">
-          <Select value={dateRange} onChange={(e: any) => setDateRange(e.target.value)}>
+          <Select value={dateRange} onChange={(e) => setDateRange(e.target.value)}>
             <option value="this_week">Bu Hafta</option>
             <option value="last_week">Geçen Hafta</option>
             <option value="this_month">Bu Ay</option>
             <option value="all_time">Tüm Zamanlar</option>
           </Select>
-          <Select value={selectedMod} onChange={(e: any) => setSelectedMod(e.target.value)}>
+          <Select value={selectedMod} onChange={(e) => setSelectedMod(e.target.value)}>
             <option value="all">Tüm Yetkililer</option>
             <option value="Admin1">Admin1</option>
             <option value="Mod2">Mod2</option>

@@ -29,6 +29,7 @@ import { ModLogsCommand } from './commands/mod/ModLogsCommand.js';
 import { UnbanCommand } from './commands/mod/UnbanCommand.js';
 import { diagnosticCommands } from './commands/diagnostics/DbDiagnosticsCommands.js';
 import { runDbHealthCheck, setPollCursor, setLastPollError } from './lib/dbDiagnostics.js';
+import { RaporCommand } from './commands/rapor.js';
 
 // In-memory cache for dynamic guild configurations to power real-time welcome, automod, reaction roles etc.
 const guildConfigsCache: Record<string, any> = {};
@@ -132,6 +133,7 @@ const commands = [
     ServerInfoCommand,
     ModLogsCommand,
     UnbanCommand,
+    RaporCommand,
     ...diagnosticCommands,
 ];
 
@@ -583,6 +585,7 @@ client.once('clientReady', async () => {
     await registerSlashCommands();
     startSupabasePolling();
     setupAuditLogListeners();
+    startScheduledReporting();
 });
 
 // SECTION: AUDIT_LOG_LISTENERS
@@ -1021,6 +1024,99 @@ client.on('messageReactionRemove', async (reaction, user) => {
         await member.roles.remove(option.roleId).catch(() => null);
     }
 });
+
+async function sendDailyWeeklyReports() {
+    console.log('Discord Bot: Executing scheduled stats reporting...');
+    for (const [guildId, config] of Object.entries(guildConfigsCache)) {
+        const targetChannelId = config.statsChannelId || config.logChannelId;
+        if (!targetChannelId) continue;
+
+        try {
+            const guild = client.guilds.cache.get(guildId);
+            if (!guild) continue;
+
+            const channel = await client.channels.fetch(targetChannelId).catch(() => null);
+            if (!channel || !channel.isTextBased()) continue;
+
+            const { data: cases, error } = await supabase
+                .from('sapphire_cases')
+                .select('*')
+                .eq('guild_id', guildId);
+
+            if (error || !cases || cases.length === 0) continue;
+
+            const totalCount = cases.length;
+            const staffSet = new Set(cases.map(c => c.author_discord_id || c.author_display_name).filter(Boolean));
+            const activeStaffCount = staffSet.size;
+
+            const validCount = cases.filter(c => String(c.cuk_verdict || '').toLowerCase() === 'valid').length;
+            const invalidCount = cases.filter(c => String(c.cuk_verdict || '').toLowerCase() === 'invalid').length;
+            const accuracy = totalCount ? Math.round((validCount / totalCount) * 100) : 0;
+
+            const now = Date.now();
+            const last24hCount = cases.filter(c => c.scraped_at && (now - new Date(c.scraped_at).getTime()) <= 24 * 60 * 60 * 1000).length;
+            const last7dCount = cases.filter(c => c.scraped_at && (now - new Date(c.scraped_at).getTime()) <= 7 * 24 * 60 * 60 * 1000).length;
+
+            const typesMap: Record<string, number> = {};
+            cases.forEach(c => {
+                const t = String(c.type || 'unknown').toUpperCase();
+                typesMap[t] = (typesMap[t] || 0) + 1;
+            });
+            const typesFormatted = Object.entries(typesMap)
+                .map(([type, count]) => `• \`${type}\`: **${count}**`)
+                .join('\n') || '• Kayıt yok';
+
+            const categoriesMap: Record<string, number> = {};
+            const classifyReasonLocal = (reason: string): string => {
+                const raw = String(reason || '').toLowerCase();
+                if (/yetkili|adal|admin|mod|ekip|ismini|aşağ|iftira/i.test(raw)) return 'Yetkililere Saygısızlık';
+                if (/oyuncu|şahsa|kişiye|üyeye|saygısızlık|hakaret/i.test(raw)) return 'Oyunculara Saygısızlık';
+                if (/küfür|argo|uygunsuz/i.test(raw)) return 'Küfür / Hakaret';
+                if (/dini|milli|kutsal|atatürk|din/i.test(raw) && !/dinamik/i.test(raw)) return 'Dini / Milli Değerler';
+                if (/düzen|sohbet|bozmak|flood|spam|polemik|toks|toxic|kışkırt/i.test(raw)) return 'Sunucu Dinamiği';
+                if (/reklam|davet|discord\.gg|youtube\.com/i.test(raw)) return 'Reklam';
+                if (/destek|bilet|ticket/i.test(raw)) return 'Destek Talebi';
+                return 'Diğer / Yönetim Kararı';
+            };
+
+            cases.forEach(c => {
+                const cat = classifyReasonLocal(c.reason_raw || '');
+                categoriesMap[cat] = (categoriesMap[cat] || 0) + 1;
+            });
+            const categoriesFormatted = Object.entries(categoriesMap)
+                .sort((a, b) => b[1] - a[1])
+                .map(([cat, count]) => `• ${cat}: **${count}**`)
+                .join('\n') || '• Kayıt yok';
+
+            const accuracyColor = accuracy >= 90 ? 0x2ed573 : accuracy >= 80 ? 0xffa502 : 0xff4757;
+            const accuracyEmoji = accuracy >= 90 ? '🟢 MÜKEMMEL' : accuracy >= 80 ? '🟡 STABİL' : '🔴 KRİTİK SEVİYE';
+
+            const embed = new EmbedBuilder()
+                .setTitle(`📅 Günlük Sunucu Moderasyon Raporu`)
+                .setColor(accuracyColor)
+                .setDescription(`Sistem tarafından otomatik hazırlanan günlük özet moderasyon ve CUK denetim raporu.`)
+                .addFields(
+                    { name: '📈 Genel Durum', value: `Top. Ceza: **${totalCount}**\nAktif Yetkili: **${activeStaffCount}**\nSon 24 Saat: **+${last24hCount}**\nSon 7 Gün: **+${last7dCount}**`, inline: true },
+                    { name: '🎯 CUK Uyum Skoru', value: `Skor: **%${accuracy}**\nDurum: **${accuracyEmoji}**\n✅ Geçerli: **${validCount}**\n❌ Hatalı: **${invalidCount}**`, inline: true },
+                    { name: '⚡ Ceza Dağılımları', value: typesFormatted },
+                    { name: '📜 En Sık İhlal Edilen Kurallar', value: categoriesFormatted }
+                )
+                .setFooter({ text: 'Lutheus Otomatik Günlük Zamanlayıcı' })
+                .setTimestamp();
+
+            await (channel as any).send({ embeds: [embed] }).catch(() => null);
+            console.log(`Discord Bot: Dispatched scheduled stats report for guild ${guildId}`);
+
+        } catch (err: any) {
+            console.error(`Discord Bot: Scheduled report failure for guild ${guildId}:`, err.message);
+        }
+    }
+}
+
+function startScheduledReporting() {
+    console.log('Discord Bot: Starting daily scheduled reporting clock...');
+    setInterval(sendDailyWeeklyReports, 24 * 60 * 60 * 1000);
+}
 
 if (botToken) {
     startHealthServer();

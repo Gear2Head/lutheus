@@ -83,10 +83,11 @@ export const QueryCaseCommand = {
 
             await interaction.editReply({ embeds: [embed] });
 
-        } catch (error: any) {
-            console.error('Discord Bot: queryCase error:', error);
+        } catch (error) {
+            const err = error instanceof Error ? error : new Error(String(error));
+            console.error('Discord Bot: queryCase error:', err);
             await interaction.editReply({
-                content: `🚨 **Sorgu Hatası:** Veritabanına erişirken bir hata meydana geldi.\nHata: \`${error.message}\``
+                content: `🚨 **Sorgu Hatası:** Veritabanına erişirken bir hata meydana geldi.\nHata: \`${err.message}\``
             });
         }
     }

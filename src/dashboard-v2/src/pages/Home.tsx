@@ -29,7 +29,7 @@ interface StaffStat {
 
 // SECTION: STAFF_STAT_NORMALIZATION
 // PURPOSE: Case verisindeki gerçek yetkili adlarını generic profil fallback değerlerine tercih eder.
-function buildStaffStats(cases: SapphireCase[], staffProfiles: StaffProfile[], t: any): StaffStat[] {
+function buildStaffStats(cases: SapphireCase[], staffProfiles: StaffProfile[], t: (key: string) => string): StaffStat[] {
   const map = new Map<string, StaffStat>();
   const staffMap = new Map(staffProfiles.map(s => [s.discord_id, s]));
 
@@ -112,8 +112,8 @@ export default function Home() {
       ]);
       setCases(casesData);
       setStaffProfiles(staffData);
-    } catch (e: any) {
-      setError(e.message);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -140,7 +140,13 @@ export default function Home() {
     navigator.clipboard.writeText(text).catch(() => {});
   };
 
-  const StatCard = ({ icon: Icon, label, value, sub, color }: any) => (
+  const StatCard = ({ icon: Icon, label, value, sub, color }: {
+    icon: React.ComponentType<{ className?: string }>;
+    label: string;
+    value: string | number;
+    sub?: string;
+    color: string;
+  }) => (
     <Card className="p-5 flex items-start gap-4">
       <div className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 ${color}`}>
         <Icon className="w-5 h-5" />
@@ -191,76 +197,42 @@ export default function Home() {
         <StatCard icon={Users} label={t('home.statActiveStaff')} value={uniqueMods} color="bg-primary/15 text-primary" />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
-        {/* SECTION: HOME_WEEKLY_CHART */}
-        {/* PURPOSE: Haftalık doğrulama grafiğini dil bağımsız veri anahtarlarıyla gösterir. */}
-        <Card className="lg:col-span-2 p-5">
-          <div className="flex items-center justify-between mb-5">
-            <h3 className="font-semibold text-sm text-foreground flex items-center gap-2">
-              <TrendingUp className="w-4 h-4 text-primary" /> {t('home.weeklyTrend')}
-            </h3>
-          </div>
-          {loading ? (
-            <Skeleton className="h-[180px] w-full rounded-xl" />
-          ) : (
-            <ResponsiveContainer width="100%" height={180}>
-              <AreaChart data={weeklyData} margin={{ top: 0, right: 0, left: -30, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="colorValid" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#22c55e" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="#22c55e" stopOpacity={0} />
-                  </linearGradient>
-                  <linearGradient id="colorInvalid" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#ef4444" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="#ef4444" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-                <XAxis dataKey="date" tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }} axisLine={false} tickLine={false} />
-                <Tooltip
-                  contentStyle={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, fontSize: 12 }}
-                  labelStyle={{ color: 'var(--foreground)' }}
-                />
-                <Area type="monotone" dataKey="valid" name={t('pt.valid')} stroke="#22c55e" strokeWidth={2} fill="url(#colorValid)" />
-                <Area type="monotone" dataKey="invalid" name={t('pt.invalid')} stroke="#ef4444" strokeWidth={2} fill="url(#colorInvalid)" />
-              </AreaChart>
-            </ResponsiveContainer>
-          )}
-        </Card>
-
-        {/* SECTION: HOME_DISTRIBUTION */}
-        {/* PURPOSE: Durum dağılımını kompakt yükseklikte ve deterministik oranlarla gösterir. */}
-        <Card className="p-5 self-start">
-          <h3 className="font-semibold text-sm text-foreground mb-4">{t('home.verdictDist')}</h3>
-          {loading ? (
-            <div className="space-y-3">
-              {[1, 2, 3].map(i => <Skeleton key={i} className="h-4 w-full rounded-full" />)}
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {[
-                { label: t('home.statValid'), val: valid, total, color: 'bg-emerald-500' },
-                { label: t('home.statInvalid'), val: invalid, total, color: 'bg-destructive' },
-                { label: t('pt.pending'), val: pending, total, color: 'bg-amber-500' },
-              ].map(({ label, val, total: tVal, color }) => (
-                <div key={label}>
-                  <div className="flex justify-between text-xs font-medium mb-1.5">
-                    <span className="text-muted-foreground">{label}</span>
-                    <span className="text-foreground">{val}</span>
-                  </div>
-                  <div className="h-1.5 bg-secondary rounded-full overflow-hidden">
-                    <div
-                      className={`h-full rounded-full ${color} transition-all duration-700`}
-                      style={{ width: tVal > 0 ? `${Math.min(100, Math.max(0, (val / tVal) * 100))}%` : '0%' }}
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </Card>
-      </div>
+      {/* SECTION: HOME_WEEKLY_CHART */}
+      {/* PURPOSE: Haftalık doğrulama grafiğini dil bağımsız veri anahtarlarıyla gösterir. */}
+      <Card className="p-5">
+        <div className="flex items-center justify-between mb-5">
+          <h3 className="font-semibold text-sm text-foreground flex items-center gap-2">
+            <TrendingUp className="w-4 h-4 text-primary" /> {t('home.weeklyTrend')}
+          </h3>
+        </div>
+        {loading ? (
+          <Skeleton className="h-[180px] w-full rounded-xl" />
+        ) : (
+          <ResponsiveContainer width="100%" height={180}>
+            <AreaChart data={weeklyData} margin={{ top: 0, right: 0, left: -30, bottom: 0 }}>
+              <defs>
+                <linearGradient id="colorValid" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#22c55e" stopOpacity={0.3} />
+                  <stop offset="95%" stopColor="#22c55e" stopOpacity={0} />
+                </linearGradient>
+                <linearGradient id="colorInvalid" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#ef4444" stopOpacity={0.3} />
+                  <stop offset="95%" stopColor="#ef4444" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+              <XAxis dataKey="date" tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }} axisLine={false} tickLine={false} />
+              <Tooltip
+                contentStyle={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, fontSize: 12 }}
+                labelStyle={{ color: 'var(--foreground)' }}
+              />
+              <Area type="monotone" dataKey="valid" name={t('pt.valid')} stroke="#22c55e" strokeWidth={2} fill="url(#colorValid)" />
+              <Area type="monotone" dataKey="invalid" name={t('pt.invalid')} stroke="#ef4444" strokeWidth={2} fill="url(#colorInvalid)" />
+            </AreaChart>
+          </ResponsiveContainer>
+        )}
+      </Card>
 
       {/* Staff Table */}
       <Card className="overflow-hidden">
@@ -302,7 +274,7 @@ export default function Home() {
                 <tr><td colSpan={7} className="py-12 text-center text-muted-foreground text-sm">{t('home.noData')}</td></tr>
               ) : staffStats.map((s, i) => {
                 const status = getReliabilityStatus(s.valid, s.invalid);
-                const statusVariant: any = status === 'Guvenilir' ? 'success' : status === 'Riskli' ? 'destructive' : 'warning';
+                const statusVariant: 'success' | 'destructive' | 'warning' | 'default' = status === 'Guvenilir' ? 'success' : status === 'Riskli' ? 'destructive' : 'warning';
                 return (
                   <tr
                     key={s.discordId}
@@ -328,7 +300,7 @@ export default function Home() {
                     <td className="py-3 px-3 text-center text-emerald-400 font-semibold">{s.valid}</td>
                     <td className="py-3 px-3 text-center text-destructive font-semibold">{s.invalid}</td>
                     <td className="py-3 px-3 text-center">
-                      <span className={`font-bold text-sm ${s.accuracy >= 95 ? 'text-emerald-400' : s.accuracy >= 80 ? 'text-amber-400' : 'text-destructive'}`}>
+                      <span className={`font-bold text-sm ${s.accuracy >= 70 ? 'text-emerald-400' : s.accuracy >= 50 ? 'text-amber-400' : 'text-red-500'}`}>
                         %{s.accuracy}
                       </span>
                     </td>

@@ -39,20 +39,9 @@ const DEFAULT_ROLE_CONFIG = Object.freeze([
 ]);
 
 const SEEDED_ROLE_CACHE = Object.freeze([
-    { discord_id: '770612318689165313', staff_rank: 'yonetici', active: true, source: 'lutheus-seed', raw_payload: { displayName: 'Yagi' } },
-    { discord_id: '202889333563195402', staff_rank: 'yonetici', active: true, source: 'lutheus-seed', raw_payload: { displayName: 'BarisYilmaz' } },
-    { discord_id: '344121374320754709', staff_rank: 'yonetici', active: true, source: 'lutheus-seed', raw_payload: { displayName: 'Rei' } },
-    { discord_id: '1109657614968692840', staff_rank: 'genel_sorumlu', active: true, source: 'lutheus-seed', raw_payload: { displayName: 'Maty' } },
-    { discord_id: '962062500189331506', staff_rank: 'genel_sorumlu', active: true, source: 'lutheus-seed', raw_payload: { displayName: 'Goktug' } },
-    { discord_id: '860192567177773076', staff_rank: 'discord_yoneticisi', active: true, source: 'lutheus-seed', raw_payload: { displayName: 'xGoveer' } },
-    { discord_id: '758769576778661989', staff_rank: 'kurucu', active: true, source: 'lutheus-owner', raw_payload: { displayName: 'Gear_Head' } },
-    { discord_id: '529357404882599966', staff_rank: 'discord_moderatoru', active: true, source: 'lutheus-seed', raw_payload: { displayName: 'Dadlukady' } },
-    { discord_id: '1360069068794626139', staff_rank: 'discord_destek_ekibi', active: true, source: 'lutheus-seed', raw_payload: { displayName: 'Timur3' } },
-    { discord_id: '707582959766732872', staff_rank: 'discord_destek_ekibi', active: true, source: 'lutheus-seed', raw_payload: { displayName: 'Ocean' } },
-    { discord_id: '1135248585802403901', staff_rank: 'discord_destek_ekibi', active: true, source: 'lutheus-seed', raw_payload: { displayName: 'QumruClaus' } },
-    { discord_id: '760895784153251841', staff_rank: 'discord_destek_ekibi', active: true, source: 'lutheus-seed', raw_payload: { displayName: 'Atom' } },
-    { discord_id: '1375772029982085184', staff_rank: 'discord_destek_ekibi', active: true, source: 'lutheus-seed', raw_payload: { displayName: 'Nadoo' } }
+    { discord_id: '758769576778661989', staff_rank: 'kurucu', active: true, source: 'lutheus-owner', raw_payload: { displayName: 'Gear_Head' } }
 ]);
+
 
 const OWNER_ALLOWLIST = Object.freeze([
     { id: 'gearheadd0@gmail.com', email: 'gearheadd0@gmail.com', allowed: true, role: 'kurucu' }
@@ -365,6 +354,11 @@ async function handleRoleCache(req, res) {
         const discordId = String(identityKey).replace(/^discord:/, '');
         const { error } = await supabase.from('role_cache').delete().eq('discord_id', discordId);
         if (error) return serverError(res, error);
+
+        const { error: profileError } = await supabase.from('staff_profiles').delete().eq('discord_id', discordId);
+        if (profileError) {
+            console.warn('[admin] staff profile delete error:', profileError.message || profileError);
+        }
 
         await addAudit('role_cache_deleted', actor, { identityKey });
 
@@ -1046,43 +1040,14 @@ async function handleDiscordBotAction(req, res) {
             return ok(res, result);
         }
 
-        return badRequest(res, 'UNKNOWN_ACTION');
-
-        let result = { ok: true };
-
-        if (action === 'test_welcome') {
-            const welcomeChannelId = configs?.welcome?.channelId;
-            if (!welcomeChannelId) {
-                return badRequest(res, 'WELCOME_CHANNEL_NOT_SET');
-            }
-
-            const msg = configs?.welcome?.message || 'Hoş geldin {user}!';
-            const formatted = msg
-                .replace(/{user}/g, `<@${actor.discordId || '0'}>`)
-                .replace(/{username}/g, actor.discordId ? 'TestUser' : 'TestUser')
-                .replace(/{server}/g, 'Sunucu')
-                .replace(/{memberCount}/g, '?');
-
-            if (configs?.welcome?.embedEnabled) {
-                await sendDiscordMessage(welcomeChannelId, null, {
-                    title: configs.welcome.embedTitle || 'Hoş Geldin!',
-                    description: formatted,
-                    color: parseInt((configs.welcome.embedColor || '#7c5af5').replace('#', ''), 16)
-                });
-            } else {
-                await sendDiscordMessage(welcomeChannelId, formatted);
-            }
-
-            result = { ok: true, message: 'Welcome test sent' };
-        } else if (action === 'reset_config') {
+        if (action === 'reset_config') {
             await supabase.from('bot_guild_config').delete().eq('guild_id', guildId);
-            result = { ok: true, message: 'Config reset' };
-        } else {
-            return badRequest(res, 'UNKNOWN_ACTION');
+            const result = { ok: true, message: 'Config reset' };
+            await addAudit(`discord_bot_action:${action}`, actor, { guildId, payload });
+            return ok(res, result);
         }
 
-        await addAudit(`discord_bot_action:${action}`, actor, { guildId, payload });
-        return ok(res, result);
+        return badRequest(res, 'UNKNOWN_ACTION');
     } catch (err) {
         console.error('[discord-bot-action]', err.message);
         return serverError(res, err);

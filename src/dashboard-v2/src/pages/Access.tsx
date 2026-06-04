@@ -28,6 +28,34 @@ interface RoleCacheEntry {
   created_at: string;
 }
 
+interface PendingRequest {
+  discordId: string;
+  displayName: string;
+  avatarUrl?: string;
+  requestedAt?: string;
+}
+
+interface DbRoleCachePayload {
+  discordId?: string;
+  identityKey?: string;
+  id?: string;
+  displayName?: string;
+  name?: string;
+  role?: string;
+  updatedAt?: string;
+}
+
+interface AdminApiClientType {
+  listGoogleAllowlist(): Promise<AllowlistEntry[]>;
+  listRoleCache(): Promise<DbRoleCachePayload[]>;
+  listStaffAccessRequests(): Promise<PendingRequest[]>;
+  setGoogleAllowlist(email: string, data: Record<string, unknown>): Promise<unknown>;
+  setRoleCache(identityKey: string, data: Record<string, unknown>): Promise<unknown>;
+  deleteGoogleAllowlist(email: string): Promise<unknown>;
+  deleteRoleCache(identityKey: string): Promise<unknown>;
+  approveStaffAccess(discordId: string, action: string, role: string, rejectionReason?: string): Promise<unknown>;
+}
+
 export default function Access() {
   const { session } = useAuth();
   const { showToast } = useToast();
@@ -55,7 +83,7 @@ export default function Access() {
   // SECTION: PENDING_REQUESTS_STATE
   // PURPOSE: Staff access approval workflow — pending requests loaded from admin API.
   const canApproveAccess = hasPermission(session?.role || '', 'staff:access_approve');
-  const [pendingRequests, setPendingRequests] = useState<any[]>([]);
+  const [pendingRequests, setPendingRequests] = useState<PendingRequest[]>([]);
   const [pendingLoading, setPendingLoading] = useState(false);
   const [approveRole, setApproveRole] = useState<Record<string, string>>({});
   const [actionTarget, setActionTarget] = useState<string | null>(null);
@@ -65,7 +93,7 @@ export default function Access() {
     try {
       // SECTION: ADMIN_API_READS
       // PURPOSE: Read operations go through /api/admin/* to avoid direct client access to critical tables.
-      const { AdminApiClient } = await import('../../../lib/adminApiClient.js') as any;
+      const { AdminApiClient } = await import('../../../lib/adminApiClient.js') as unknown as { AdminApiClient: AdminApiClientType };
       const [alPayload, rcPayload, lg] = await Promise.all([
         AdminApiClient.listGoogleAllowlist().catch(() => []),
         AdminApiClient.listRoleCache().catch(() => []),
@@ -73,7 +101,7 @@ export default function Access() {
       ]);
       setAllowlist(alPayload || []);
       
-      const mappedRoleCache = (rcPayload || []).map((r: any) => {
+      const mappedRoleCache = (rcPayload || []).map((r: DbRoleCachePayload) => {
         const discordId = r.discordId || String(r.identityKey || r.id || '').replace(/^discord:/, '');
         return {
           identity: `discord:${discordId}`,
@@ -108,15 +136,15 @@ export default function Access() {
     try {
       // SECTION: ADMIN_API_ALLOWLIST
       // PURPOSE: Google allowlist writes go through /api/admin/google-allowlist (service-role), not direct REST.
-      const { AdminApiClient } = await import('../../../lib/adminApiClient.js');
+      const { AdminApiClient } = await import('../../../lib/adminApiClient.js') as unknown as { AdminApiClient: AdminApiClientType };
       await AdminApiClient.setGoogleAllowlist(newEmail.trim().toLowerCase(), {
         dashboard_access_role: newEmailRole,
         active: true,
       });
       setNewEmail('');
       await loadData();
-    } catch (err: any) {
-      showToast(`Allowlist eklenemedi: ${err?.message || err}`, 'error');
+    } catch (err: unknown) {
+      showToast(`Allowlist eklenemedi: ${err instanceof Error ? err.message : String(err)}`, 'error');
     } finally {
       setSaving(false);
     }
@@ -130,7 +158,7 @@ export default function Access() {
       const identityKey = `discord:${discordId}`;
       // SECTION: ADMIN_API_ROLE_CACHE
       // PURPOSE: role_cache and staff_profiles writes go through /api/admin/role-cache (service-role), not direct REST.
-      const { AdminApiClient } = await import('../../../lib/adminApiClient.js');
+      const { AdminApiClient } = await import('../../../lib/adminApiClient.js') as unknown as { AdminApiClient: AdminApiClientType };
       await AdminApiClient.setRoleCache(identityKey, {
         discordId,
         displayName: newName.trim(),
@@ -140,8 +168,8 @@ export default function Access() {
       setNewIdentity('');
       setNewName('');
       await loadData();
-    } catch (err: any) {
-      showToast(`Rol cache eklenemedi: ${err?.message || err}`, 'error');
+    } catch (err: unknown) {
+      showToast(`Rol cache eklenemedi: ${err instanceof Error ? err.message : String(err)}`, 'error');
     } finally {
       setSaving(false);
     }
@@ -153,7 +181,7 @@ export default function Access() {
     try {
       // SECTION: ADMIN_API_DELETE
       // PURPOSE: Deletes go through /api/admin/* service-role endpoints.
-      const { AdminApiClient } = await import('../../../lib/adminApiClient.js');
+      const { AdminApiClient } = await import('../../../lib/adminApiClient.js') as unknown as { AdminApiClient: AdminApiClientType };
       if (deleteTarget.type === 'allow') {
         await AdminApiClient.deleteGoogleAllowlist(deleteTarget.id);
       } else {
@@ -162,8 +190,8 @@ export default function Access() {
       }
       setDeleteTarget(null);
       await loadData();
-    } catch (err: any) {
-      showToast(`Silme islemi basarisiz: ${err?.message || err}`, 'error');
+    } catch (err: unknown) {
+      showToast(`Silme islemi basarisiz: ${err instanceof Error ? err.message : String(err)}`, 'error');
     } finally {
       setSaving(false);
     }
@@ -172,7 +200,7 @@ export default function Access() {
   const handleAccessAction = async (discordId: string, action: 'approve' | 'reject' | 'block') => {
     setActionTarget(discordId);
     try {
-      const { AdminApiClient } = await import('../../../lib/adminApiClient.js') as any;
+      const { AdminApiClient } = await import('../../../lib/adminApiClient.js') as unknown as { AdminApiClient: AdminApiClientType };
       const role = approveRole[discordId] || 'discord_moderatoru';
       const rejectionReason = action === 'reject' ? 'Yonetici tarafindan reddedildi' : undefined;
       await AdminApiClient.approveStaffAccess(discordId, action, role, rejectionReason);
@@ -180,8 +208,8 @@ export default function Access() {
       const actionMsg = action === 'approve' ? 'onaylandi' : action === 'reject' ? 'reddedildi' : 'engellendi';
       showToast(`Erisim talebi ${actionMsg}.`, 'success');
       await loadData();
-    } catch (err: any) {
-      showToast(`Islem basarisiz: ${err?.message || err}`, 'error');
+    } catch (err: unknown) {
+      showToast(`Islem basarisiz: ${err instanceof Error ? err.message : String(err)}`, 'error');
     } finally {
       setActionTarget(null);
     }
@@ -214,7 +242,7 @@ export default function Access() {
       } else {
         showToast('Onarım tamamlandı ancak beklenen yanıt alınamadı.', 'info');
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('[Access] Repair failed:', err);
       showToast('Onarım işlemi sırasında bir hata oluştu.', 'error');
     } finally {

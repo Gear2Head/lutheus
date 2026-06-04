@@ -26,7 +26,7 @@ export default function WelcomeMessagesPage() {
     }));
   };
 
-  const handleUpdate = (key: string, value: any) => {
+  const handleUpdate = (key: string, value: unknown) => {
     updateConfig((prev) => ({
       ...prev,
       welcomeSettings: {

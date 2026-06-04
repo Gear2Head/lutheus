@@ -15,7 +15,7 @@ interface ScanProgress {
   elapsed: number;
 }
 
-function sendToServiceWorker(action: string, options?: object): Promise<any> {
+function sendToServiceWorker(action: string, options?: object): Promise<unknown> {
   return new Promise((resolve, reject) => {
     if (typeof chrome === 'undefined' || !chrome.runtime?.sendMessage) {
       // Dev mode - simulate
@@ -61,7 +61,7 @@ export default function Scan() {
 
     // Listen for scan progress events from service worker
     if (typeof chrome !== 'undefined' && chrome.runtime?.onMessage) {
-      const listener = (message: any) => {
+      const listener = (message: { action: string; payload?: { currentPage?: number; totalPages?: number; casesFound?: number } }) => {
         if (message.action === 'SCAN_PROGRESS_EVENT') {
           setProgress((prev) => ({
             ...prev,
@@ -113,7 +113,7 @@ export default function Scan() {
         openAdminOnDone,
       };
       await sendToServiceWorker('RUN_AUTONOMOUS_SCAN', payload);
-    } catch (err: any) {
+    } catch (err) {
       setProgress((prev) => ({ ...prev, status: 'error' }));
       stopElapsed();
     }

@@ -81,8 +81,8 @@ export async function runDbHealthCheck(targetGuildId?: string): Promise<DbHealth
         if (!lastErr && lastRows) {
             lastCaseIds = lastRows.map((r) => r.case_id);
         }
-    } catch (err: any) {
-        pingError = err?.message || 'DB_PROBE_FAILED';
+    } catch (err) {
+        pingError = err instanceof Error ? err.message : 'DB_PROBE_FAILED';
     }
 
     return {

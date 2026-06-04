@@ -109,8 +109,8 @@ export default function Settings() {
     try {
       await clearAllCasesFromDbAndLocal();
       showToast(language === 'tr' ? 'Cezalar baÅŸarÄ±yla temizlendi.' : 'Cases successfully purged.', 'success');
-    } catch (err: any) {
-      showToast(err.message, 'error');
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : String(err), 'error');
     } finally {
       setPurging(false);
     }
@@ -258,15 +258,15 @@ export default function Settings() {
             </div>
             <div className="space-y-3 pt-1">
               {[
-                ['cukEnabled', t('settings.cukEnabled'), t(`tooltip.cukEnabled.${settings.cukEnabled}`)],
-                ['autoValidate', t('settings.autoValidate'), t(`tooltip.autoValidate.${settings.autoValidate}`)],
+                ['cukEnabled', t('settings.cukEnabled'), t(`tooltip.cukEnabled.${settings.cukEnabled}`)] as const,
+                ['autoValidate', t('settings.autoValidate'), t(`tooltip.autoValidate.${settings.autoValidate}`)] as const,
               ].map(([key, label, tooltip]) => (
                 <div key={key} className="flex items-center">
                   <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
                     <input
                       type="checkbox"
-                      checked={(settings as any)[key]}
-                      onChange={(e) => setSettings((s: any) => ({ ...s, [key]: e.target.checked }))}
+                      checked={settings[key]}
+                      onChange={(e) => setSettings((s) => ({ ...s, [key]: e.target.checked }))}
                       className="rounded accent-primary"
                     />
                     <span className="text-muted-foreground">{label}</span>

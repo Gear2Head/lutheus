@@ -4,6 +4,17 @@
 import { SlashCommandBuilder, ChatInputCommandInteraction, EmbedBuilder, PermissionFlagsBits } from 'discord.js';
 import { supabase, guildId as envGuildId } from '../../botConfig.js';
 
+interface ModLogRecord {
+    action: string;
+    metadata?: {
+        targetTag?: string;
+        channelName?: string;
+        actorTag?: string;
+    };
+    created_at?: string;
+    actor_email?: string;
+}
+
 export const ModLogsCommand = {
     data: new SlashCommandBuilder()
         .setName('mod-log')
@@ -36,7 +47,8 @@ export const ModLogsCommand = {
                 queryBuilder = queryBuilder.eq('action', actionFilter);
             }
 
-            const { data: rows, error } = await queryBuilder;
+            const { data, error } = await queryBuilder;
+            const rows = data as ModLogRecord[] | null;
 
             if (error) throw error;
             if (!rows || rows.length === 0) {
@@ -62,7 +74,7 @@ export const ModLogsCommand = {
                 discord_profiles_synced: '🔄', emergency_lockdown: '🚨'
             };
 
-            const lines = rows.map((d: any) => {
+            const lines = rows.map((d) => {
                 const meta = d.metadata || {};
                 const emoji = actionEmoji[d.action] || '📌';
                 const date = d.created_at ? `<t:${Math.floor(new Date(d.created_at).getTime() / 1000)}:R>` : 'Bilinmiyor';
@@ -78,8 +90,9 @@ export const ModLogsCommand = {
                 .setTimestamp();
 
             await interaction.editReply({ embeds: [embed] });
-        } catch (err: any) {
-            await interaction.editReply({ content: `❌ **Hata:** ${err.message}` });
+        } catch (err) {
+            const error = err instanceof Error ? err : new Error(String(err));
+            await interaction.editReply({ content: `❌ **Hata:** ${error.message}` });
         }
     }
 };

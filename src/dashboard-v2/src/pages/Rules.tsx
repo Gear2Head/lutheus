@@ -75,7 +75,7 @@ export default function Rules() {
 
   const active = categories.find((c) => c.id === activeId) || categories[0];
 
-  const update = (field: keyof Category, value: any) => {
+  const update = <K extends keyof Category>(field: K, value: Category[K]) => {
     setCategories((prev) => prev.map((c) => c.id === activeId ? { ...c, [field]: value } : c));
   };
 

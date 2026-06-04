@@ -90,7 +90,7 @@ function buildRows(cases: SapphireCase[], periodDays: number | null, staffProfil
     .map((r, i) => ({ ...r, rank: i + 1 }));
 }
 
-function exportCSV(rows: PointtrainRow[], t: any) {
+function exportCSV(rows: PointtrainRow[], t: (key: string) => string) {
   const headers = `${t('pt.rank')},${t('home.moderator')},${t('home.total')},${t('pt.valid')},${t('pt.invalid')},${t('pt.pending')},${t('home.accuracy')}%,${t('pt.score')},${t('pt.reliability')}`;
   const lines = rows.map((r) =>
     `${r.rank},"${r.name}",${r.sapphireCases},${r.valid},${r.invalid},${r.pending},${r.accuracy},${r.score},"${r.reliability}"`,
@@ -105,7 +105,7 @@ function exportCSV(rows: PointtrainRow[], t: any) {
   URL.revokeObjectURL(url);
 }
 
-function exportMarkdown(rows: PointtrainRow[], t: any): string {
+function exportMarkdown(rows: PointtrainRow[], t: (key: string) => string): string {
   const lines = rows.map((r) =>
     `${r.rank}. **${r.name}** — ${t('home.total')}: ${r.sapphireCases} | ${t('pt.valid')}: ${r.valid} | ${t('pt.invalid')}: ${r.invalid} | %${r.accuracy} | ${t('pt.score')}: ${r.score}`,
   );
@@ -166,7 +166,7 @@ export default function Pointtrain() {
     showToast('CSV indiriliyor', 'success');
   };
 
-  const reliabilityVariant = (r: string): any =>
+  const reliabilityVariant = (r: string): 'success' | 'destructive' | 'warning' | 'default' =>
     r === 'Guvenilir' ? 'success' : r === 'Riskli' ? 'destructive' : 'warning';
 
   return (
@@ -197,8 +197,8 @@ export default function Pointtrain() {
         {[
           { label: t('home.statTotal'), val: totalCases, color: 'text-foreground' },
           { label: t('pt.valid'), val: totalValid, color: 'text-emerald-400' },
-          { label: t('pt.invalid'), val: totalInvalid, color: 'text-destructive' },
-          { label: t('pt.avgAccuracy'), val: `%${avgAccuracy}`, color: avgAccuracy >= 90 ? 'text-emerald-400' : avgAccuracy >= 75 ? 'text-amber-400' : 'text-destructive' },
+          { label: t('pt.invalid'), val: totalInvalid, color: 'text-red-500' },
+          { label: t('pt.avgAccuracy'), val: `%${avgAccuracy}`, color: avgAccuracy >= 70 ? 'text-emerald-400' : avgAccuracy >= 50 ? 'text-amber-400' : 'text-red-500' },
         ].map(({ label, val, color }) => (
           <Card key={label} className="p-4 text-center">
             {loading ? (
@@ -277,9 +277,9 @@ export default function Pointtrain() {
                   </td>
                   <td className="py-3 px-3 text-center font-semibold text-foreground">{r.sapphireCases}</td>
                   <td className="py-3 px-3 text-center text-emerald-400 font-semibold">{r.valid}</td>
-                  <td className="py-3 px-3 text-center text-destructive font-semibold">{r.invalid}</td>
+                  <td className="py-3 px-3 text-center text-red-500 font-semibold">{r.invalid}</td>
                   <td className="py-3 px-3 text-center">
-                    <span className={`font-bold text-sm ${r.accuracy >= 95 ? 'text-emerald-400' : r.accuracy >= 80 ? 'text-amber-400' : 'text-destructive'}`}>
+                    <span className={`font-bold text-sm ${r.accuracy >= 70 ? 'text-emerald-400' : r.accuracy >= 50 ? 'text-amber-400' : 'text-red-500'}`}>
                       %{r.accuracy}
                     </span>
                   </td>

@@ -106,8 +106,9 @@ export default function Cases() {
 
   // Pre-fill search filter from routing state if present
   useEffect(() => {
-    if (location.state && (location.state as any).search) {
-      setSearch((location.state as any).search);
+    const state = location.state as { search?: string } | null;
+    if (state?.search) {
+      setSearch(state.search);
       // Clean up state
       window.history.replaceState({}, document.title);
     }

@@ -4,6 +4,12 @@
 import { SlashCommandBuilder, ChatInputCommandInteraction, EmbedBuilder, PermissionFlagsBits } from 'discord.js';
 import { supabase } from '../../botConfig.js';
 
+interface WarnRecord {
+    createdAt?: string;
+    reason?: string;
+    actorTag?: string;
+}
+
 export const WarnsCommand = {
     data: new SlashCommandBuilder()
         .setName('uyarilar')
@@ -20,16 +26,16 @@ export const WarnsCommand = {
             const key = `warns_${guild.id}_${target.id}`;
 
             const { data: row } = await supabase.from('app_settings').select('*').eq('key', key).maybeSingle();
-            const warnsList = row ? (row.value || []) : [];
+            const warnsList: WarnRecord[] = row ? ((row.value as WarnRecord[]) || []) : [];
 
             if (warnsList.length === 0) {
                 await interaction.editReply({ content: `✅ **${target.tag}** adlı kullanıcının sistemde kayıtlı uyarısı yok.` });
                 return;
             }
 
-            const sortedWarns = [...warnsList].sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 10);
+            const sortedWarns = [...warnsList].sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()).slice(0, 10);
 
-            const warnsText = sortedWarns.map((w: any, i: number) => {
+            const warnsText = sortedWarns.map((w, i: number) => {
                 const date = w.createdAt ? new Date(w.createdAt).toLocaleDateString('tr-TR') : 'Tarih Yok';
                 return `**${i + 1}.** \`${date}\` — ${w.reason} *(${w.actorTag || 'Yetkili'})*`;
             }).join('\n');
@@ -43,8 +49,9 @@ export const WarnsCommand = {
                 .setFooter({ text: 'Lutheus Mod Sistemi' }).setTimestamp();
 
             await interaction.editReply({ embeds: [embed] });
-        } catch (err: any) {
-            await interaction.editReply({ content: `❌ **Hata:** ${err.message}` });
+        } catch (err) {
+            const error = err instanceof Error ? err : new Error(String(err));
+            await interaction.editReply({ content: `❌ **Hata:** ${error.message}` });
         }
     }
 };

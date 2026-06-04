@@ -37,10 +37,34 @@ interface BotActionAudit {
   action: string;
   status: 'pending' | 'completed' | 'failed';
   requested_by_discord_id: string | null;
-  payload: any;
-  result: any;
+  payload: unknown;
+  result: unknown;
   created_at: string;
   processed_at: string | null;
+}
+
+interface RuntimeStatus {
+  is_alive?: boolean;
+  latency_ms?: number;
+  memory_usage_mb?: number;
+  uptime_seconds?: number;
+  last_heartbeat_at?: string;
+}
+
+interface AdminApiClientType {
+  listDiscordBotGuilds(): Promise<Guild[]>;
+  getDiscordBotDashboard(guildId: string): Promise<{
+    config?: BotConfig | null;
+    channels?: { id: string; name: string; type: number }[];
+    roles?: { id: string; name: string; color: number }[];
+    commands?: Command[];
+    runtime?: RuntimeStatus | null;
+    recentActions?: BotActionAudit[];
+    caseCounts?: number;
+    invalidCases?: number;
+  }>;
+  saveDiscordBotConfig(guildId: string, config: BotConfig): Promise<void>;
+  triggerDiscordBotAction(guildId: string, action: string, payload: unknown): Promise<{ success: boolean; message?: string }>;
 }
 
 interface BotConfig {
@@ -77,7 +101,7 @@ export default function BotSetup() {
   const [channels, setChannels] = useState<{ id: string; name: string; type: number }[]>([]);
   const [roles, setRoles] = useState<{ id: string; name: string; color: number }[]>([]);
   const [commands, setCommands] = useState<Command[]>([]);
-  const [runtimeStatus, setRuntimeStatus] = useState<any | null>(null);
+  const [runtimeStatus, setRuntimeStatus] = useState<RuntimeStatus | null>(null);
   const [recentActions, setRecentActions] = useState<BotActionAudit[]>([]);
   const [caseCounts, setCaseCounts] = useState<number>(0);
   const [invalidCases, setInvalidCases] = useState<number>(0);
@@ -90,14 +114,15 @@ export default function BotSetup() {
   const loadGuilds = async () => {
     setLoadingGuilds(true);
     try {
-      const { AdminApiClient } = await import('../../../lib/adminApiClient.js') as any;
+      const { AdminApiClient } = await import('../../../lib/adminApiClient.js') as unknown as { AdminApiClient: AdminApiClientType };
       const data = await AdminApiClient.listDiscordBotGuilds();
       setGuilds(data || []);
       if (data && data.length > 0) {
         setSelectedGuildId(data[0].id);
       }
-    } catch (err: any) {
-      showToast(`Discord sunuculari yuklenemedi: ${err?.message || err}`, 'error');
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      showToast(`Discord sunuculari yuklenemedi: ${errMsg}`, 'error');
     } finally {
       setLoadingGuilds(false);
     }
@@ -108,7 +133,7 @@ export default function BotSetup() {
     if (!guildId) return;
     setLoadingDetails(true);
     try {
-      const { AdminApiClient } = await import('../../../lib/adminApiClient.js') as any;
+      const { AdminApiClient } = await import('../../../lib/adminApiClient.js') as unknown as { AdminApiClient: AdminApiClientType };
       const data = await AdminApiClient.getDiscordBotDashboard(guildId);
       setBotConfig(data.config || null);
       setChannels(data.channels || []);
@@ -118,8 +143,9 @@ export default function BotSetup() {
       setRecentActions(data.recentActions || []);
       setCaseCounts(data.caseCounts || 0);
       setInvalidCases(data.invalidCases || 0);
-    } catch (err: any) {
-      showToast(`Sunucu detaylari yuklenemedi: ${err?.message || err}`, 'error');
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      showToast(`Sunucu detaylari yuklenemedi: ${errMsg}`, 'error');
     } finally {
       setLoadingDetails(false);
     }
@@ -142,30 +168,32 @@ export default function BotSetup() {
     if (!selectedGuildId || !botConfig) return;
     setSaving(true);
     try {
-      const { AdminApiClient } = await import('../../../lib/adminApiClient.js') as any;
+      const { AdminApiClient } = await import('../../../lib/adminApiClient.js') as unknown as { AdminApiClient: AdminApiClientType };
       await AdminApiClient.saveDiscordBotConfig(selectedGuildId, botConfig);
       showToast('Bot yapilandirmasi basariyla kaydedildi.', 'success');
       await loadDashboardDetails(selectedGuildId);
-    } catch (err: any) {
-      showToast(`Yapilandirma kaydedilemedi: ${err?.message || err}`, 'error');
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      showToast(`Yapilandirma kaydedilemedi: ${errMsg}`, 'error');
     } finally {
       setSaving(false);
     }
   };
 
-  const handleTriggerAction = async (action: string, payload: any = {}) => {
+  const handleTriggerAction = async (action: string, payload: unknown = {}) => {
     if (!selectedGuildId) return;
     setActionLoading(action);
     try {
-      const { AdminApiClient } = await import('../../../lib/adminApiClient.js') as any;
+      const { AdminApiClient } = await import('../../../lib/adminApiClient.js') as unknown as { AdminApiClient: AdminApiClientType };
       const res = await AdminApiClient.triggerDiscordBotAction(selectedGuildId, action, payload);
       if (res.success) {
         showToast(res.message || 'Islem tetiklendi.', 'success');
       }
       // Refresh dashboard details to show updated queue / actions list
       setTimeout(() => loadDashboardDetails(selectedGuildId), 1500);
-    } catch (err: any) {
-      showToast(`Islem basarisiz: ${err?.message || err}`, 'error');
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      showToast(`Islem basarisiz: ${errMsg}`, 'error');
     } finally {
       setActionLoading(null);
     }

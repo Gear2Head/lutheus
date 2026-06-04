@@ -423,13 +423,6 @@ async function handleStaffProfiles(req, res) {
             return ok(res, { items: seededStaffProfiles(), warning: 'STAFF_PROFILES_UNAVAILABLE' });
         }
 
-        const { data: authorRows, error: authorError } = await supabase
-            .from('sapphire_cases')
-            .select('author_discord_id, author_display_name, author_avatar_url, created_at_sapphire')
-            .not('author_discord_id', 'is', null)
-            .limit(1000);
-        if (authorError) console.warn('[admin] sapphire author read failed:', authorError.message || authorError);
-
         const items = (rows || []).map((row) => ({
             id: row.discord_id || row.id,
             discordId: row.discord_id,
@@ -455,38 +448,8 @@ async function handleStaffProfiles(req, res) {
         }));
 
         const existingIds = new Set(items.map((item) => item.discordId).filter(Boolean));
-        const authorItems = [];
-        for (const row of authorRows || []) {
-            const discordId = row.author_discord_id;
-            if (!discordId || existingIds.has(discordId)) continue;
-            existingIds.add(discordId);
-            // SECTION: SAPPHIRE_AUTHOR_PENDING
-            // PURPOSE: Automatically detected Sapphire case authors must NOT become approved/active staff.
-            // They are inserted as pending/unapproved with sapphire-author source flag.
-            authorItems.push({
-                id: discordId,
-                discordId,
-                discordUserId: discordId,
-                sapphireAuthorId: discordId,
-                email: null,
-                displayName: row.author_display_name || `User ${discordId}`,
-                name: row.author_display_name || `User ${discordId}`,
-                username: null,
-                avatar: row.author_avatar_url || null,
-                avatarUrl: row.author_avatar_url || null,
-                role: 'pending',
-                isActiveStaff: false,
-                accessStatus: 'pending',
-                permissionGroup: 'pending',
-                permissionLevel: 0,
-                rawPayload: { source: 'sapphire-author' },
-                source: 'sapphire-author',
-                updatedAt: row.created_at_sapphire,
-                lastSeen: row.created_at_sapphire
-            });
-        }
         const seeded = seededStaffProfiles().filter((item) => !existingIds.has(item.discordId));
-        return ok(res, { items: [...items, ...authorItems, ...seeded] });
+        return ok(res, { items: [...items, ...seeded] });
     }
 
     if (req.method === 'POST' || req.method === 'PATCH') {

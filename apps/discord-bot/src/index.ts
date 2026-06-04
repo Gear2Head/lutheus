@@ -104,7 +104,8 @@ const commands = [
             const logChannel = interaction.options.getChannel('log_channel', true);
             const alertChannel = interaction.options.getChannel('alert_channel', true);
             const statsChannel = interaction.options.getChannel('stats_channel', false);
-            await supabase.from('bot_guild_config').upsert([{
+            
+            const configRow = {
                 guild_id: interaction.guildId,
                 log_channel_id: logChannel.id,
                 alert_channel_id: alertChannel.id,
@@ -115,8 +116,48 @@ const commands = [
                 setup_completed_at: new Date().toISOString(),
                 updated_at: new Date().toISOString(),
                 updated_by: interaction.user.id
-            }], { onConflict: 'guild_id' });
-            await interaction.reply({ content: 'Lutheus bot ayarlari kaydedildi.', ephemeral: true });
+            };
+
+            await supabase.from('bot_guild_config').upsert([configRow], { onConflict: 'guild_id' });
+            
+            // Immediately update the local cache
+            guildConfigsCache[interaction.guildId] = mapDbConfig(configRow);
+
+            // Send test embeds
+            const logEmbed = new EmbedBuilder()
+                .setTitle('⚙️ Log Kanalı Ayarlandı')
+                .setColor(0x2ed573)
+                .setDescription('Bu kanal **Lutheus Moderasyon Log** kanalı olarak başarıyla tanımlandı ve ayarlandı.')
+                .setTimestamp();
+            await logChannel.send({ embeds: [logEmbed] }).catch(() => null);
+
+            const alertEmbed = new EmbedBuilder()
+                .setTitle('🚨 Alarm Kanalı Ayarlandı')
+                .setColor(0xffa502)
+                .setDescription('Bu kanal **Lutheus CUK Alarm** kanalı olarak başarıyla tanımlandı ve ayarlandı.')
+                .setTimestamp();
+            await alertChannel.send({ embeds: [alertEmbed] }).catch(() => null);
+
+            if (statsChannel) {
+                const statsEmbed = new EmbedBuilder()
+                    .setTitle('📊 İstatistik Kanalı Ayarlandı')
+                    .setColor(0x3742fa)
+                    .setDescription('Bu kanal **Lutheus İstatistik** kanalı olarak başarıyla tanımlandı ve ayarlandı.')
+                    .setTimestamp();
+                await statsChannel.send({ embeds: [statsEmbed] }).catch(() => null);
+            }
+
+            // Send a test DM to the executor
+            const dmEmbed = new EmbedBuilder()
+                .setTitle('✉️ Lutheus DM Testi')
+                .setColor(0x7c5af5)
+                .setDescription(`Merhaba **${interaction.user.username}**!\nLutheus bot kurulumu başarıyla tamamlandı ve DM gönderme sisteminin çalıştığı doğrulandı.`)
+                .setTimestamp();
+            await interaction.user.send({ embeds: [dmEmbed] }).catch((err: any) => {
+                console.warn('Could not send welcome DM:', err.message);
+            });
+
+            await interaction.reply({ content: 'Lutheus bot ayarlari kaydedildi ve test mesajları gönderildi.', ephemeral: true });
         }
     },
     EmergencyLockdownCommand,
@@ -345,64 +386,7 @@ let lastTriggerTimestamp = 0;
 function startSupabasePolling() {
     console.log('Discord Bot: Initializing Supabase polling...');
 
-    // 1. Poll new cases every 10 seconds
-    setInterval(async () => {
-        try {
-            let queryBuilder = supabase
-                .from('sapphire_cases')
-                .select('*')
-                .gt('scraped_at', lastProcessedTime)
-                .order('scraped_at', { ascending: true });
-
-            if (guildId) {
-                queryBuilder = queryBuilder.eq('guild_id', guildId);
-            }
-
-            const { data: rows, error } = await queryBuilder;
-
-            if (error) {
-                console.error('Discord Bot: Poll cases error:', error.message);
-                setLastPollError(error.message);
-                return;
-            }
-            setLastPollError(null);
-
-            if (rows && rows.length > 0) {
-                for (const row of rows) {
-                    const data = {
-                        caseId: row.case_id,
-                        sourceUrl: row.case_url,
-                        user: row.punished_user_display_name,
-                        userId: row.punished_user_discord_id,
-                        authorName: row.author_display_name,
-                        authorId: row.author_discord_id,
-                        type: row.type,
-                        duration: row.duration_raw || (row.is_permanent ? 'Süresiz' : ''),
-                        reason: row.reason_raw,
-                        scrapedAt: row.scraped_at,
-                        isTest: row.raw_payload?.isTest || row.legacy_payload?.isTest || false,
-                        reviewStatus: row.cuk_verdict || 'pending'
-                    };
-
-                    if (data.isTest) {
-                        console.log('Discord Bot: Received a test log trigger!');
-                        await sendTestCaseLog(data);
-                        await supabase.from('sapphire_cases').delete().eq('case_id', row.case_id);
-                        continue;
-                    }
-
-                    await sendCaseEmbedLog(data);
-                }
-                const times = rows.map(r => new Date(r.scraped_at).getTime());
-                const maxTime = new Date(Math.max(...times));
-                lastProcessedTime = maxTime.toISOString();
-                setPollCursor(lastProcessedTime);
-            }
-        } catch (err: any) {
-            console.error('Discord Bot: Poll cases loop failure:', err.message);
-            setLastPollError(err.message);
-        }
-    }, 10000);
+    // Sapphire case polling has been removed as requested.
 
     // 2. Poll app settings sync triggers every 15 seconds
     setInterval(async () => {
@@ -592,11 +576,17 @@ client.once('clientReady', async () => {
 // SECTION: AUDIT_LOG_LISTENERS
 // PURPOSE: Discord native moderasyon olaylarını (ban, unban, kick, timeout) otomatik log kanalına iletir.
 function setupAuditLogListeners() {
+    const getLogChannelId = (guildId: string | null) => {
+        if (!guildId) return logChannelId;
+        return guildConfigsCache[guildId]?.logChannelId || logChannelId;
+    };
+
     // Member ban added
     client.on('guildBanAdd', async (ban) => {
-        if (!logChannelId) return;
+        const activeLogChannelId = getLogChannelId(ban.guild.id);
+        if (!activeLogChannelId) return;
         try {
-            const channel = await client.channels.fetch(logChannelId).catch(() => null);
+            const channel = await client.channels.fetch(activeLogChannelId).catch(() => null);
             if (!channel || !channel.isTextBased()) return;
             const audit = await ban.guild.fetchAuditLogs({ type: 22 /* BAN_MEMBER */, limit: 1 }).catch(() => null);
             const entry = audit?.entries.first();
@@ -618,9 +608,10 @@ function setupAuditLogListeners() {
 
     // Member ban removed
     client.on('guildBanRemove', async (ban) => {
-        if (!logChannelId) return;
+        const activeLogChannelId = getLogChannelId(ban.guild.id);
+        if (!activeLogChannelId) return;
         try {
-            const channel = await client.channels.fetch(logChannelId).catch(() => null);
+            const channel = await client.channels.fetch(activeLogChannelId).catch(() => null);
             if (!channel || !channel.isTextBased()) return;
             const audit = await ban.guild.fetchAuditLogs({ type: 23 /* UNBAN_MEMBER */, limit: 1 }).catch(() => null);
             const entry = audit?.entries.first();
@@ -643,13 +634,14 @@ function setupAuditLogListeners() {
     // Member removed (kick detection & goodbye module)
     client.on('guildMemberRemove', async (member) => {
         // 1. Kick detection
-        if (logChannelId) {
+        const activeLogChannelId = getLogChannelId(member.guild.id);
+        if (activeLogChannelId) {
             try {
                 await new Promise(r => setTimeout(r, 500)); // Small delay to ensure audit log is available
                 const audit = await member.guild.fetchAuditLogs({ type: 20 /* KICK_MEMBER */, limit: 1 }).catch(() => null);
                 const entry = audit?.entries.first();
                 if (entry && entry.targetId === member.id && Date.now() - entry.createdTimestamp <= 5000) {
-                    const channel = await client.channels.fetch(logChannelId).catch(() => null);
+                    const channel = await client.channels.fetch(activeLogChannelId).catch(() => null);
                     if (channel && channel.isTextBased()) {
                         const embed = new EmbedBuilder()
                             .setTitle('👢 Kullanıcı Atıldı (Kick)')
@@ -695,12 +687,13 @@ function setupAuditLogListeners() {
 
     // Member timeout (via member update)
     client.on('guildMemberUpdate', async (oldMember, newMember) => {
-        if (!logChannelId) return;
+        const activeLogChannelId = getLogChannelId(newMember.guild.id);
+        if (!activeLogChannelId) return;
         const wasTimedOut = !!oldMember.communicationDisabledUntil;
         const isTimedOut = !!newMember.communicationDisabledUntil;
         if (wasTimedOut === isTimedOut) return;
         try {
-            const channel = await client.channels.fetch(logChannelId).catch(() => null);
+            const channel = await client.channels.fetch(activeLogChannelId).catch(() => null);
             if (!channel || !channel.isTextBased()) return;
             const audit = await newMember.guild.fetchAuditLogs({ type: 24 /* MEMBER_UPDATE */, limit: 1 }).catch(() => null);
             const entry = audit?.entries.first();
@@ -738,9 +731,10 @@ function setupAuditLogListeners() {
 
     // Bulk message delete log
     client.on('messageDeleteBulk', async (messages, channel) => {
-        if (!logChannelId) return;
+        const activeLogChannelId = getLogChannelId(channel.guild?.id || null);
+        if (!activeLogChannelId) return;
         try {
-            const logChannel = await client.channels.fetch(logChannelId).catch(() => null);
+            const logChannel = await client.channels.fetch(activeLogChannelId).catch(() => null);
             if (!logChannel || !logChannel.isTextBased()) return;
             const embed = new EmbedBuilder()
                 .setTitle('🧹 Toplu Mesaj Silindi')

@@ -15,7 +15,6 @@ const NAV_ITEMS = [
   { icon: LayoutDashboard, label: 'Home', path: '/home', translationKey: 'nav.home' },
   { icon: ShieldAlert, label: 'Cases', path: '/cases', translationKey: 'nav.cases' },
   { icon: Users, label: 'Staff', path: '/staff', translationKey: 'nav.staff' },
-  { icon: Activity, label: 'Scan', path: '/scan', translationKey: 'nav.scan' },
   { icon: Zap, label: 'Pointtrain', path: '/pointtrain', translationKey: 'nav.pointtrain' },
   { icon: BookOpen, label: 'CUK Editörü', path: '/rules', translationKey: 'nav.rules' },
   { icon: Bot, label: 'AI Agent', path: '/ai-agent', translationKey: 'nav.ai-agent' },

@@ -9,7 +9,6 @@ import AppLayout from './layouts/AppLayout';
 const Home = lazy(() => import('./pages/Home'));
 const Cases = lazy(() => import('./pages/Cases'));
 const Staff = lazy(() => import('./pages/Staff'));
-const Scan = lazy(() => import('./pages/Scan'));
 const Pointtrain = lazy(() => import('./pages/Pointtrain'));
 const Rules = lazy(() => import('./pages/Rules'));
 const AiAgent = lazy(() => import('./pages/AiAgent'));
@@ -46,7 +45,6 @@ export default function App() {
                 <Route path="home" element={<Suspense fallback={<PageLoader />}><Home /></Suspense>} />
                 <Route path="cases" element={<Suspense fallback={<PageLoader />}><Cases /></Suspense>} />
                 <Route path="staff" element={<Suspense fallback={<PageLoader />}><Staff /></Suspense>} />
-                <Route path="scan" element={<Suspense fallback={<PageLoader />}><Scan /></Suspense>} />
                 <Route path="pointtrain" element={<Suspense fallback={<PageLoader />}><Pointtrain /></Suspense>} />
                 <Route path="rules" element={<Suspense fallback={<PageLoader />}><Rules /></Suspense>} />
                 <Route path="ai-agent" element={<Suspense fallback={<PageLoader />}><AiAgent /></Suspense>} />

@@ -34,6 +34,8 @@ const supabaseUrl =
   'https://jxhzhaqqtlynbnntwpyu.supabase.co';
 
 const supabaseKey =
+  process.env.SUPABASE_SERVICE_ROLE_KEY ||
+  process.env.SUPABASE_SERVICE_KEY ||
   process.env.SUPABASE_ANON_KEY ||
   process.env.SUPABASE_PUBLISHABLE_KEY ||
   process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
@@ -45,7 +47,7 @@ if (!supabaseUrl) {
 
 if (!supabaseKey) {
   throw new Error(
-    'SUPABASE_ANON_KEY, SUPABASE_PUBLISHABLE_KEY, or NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY is required'
+    'SUPABASE_SERVICE_ROLE_KEY, SUPABASE_ANON_KEY, or NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY is required'
   );
 }
 

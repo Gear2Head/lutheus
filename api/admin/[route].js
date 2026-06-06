@@ -329,6 +329,18 @@ async function handleRoleCache(req, res) {
         };
 
         // Ensure staff_profiles entry exists to satisfy the foreign key constraint in role_cache
+        let existingStaffRaw = {};
+        try {
+            const { data: existingStaff } = await supabase
+                .from('staff_profiles')
+                .select('raw_payload')
+                .eq('discord_id', discordId)
+                .maybeSingle();
+            if (existingStaff) {
+                existingStaffRaw = existingStaff.raw_payload || {};
+            }
+        } catch (_) {}
+
         const staffPayload = {
             discord_id: discordId,
             display_name: req.body?.displayName || `User ${discordId}`,
@@ -340,7 +352,11 @@ async function handleRoleCache(req, res) {
             is_active_staff: active && role !== 'pending',
             removal_reason: active ? null : (req.body?.removalReason || 'manual_inactive'),
             removed_from_staff_at: active ? null : new Date().toISOString(),
-            raw_payload: payload.raw_payload,
+            raw_payload: {
+                ...existingStaffRaw,
+                ...(payload.raw_payload || {}),
+                discordGuilds: (payload.raw_payload && payload.raw_payload.discordGuilds) || existingStaffRaw.discordGuilds || null
+            },
             updated_at: new Date().toISOString()
         };
         let warning = null;
@@ -498,6 +514,28 @@ async function handleStaffProfiles(req, res) {
             .filter(Boolean);
 
         if (!rows.length) return badRequest(res, 'STAFF_PROFILES_REQUIRED');
+
+        // PRESERVE discordGuilds in raw_payload
+        try {
+            const discordIds = rows.map(r => r.discord_id);
+            const { data: existingProfiles } = await supabase
+                .from('staff_profiles')
+                .select('discord_id, raw_payload')
+                .in('discord_id', discordIds);
+
+            const existingMap = new Map(existingProfiles?.map(p => [p.discord_id, p.raw_payload]) || []);
+
+            for (const row of rows) {
+                const existingRaw = existingMap.get(row.discord_id) || {};
+                row.raw_payload = {
+                    ...existingRaw,
+                    ...row.raw_payload,
+                    discordGuilds: row.raw_payload.discordGuilds || existingRaw.discordGuilds || null
+                };
+            }
+        } catch (mergeErr) {
+            console.warn('[admin] Failed to merge staff_profiles raw_payload:', mergeErr.message);
+        }
 
         let warning = null;
         const { error } = await supabase.from('staff_profiles').upsert(rows, { onConflict: 'discord_id' });
@@ -1000,15 +1038,18 @@ async function handleDiscordBotAction(req, res) {
         const actor = await requirePermission(req, 'discord_bot:update');
         const { guildId, action, payload = {} } = req.body || {};
 
-        if (!guildId || !/^\d{17,20}$/.test(guildId)) {
-            return badRequest(res, 'INVALID_GUILD_ID');
-        }
         if (!action) {
             return badRequest(res, 'MISSING_ACTION');
         }
 
-        await assertManageableInstalledGuild(actor, guildId);
-        const configs = await getBotGuildConfig(guildId);
+        if (action !== 'dispatch_direct_message' && (!guildId || !/^\d{17,20}$/.test(guildId))) {
+            return badRequest(res, 'INVALID_GUILD_ID');
+        }
+
+        if (action !== 'dispatch_direct_message') {
+            await assertManageableInstalledGuild(actor, guildId);
+        }
+        const configs = action !== 'dispatch_direct_message' ? await getBotGuildConfig(guildId) : {};
 
         if (action === 'test_welcome') {
             const channelId = configs?.welcomeSettings?.channelId;

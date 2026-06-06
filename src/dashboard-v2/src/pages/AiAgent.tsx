@@ -188,6 +188,27 @@ export default function AiAgent() {
     reader.readAsDataURL(file);
   };
 
+  const handlePaste = (e: React.ClipboardEvent<any>) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (const item of Array.from(items)) {
+      if (item.type.startsWith('image/')) {
+        const file = item.getAsFile();
+        if (file) {
+          const reader = new FileReader();
+          reader.onload = () => {
+            setSelectedImage(reader.result as string);
+            showToast('Panodan görsel yüklendi!', 'success');
+          };
+          reader.onerror = () => showToast(t('ai.uploadError'), 'error');
+          reader.readAsDataURL(file);
+          e.preventDefault();
+          break;
+        }
+      }
+    }
+  };
+
   // ── Chat submit
   const handleSubmit = async (e?: React.FormEvent) => {
     e?.preventDefault();
@@ -289,7 +310,7 @@ export default function AiAgent() {
   ];
 
   return (
-    <div className="max-w-4xl mx-auto flex flex-col space-y-4 animate-in">
+    <div onPaste={handlePaste} className="max-w-4xl mx-auto flex flex-col space-y-4 animate-in">
 
       {/* Header */}
       <div className="mb-2">
@@ -398,6 +419,7 @@ export default function AiAgent() {
                 <ImageIcon className="w-4 h-4" />
               </button>
               <input value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSubmit(); } }}
+                onPaste={handlePaste}
                 placeholder={t('ai.placeholder')}
                 className="flex-1 h-11 bg-card border border-border/50 rounded-2xl px-4 text-sm focus:outline-none focus:ring-1 focus:ring-primary/50 placeholder:text-muted-foreground" />
               <button type="submit" disabled={(!input.trim() && !selectedImage) || loading}

@@ -167,3 +167,7 @@ src/utils/supabase/**
 zip
 .env*.local
 .docs
+.tmp.driveupload/
+.tmp.driveupload/*
+.tmp.driveupload
+scripts

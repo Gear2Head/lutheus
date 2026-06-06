@@ -8,8 +8,20 @@ import {
     Partials,
     SlashCommandBuilder,
     PermissionFlagsBits,
-    ChannelType
+    ChannelType,
+    ActionRowBuilder,
+    ButtonBuilder,
+    ButtonStyle,
+    ChannelType as DCChannelType
 } from 'discord.js';
+import {
+    callGroq,
+    consumeQuota,
+    getRemainingQuota,
+    normalizeRole,
+    writeAiQueryAudit,
+    fetchPointtrainStats
+} from './lib/groq.js';
 import { createServer } from 'node:http';
 import { supabase, botToken, logChannelId, guildId } from './botConfig.js';
 import { EmergencyLockdownCommand } from './commands/critical/EmergencyLockdown.js';
@@ -40,9 +52,11 @@ const client = new Client({
         GatewayIntentBits.GuildMembers,
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.GuildBans,
-        GatewayIntentBits.GuildMessageReactions
+        GatewayIntentBits.GuildMessageReactions,
+        GatewayIntentBits.DirectMessages,
+        GatewayIntentBits.MessageContent,
     ],
-    partials: [Partials.Message, Partials.Reaction, Partials.User]
+    partials: [Partials.Message, Partials.Reaction, Partials.User, Partials.Channel]
 });
 
 // SECTION: HEALTH_SERVER
@@ -176,6 +190,92 @@ const commands = [
     UnbanCommand,
     RaporCommand,
     ...diagnosticCommands,
+    // SECTION: DM_DUYURU_COMMAND
+    // PURPOSE: Yöneticilerin bot üzerinden seçilen yetkililere DM duyurusu göndermesini sağlar.
+    {
+        data: new SlashCommandBuilder()
+            .setName('duyuru')
+            .setDescription('Seçilen yetkili rütbesine veya kullanıcıya bot DM ile mesaj gönderir.')
+            .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+            .addStringOption(opt =>
+                opt.setName('mesaj')
+                    .setDescription('Gönderilecek mesaj içeriği')
+                    .setRequired(true))
+            .addStringOption(opt =>
+                opt.setName('hedef_rol')
+                    .setDescription('Mesaj gönderilecek rütbe (boş bırakılırsa kullanıcı seçilir)')
+                    .setRequired(false)
+                    .addChoices(
+                        { name: 'Tüm Aktif Yetkililer', value: 'all' },
+                        { name: 'Discord Moderatörü', value: 'discord_moderatoru' },
+                        { name: 'Kıdemli Moderatör', value: 'kidemli_discord_moderatoru' },
+                        { name: 'Senior Moderatör', value: 'senior_moderator' },
+                        { name: 'Destek Ekibi', value: 'discord_destek_ekibi' },
+                        { name: 'Discord Yöneticisi', value: 'discord_yoneticisi' },
+                    ))
+            .addUserOption(opt =>
+                opt.setName('kullanici')
+                    .setDescription('Belirli bir kullanıcıya gönder (hedef_rol ile birlikte kullanılmaz)')
+                    .setRequired(false)),
+        async execute(interaction: any) {
+            await interaction.deferReply({ ephemeral: true });
+            const mesaj = interaction.options.getString('mesaj', true);
+            const hedefRol = interaction.options.getString('hedef_rol', false);
+            const hedefKullanici = interaction.options.getUser('kullanici', false);
+
+            const embed = new EmbedBuilder()
+                .setTitle('📢 Lutheus Yönetim Duyurusu')
+                .setColor(0x7c5af5)
+                .setDescription(mesaj)
+                .addFields({ name: '👮 Gönderen', value: `**${interaction.user.username}**`, inline: true })
+                .setTimestamp()
+                .setFooter({ text: 'Lutheus Bot • Yönetim Duyurusu' });
+
+            let sentCount = 0;
+            let failCount = 0;
+
+            if (hedefKullanici) {
+                try {
+                    await hedefKullanici.send({ embeds: [embed] });
+                    sentCount++;
+                } catch {
+                    failCount++;
+                }
+            } else {
+                // Veritabanından aktif yetkililerle eşleştir
+                let query = supabase.from('staff_profiles').select('discord_id, display_name, staff_rank').eq('is_active_staff', true);
+                if (hedefRol && hedefRol !== 'all') {
+                    query = query.eq('staff_rank', hedefRol);
+                }
+                const { data: profiles } = await query;
+                for (const profile of profiles || []) {
+                    if (!profile.discord_id || !/^\d{17,20}$/.test(profile.discord_id)) continue;
+                    try {
+                        const user = await client.users.fetch(profile.discord_id);
+                        await user.send({ embeds: [embed] });
+                        sentCount++;
+                    } catch {
+                        failCount++;
+                    }
+                }
+            }
+
+            // Audit log
+            try {
+                await supabase.from('audit_logs').insert([{
+                    action: 'bot_dm_broadcast',
+                    actor_discord_id: interaction.user.id,
+                    target_type: 'bot_dm',
+                    metadata: { mesaj: mesaj.slice(0, 500), hedefRol, hedefKullanici: hedefKullanici?.id || null, sentCount, failCount },
+                    created_at: new Date().toISOString(),
+                }]);
+            } catch (_) { /* non-fatal */ }
+
+            await interaction.editReply({
+                content: `✅ Duyuru tamamlandı. Gönderildi: **${sentCount}**, Başarısız: **${failCount}**`,
+            });
+        }
+    },
 ];
 
 function mapDbConfig(row: any) {
@@ -466,6 +566,86 @@ function startSupabasePolling() {
                             lockdown: enabled
                         };
                         await completeBotAction(row.id, 'completed', { lockdown: enabled });
+                    } else if (row.action === 'dispatch_direct_message') {
+                        // SECTION: DISPATCH_DM
+                        // PURPOSE: Vercel dashboard üzerinden gönderilen doğrudan DM mesajlarını işler.
+                        const payload = row.payload || {};
+                        const mesaj: string = payload.mesaj || payload.message || '';
+                        const hedefRol: string | null = payload.hedefRol || payload.targetRole || null;
+                        const hedefKullanici: string | null = payload.hedefKullanici || payload.targetUserId || null;
+                        const gonderenAdi: string = payload.gonderenAdi || 'Yönetim';
+
+                        if (!mesaj) {
+                            await completeBotAction(row.id, 'failed', {}, 'MESAJ_BOSH');
+                        } else {
+                            const embed = new EmbedBuilder()
+                                .setTitle('📢 Lutheus Yönetim Duyurusu')
+                                .setColor(0x7c5af5)
+                                .setDescription(mesaj)
+                                .addFields({ name: '👮 Gönderen', value: `**${gonderenAdi}**`, inline: true })
+                                .setTimestamp()
+                                .setFooter({ text: 'Lutheus Bot • Yönetim Mesajı' });
+
+                            let sentCount = 0;
+                            let failCount = 0;
+
+                            if (hedefKullanici) {
+                                try {
+                                    const user = await client.users.fetch(hedefKullanici);
+                                    await user.send({ embeds: [embed] });
+                                    sentCount++;
+                                } catch { failCount++; }
+                            } else {
+                                let query = supabase.from('staff_profiles').select('discord_id').eq('is_active_staff', true);
+                                if (hedefRol && hedefRol !== 'all') query = query.eq('staff_rank', hedefRol);
+                                const { data: profiles } = await query;
+                                for (const profile of profiles || []) {
+                                    if (!profile.discord_id || !/^\d{17,20}$/.test(profile.discord_id)) continue;
+                                    try {
+                                        const user = await client.users.fetch(profile.discord_id);
+                                        await user.send({ embeds: [embed] });
+                                        sentCount++;
+                                    } catch { failCount++; }
+                                }
+                            }
+                            await completeBotAction(row.id, 'completed', { sentCount, failCount });
+                        }
+                    } else if (row.action === 'dispatch_announcement') {
+                        // SECTION: DISPATCH_ANNOUNCEMENT
+                        // PURPOSE: Vercel duyurular sekmesinden yayınlanan duyuruları DM ile iletir.
+                        const { announcementId, targetRoles } = row.payload || {};
+                        if (!announcementId) {
+                            await completeBotAction(row.id, 'failed', {}, 'MISSING_ANNOUNCEMENT_ID');
+                        } else {
+                            const { data: ann } = await supabase.from('announcements').select('*').eq('id', announcementId).maybeSingle();
+                            if (!ann) {
+                                await completeBotAction(row.id, 'failed', {}, 'ANNOUNCEMENT_NOT_FOUND');
+                            } else {
+                                const roles: string[] = targetRoles || ann.target_roles || [];
+                                let query = supabase.from('staff_profiles').select('discord_id, display_name').eq('is_active_staff', true);
+                                if (roles.length > 0) query = query.in('staff_rank', roles);
+                                const { data: profiles } = await query;
+
+                                const embed = new EmbedBuilder()
+                                    .setTitle(`📢 ${ann.title}`)
+                                    .setColor(0x7c5af5)
+                                    .setDescription(ann.body_markdown?.slice(0, 2000) || '')
+                                    .setTimestamp()
+                                    .setFooter({ text: 'Lutheus Bot • Resmi Duyuru' });
+
+                                let sentCount = 0; let failCount = 0;
+                                for (const p of profiles || []) {
+                                    if (!p.discord_id || !/^\d{17,20}$/.test(p.discord_id)) continue;
+                                    try {
+                                        const user = await client.users.fetch(p.discord_id);
+                                        await user.send({ embeds: [embed] });
+                                        sentCount++;
+                                    } catch { failCount++; }
+                                }
+                                try { await supabase.from('announcement_dispatches').insert([{ announcement_id: announcementId, sent_count: sentCount, fail_count: failCount, dispatched_at: new Date().toISOString() }]); } catch (_) { /* non-fatal */ }
+                                await completeBotAction(row.id, 'completed', { sentCount, failCount });
+                            }
+                        }
                     } else {
                         await completeBotAction(row.id, 'failed', {}, 'UNKNOWN_ACTION');
                     }
@@ -888,6 +1068,217 @@ async function handleUserXPGain(message: any) {
         console.warn('Discord Bot: Levels profile update failed:', e.message);
     }
 }
+
+// SECTION: BOT_DM_HANDLER
+// PURPOSE: Discord DM kanallarından gelen yetkili sorgularını işler. Groq AI ile CUK denetimi,
+// Pointtrain sorgulama ve kota yönetimini sağlar.
+client.on('messageCreate', async (message) => {
+    // DM kanalı kontrolü
+    if (!message.author.bot && message.channel.type === (DCChannelType.DM as unknown as number)) {
+        await handleDmMessage(message).catch((err: any) => {
+            console.error('Discord Bot: DM handler error:', err.message);
+        });
+        return;
+    }
+});
+
+async function handleDmMessage(message: any): Promise<void> {
+    const discordId = message.author.id;
+
+    // Yetkili kontrolü: staff_profiles tablosundan is_active_staff = true olanı ara
+    const { data: staffProfile, error: profileErr } = await supabase
+        .from('staff_profiles')
+        .select('discord_id, display_name, staff_rank, is_active_staff')
+        .eq('discord_id', discordId)
+        .maybeSingle();
+
+    if (profileErr || !staffProfile || !staffProfile.is_active_staff) {
+        // Yetkili değil veya aktif değil → sessiz kal
+        return;
+    }
+
+    const role = normalizeRole(staffProfile.staff_rank || 'pending');
+    const displayName = staffProfile.display_name || message.author.username;
+    const content = message.content?.trim() || '';
+    const attachments = Array.from(message.attachments?.values() || []);
+    const imageAttachment = attachments.find((a: any) => a.contentType?.startsWith('image/')) as any;
+    const imageUrl: string | undefined = imageAttachment?.url;
+    const hasImage = Boolean(imageUrl);
+
+    // Pointtrain sorgulama
+    const pointtrainKeywords = ['puanım', 'puanim', 'pointtrain', 'sıralamam', 'siralamam', 'sırlama', 'pt puan', 'pt skor'];
+    if (pointtrainKeywords.some(kw => content.toLowerCase().includes(kw))) {
+        await message.channel.sendTyping().catch(() => null);
+        const targetGuildId = guildId || '1223431616081166336';
+        const stats = await fetchPointtrainStats(discordId, targetGuildId);
+
+        if (!stats.found) {
+            await message.reply('📊 Sana ait kayıtlı ceza verisi bulunamadı. Sapphire taraması henüz yapılmamış olabilir.');
+            return;
+        }
+
+        const accuracyColor = (stats.accuracy || 0) >= 90 ? 0x2ed573 : (stats.accuracy || 0) >= 70 ? 0xffa502 : 0xff4757;
+        const embed = new EmbedBuilder()
+            .setTitle('📊 Pointtrain İstatistiklerim')
+            .setColor(accuracyColor)
+            .setThumbnail(message.author.displayAvatarURL())
+            .addFields(
+                { name: '📋 Toplam Ceza', value: `**${stats.caseCount}**`, inline: true },
+                { name: '✅ Doğru', value: `**${stats.validCount}**`, inline: true },
+                { name: '❌ Hatalı', value: `**${stats.invalidCount}**`, inline: true },
+                { name: '🎯 CUK Uyum', value: `**%${stats.accuracy}**`, inline: true },
+                { name: '🏅 Sıralama', value: `**#${stats.rank}**`, inline: true },
+            )
+            .setFooter({ text: 'Lutheus CUK Denetim Sistemi' })
+            .setTimestamp();
+        await message.reply({ embeds: [embed] });
+        return;
+    }
+
+    // Hiç içerik yok ve görsel de yok → yardım mesajı
+    if (!content && !hasImage) {
+        await message.reply('🤖 Merhaba! Ceza kanıtı veya ceza sebebini/süresini buraya yollayabilirsin. CUK kurallarına göre analiz edeceğim.');
+        return;
+    }
+
+    // Kota kontrolü
+    const quota = await getRemainingQuota(discordId, role);
+    if (quota.remaining <= 0) {
+        const embed = new EmbedBuilder()
+            .setTitle('⚠️ Günlük AI Kotanız Doldu')
+            .setColor(0xff4757)
+            .setDescription(`Bugünlük **${quota.limit}** sorgu hakkınızı kullandınız. Kota gece yarısı sıfırlanır.`)
+            .setFooter({ text: 'Lutheus CUK Denetim Sistemi' });
+        await message.reply({ embeds: [embed] });
+        return;
+    }
+
+    // Typing göstergesi
+    await message.channel.sendTyping().catch(() => null);
+
+    // Kota tüket
+    let quotaResult: { remaining: number; limit: number };
+    try {
+        quotaResult = await consumeQuota(discordId, role);
+    } catch (err: any) {
+        if (err.message === 'AI_DISABLED_FOR_ROLE') {
+            await message.reply('❌ Rütbeniz AI sorgu iznine sahip değil.');
+            return;
+        }
+        if (err.message === 'AI_RATE_LIMIT_EXCEEDED') {
+            await message.reply(`⚠️ Günlük AI kotanız doldu. Kalan: **0/${quota.limit}**. Kota gece yarısı sıfırlanır.`);
+            return;
+        }
+        throw err;
+    }
+
+    // Groq API çağrısı
+    let analysis: Record<string, unknown>;
+    try {
+        analysis = await callGroq({
+            reason_raw: content || undefined,
+            imageUrl: imageUrl || undefined,
+        });
+    } catch (err: any) {
+        await message.reply(`❌ AI analizi başarısız oldu: \`${err.message}\`. Kota tüketilmedi sayılabilir, lütfen tekrar dene.`);
+        return;
+    }
+
+    // OCR okunabilirlik kontrolü
+    if (analysis.imageUnreadable === true) {
+        const warnEmbed = new EmbedBuilder()
+            .setTitle('🔍 Görsel Okunamadı')
+            .setColor(0xffa502)
+            .setDescription('Yüklediğin görselde okunabilir metin, kullanıcı adı veya ihlal içeriği tespit edemedim. Lütfen daha net bir ekran görüntüsü yolla.')
+            .setFooter({ text: `Kalan Kota: ${quotaResult.remaining}/${quotaResult.limit}` });
+        await message.reply({ embeds: [warnEmbed] });
+        return;
+    }
+
+    const isValid = Boolean(analysis.valid);
+    const color = isValid ? 0x2ed573 : 0xff4757;
+    const statusEmoji = isValid ? '✅ GEÇERLİ' : '❌ GEÇERSİZ';
+
+    const resultEmbed = new EmbedBuilder()
+        .setTitle(`🛡️ CUK Denetim Sonucu — ${statusEmoji}`)
+        .setColor(color)
+        .addFields(
+            { name: '📂 Kategori', value: `\`${analysis.categoryMatched || 'Belirlenemedi'}\``, inline: true },
+            { name: '📊 Durum', value: `**${statusEmoji}**`, inline: true },
+            { name: '💬 Özet', value: String(analysis.summary || '-').slice(0, 300) },
+            { name: '⚡ Önerilen Aksiyon', value: String(analysis.recommendedAction || '-').slice(0, 300) },
+        )
+        .setFooter({ text: `Kalan Kota: ${quotaResult.remaining}/${quotaResult.limit} • Lutheus CUK Denetim` })
+        .setTimestamp();
+
+    if (!isValid && analysis.riskReasons) {
+        resultEmbed.addFields({ name: '⚠️ Risk Sebepleri', value: String(analysis.riskReasons).slice(0, 300) });
+    }
+
+    if (analysis.confidenceNote) {
+        resultEmbed.addFields({ name: '🔎 Güven Notu', value: String(analysis.confidenceNote).slice(0, 200) });
+    }
+
+    // Hatalıysa aksiyon butonları ekle
+    let components: any[] = [];
+    if (!isValid) {
+        const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+            new ButtonBuilder()
+                .setCustomId(`cuk_correct_${message.id}`)
+                .setLabel('🔧 Cezayı Düzelt')
+                .setStyle(ButtonStyle.Primary),
+            new ButtonBuilder()
+                .setCustomId(`cuk_report_${message.id}`)
+                .setLabel('📋 Büroya Bildir')
+                .setStyle(ButtonStyle.Danger),
+        );
+        components = [row];
+    }
+
+    await message.reply({ embeds: [resultEmbed], components });
+
+    // Audit log yaz
+    await writeAiQueryAudit({
+        discordId,
+        displayName,
+        role,
+        question: content || '[Görsel Eki]',
+        response: analysis,
+        remaining: quotaResult.remaining,
+        limit: quotaResult.limit,
+        hasImage,
+    });
+}
+
+// CUK buton etkileşim handler
+client.on('interactionCreate', async (interaction) => {
+    if (!interaction.isButton()) return;
+    if (!interaction.customId.startsWith('cuk_correct_') && !interaction.customId.startsWith('cuk_report_')) return;
+
+    const isCorrect = interaction.customId.startsWith('cuk_correct_');
+
+    if (isCorrect) {
+        await interaction.reply({
+            content: '🔧 **Ceza Düzeltme Talebi Alındı.** Yönetim ekibi bu hatayı inceleyecek. İlgili ceza kaydını panelden güncelleyebilirsiniz: https://lutheus.vercel.app',
+            ephemeral: true,
+        });
+    } else {
+        await interaction.reply({
+            content: '📋 **Büro Bildirimi Gönderildi.** Bu hatalı ceza kaydı yönetim bürosuna iletildi. Lutheus panelinden takibini yapabilirsiniz.',
+            ephemeral: true,
+        });
+    }
+
+    try {
+        await supabase.from('audit_logs').insert([{
+            action: isCorrect ? 'cuk_correct_request' : 'cuk_report_request',
+            actor_discord_id: interaction.user.id,
+            target_type: 'bot_dm',
+            metadata: { customId: interaction.customId },
+            created_at: new Date().toISOString(),
+        }]);
+    } catch (_) { /* non-fatal */ }
+});
 
 // 3. AutoMod & message XP listener
 client.on('messageCreate', async (message) => {

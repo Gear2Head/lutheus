@@ -153,11 +153,21 @@ async function handleAuditLogs(req, res) {
 
     await requirePermission(req, PERMISSIONS.AUDIT_LOGS_VIEW);
 
-    const { data: rows, error } = await supabase
+    const { action: actionFilter, limit: limitParam } = req.query || {};
+    const limit = Math.min(Number(limitParam) || 200, 500);
+
+    let query = supabase
         .from('audit_logs')
         .select('*')
         .order('created_at', { ascending: false })
-        .limit(200);
+        .limit(limit);
+
+    // Optional: filter by action type (e.g., ?action=bot_ai_query)
+    if (actionFilter) {
+        query = query.eq('action', actionFilter);
+    }
+
+    const { data: rows, error } = await query;
 
     if (error) return serverError(res, error);
 
@@ -165,12 +175,18 @@ async function handleAuditLogs(req, res) {
         id: row.id,
         action: row.action,
         actorUid: row.actor_user_id,
+        actor_discord_id: row.actor_discord_id || null,
         actorRole: row.metadata?.role || null,
         details: row.metadata,
-        createdAt: row.created_at
+        metadata: row.metadata,
+        createdAt: row.created_at,
+        created_at: row.created_at,
     }));
-    return ok(res, { items });
+
+    // Return both 'items' (legacy) and 'logs' (new dashboard key)
+    return ok(res, { items, logs: items });
 }
+
 
 async function handleGoogleAllowlist(req, res) {
     if (req.method === 'GET') {
@@ -1067,7 +1083,19 @@ async function handleDiscordBotAction(req, res) {
             return ok(res, result);
         }
 
+        if (action === 'dispatch_direct_message') {
+            // SECTION: DISPATCH_DM_ACTION
+            // PURPOSE: Dashboard'dan yetkililere DM göndermek için botu kuyruğa aksiyon ekler.
+            // guildId zorunlu değil; bot kendi yapılandırmasından yetkilileri bulur.
+            const mesaj = payload.mesaj || payload.message || '';
+            if (!mesaj) return badRequest(res, 'MISSING_MESSAGE');
+            const row = await insertBotAction({ guildId: guildId || 'dm_only', action: 'dispatch_direct_message', actor, payload, status: 'pending' });
+            await addAudit('discord_bot_action:dispatch_direct_message', actor, { payload });
+            return ok(res, { ok: true, success: true, message: 'DM action queued for bot runtime', actionId: row.id });
+        }
+
         if (action === 'reset_config') {
+
             await supabase.from('bot_guild_config').delete().eq('guild_id', guildId);
             const result = { ok: true, message: 'Config reset' };
             await addAudit(`discord_bot_action:${action}`, actor, { guildId, payload });

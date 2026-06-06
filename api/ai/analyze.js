@@ -21,11 +21,20 @@ async function resolveLimit(role) {
     return Number(limits[normalizeRole(role)] ?? DEFAULT_GROQ_LIMITS[normalizeRole(role)] ?? 0);
 }
 
-async function consumeQuota(uid, role) {
+// quotaId: Use bare Discord snowflake (no 'discord:' prefix) so that
+// the Vercel panel and the Discord bot (groq.ts) share the same quota key.
+function resolveQuotaId(actor) {
+    // actor.discordId is the bare snowflake extracted from the JWT by serverAuth.js
+    if (actor.discordId && /^\d{17,20}$/.test(actor.discordId)) return actor.discordId;
+    // fallback: strip 'discord:' prefix from uid
+    return String(actor.uid || '').replace(/^discord:/, '');
+}
+
+async function consumeQuota(quotaId, role) {
     const limit = await resolveLimit(role);
     if (limit <= 0) throw new Error('AI_DISABLED_FOR_ROLE');
 
-    const key = `ai_quota_${uid}_${todayKey()}`;
+    const key = `ai_quota_${quotaId}_${todayKey()}`;
 
     const { data: row } = await supabase
         .from('app_settings')
@@ -41,7 +50,7 @@ async function consumeQuota(uid, role) {
     await supabase.from('app_settings').upsert([{
         key,
         value: {
-            uid,
+            discordId: quotaId,
             role,
             date: todayKey(),
             used: used + 1,
@@ -50,7 +59,7 @@ async function consumeQuota(uid, role) {
         }
     }], { onConflict: 'key' });
 
-    return limit;
+    return { limit, used: used + 1, remaining: limit - used - 1 };
 }
 
 async function callGroq(payload) {
@@ -146,12 +155,44 @@ module.exports = async function handler(req, res) {
 
     try {
         const actor = await requirePermission(req, PERMISSIONS.DASHBOARD_VIEW);
-        await consumeQuota(actor.uid, actor.role);
+        const quotaId = resolveQuotaId(actor);
+        const quota = await consumeQuota(quotaId, actor.role);
         const analysis = await callGroq(req.body || {});
-        res.status(200).json({ success: true, role: actor.role, analysis });
+
+        // Write audit log for dashboard queries (same format as bot DM queries)
+        try {
+            const body = req.body || {};
+            await supabase.from('audit_logs').insert([{
+                action: 'bot_ai_query',
+                actor_discord_id: actor.discordId || null,
+                actor_email: actor.email || null,
+                actor_user_id: actor.uid || null,
+                target_type: 'dashboard',
+                metadata: {
+                    discordId: actor.discordId || null,
+                    role: actor.role,
+                    question: String(body.reason_raw || body.question || '').slice(0, 500),
+                    response: analysis,
+                    hasImage: Boolean(body.image),
+                    quotaRemaining: quota.remaining,
+                    quotaLimit: quota.limit,
+                    source: 'dashboard_panel',
+                },
+                created_at: new Date().toISOString(),
+            }]);
+        } catch (auditErr) {
+            console.warn('AI Analyze: Failed to write audit log:', auditErr.message);
+        }
+
+        res.status(200).json({
+            success: true,
+            role: actor.role,
+            analysis,
+            quota: { remaining: quota.remaining, limit: quota.limit, used: quota.used }
+        });
     } catch (error) {
         console.error('AI Analyze API Error:', error);
-        const statusCode = error.statusCode || (error.message === 'AI_RATE_LIMIT_EXCEEDED' ? 429 : 400);
+        const statusCode = error.statusCode || (error.message === 'AI_RATE_LIMIT_EXCEEDED' ? 429 : (error.message === 'AI_DISABLED_FOR_ROLE' ? 403 : 400));
         res.status(statusCode).json({
             success: false,
             error: error.message || 'AI_ANALYZE_FAILED'

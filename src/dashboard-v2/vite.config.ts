@@ -3,6 +3,8 @@ import react from '@vitejs/plugin-react';
 import path from 'path';
 import { defineConfig } from 'vite';
 
+const isWeb = process.env.npm_lifecycle_event === 'build:web';
+
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: {
@@ -10,7 +12,8 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
-  base: '/dashboard/',
+  base: isWeb ? '/dashboard/' : './',
+
   build: {
     outDir: 'dist',
     rollupOptions: {

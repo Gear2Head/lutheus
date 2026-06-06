@@ -54,7 +54,6 @@ const client = new Client({
         GatewayIntentBits.GuildBans,
         GatewayIntentBits.GuildMessageReactions,
         GatewayIntentBits.DirectMessages,
-        GatewayIntentBits.MessageContent,
     ],
     partials: [Partials.Message, Partials.Reaction, Partials.User, Partials.Channel]
 });

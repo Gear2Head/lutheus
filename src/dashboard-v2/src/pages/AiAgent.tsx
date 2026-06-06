@@ -102,7 +102,8 @@ export default function AiAgent() {
   const [dmMessage, setDmMessage] = useState('');
   const [dmSending, setDmSending] = useState(false);
 
-  const isAdmin = hasPermission(session?.profile?.role, 'admin');
+  const canViewHistory = hasPermission(session?.role || '', 'audit_logs:view');
+  const canSendDm = hasPermission(session?.role || '', 'discord_bot:update');
   const avatarUrl = session?.profile?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${session?.profile?.discordId || 'user'}`;
 
   // ── Welcome message
@@ -283,8 +284,8 @@ export default function AiAgent() {
   // ─── TABS ──────────────────────────────────────────────────────────────────
   const tabs: { id: TabId; label: string; icon: React.ElementType }[] = [
     { id: 'chat', label: 'CUK Analiz', icon: Bot },
-    { id: 'history', label: 'Sorgu Geçmişi', icon: History },
-    ...(isAdmin ? [{ id: 'dm' as TabId, label: 'DM Gönder', icon: MessageSquareDot }] : []),
+    ...(canViewHistory ? [{ id: 'history' as TabId, label: 'Sorgu Geçmişi', icon: History }] : []),
+    ...(canSendDm ? [{ id: 'dm' as TabId, label: 'DM Gönder', icon: MessageSquareDot }] : []),
   ];
 
   return (
@@ -526,7 +527,7 @@ export default function AiAgent() {
       )}
 
       {/* ─── TAB: DM Gönder ─────────────────────────────────────────────── */}
-      {activeTab === 'dm' && isAdmin && (
+      {activeTab === 'dm' && canSendDm && (
         <div className="space-y-4">
           <p className="text-sm text-muted-foreground">Bot üzerinden seçilen yetkili veya rütbeye Discord DM mesajı gönder.</p>
 

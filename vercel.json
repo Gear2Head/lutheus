@@ -11,6 +11,10 @@
     {
       "source": "/api/scan/sapphire/:action",
       "destination": "/api/scan/sapphire/[action]?action=:action"
+    },
+    {
+      "source": "/public/:path*",
+      "destination": "/:path*"
     }
   ]
 }

@@ -3,7 +3,6 @@
 
 import { SlashCommandBuilder, ChatInputCommandInteraction, EmbedBuilder } from 'discord.js';
 import { supabase, guildId as envGuildId } from '../botConfig.js';
-import { runDbHealthCheck, formatDiagnosticsBlock } from '../lib/dbDiagnostics.js';
 
 export const QueryStaffCommand = {
     data: new SlashCommandBuilder()
@@ -83,13 +82,8 @@ export const QueryStaffCommand = {
             const totalCount = cases.length;
 
             if (totalCount === 0) {
-                const snapshot = await runDbHealthCheck(targetGuildId);
                 await interaction.editReply({
-                    content: [
-                        `ℹ️ **Ceza Kaydı Bulunamadı:** Yetkili (${targetName || targetId}) için guild \`${targetGuildId}\` altında kayıt yok.`,
-                        '',
-                        formatDiagnosticsBlock(snapshot),
-                    ].join('\n'),
+                    content: `ℹ️ **Ceza Kaydı Bulunamadı:** Yetkili \`${targetName || targetId}\` için ceza kaydı bulunamadı.`
                 });
                 return;
             }

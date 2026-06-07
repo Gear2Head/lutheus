@@ -2,6 +2,7 @@ const { supabase } = require('../_lib/supabaseClient');
 const { requirePermission, safeDocId } = require('../_lib/serverAuth');
 const { PERMISSIONS, normalizeRole } = require('../_lib/roles');
 const { ok, badRequest, forbidden, serverError } = require('../_lib/apiResponse');
+const { validateCase } = require('../_lib/cukEngine');
 
 // SECTION: ADMIN_CATCH_ALL
 // PURPOSE: Merged administrative API router to comply with Vercel serverless function allocations limit.
@@ -493,7 +494,7 @@ async function handleStaffProfiles(req, res) {
                 if (!/^\d{17,20}$/.test(discordId)) return null;
                 const role = profile.role ? normalizeRole(profile.role) : normalizeRole(profile.staffRank || 'pending');
                 const permission = profilePermissionForRole(role);
-                const active = profile.isActiveStaff !== false && role !== 'blocked';
+                const active = profile.isActiveStaff !== false && role !== 'blocked' && role !== 'pending';
                 return {
                     discord_id: discordId,
                     email: profile.email || null,
@@ -1224,7 +1225,25 @@ async function handleRepairDates(req, res) {
 
         const normalized = normalizeCase(mockItem, c.guild_id);
         
-        if (normalized.durationMs !== c.duration_ms || normalized.isPermanent !== c.is_permanent || normalized.expiresAt !== c.expires_at || normalized.isOpen !== c.is_open || createdIso !== c.created_at_sapphire) {
+        // Re-evaluate CUK validation
+        const durationMins = normalized.durationMs ? Math.round(normalized.durationMs / 60000) : 0;
+        const analysis = validateCase(normalized.reason || '', durationMins);
+        const cukVerdict = analysis.valid ? 'valid' : 'invalid';
+        const cukAnalysis = {
+            message: analysis.message,
+            category: analysis.categoryMatched || 'Diğer',
+            score: analysis.score
+        };
+
+        if (
+            normalized.durationMs !== c.duration_ms ||
+            normalized.isPermanent !== c.is_permanent ||
+            normalized.expiresAt !== c.expires_at ||
+            normalized.isOpen !== c.is_open ||
+            createdIso !== c.created_at_sapphire ||
+            c.cuk_verdict !== cukVerdict ||
+            JSON.stringify(c.cuk_analysis) !== JSON.stringify(cukAnalysis)
+        ) {
             needsUpdate = true;
             durationMs = normalized.durationMs;
             isPermanent = normalized.isPermanent;
@@ -1243,6 +1262,8 @@ async function handleRepairDates(req, res) {
                 expires_at: expiresAt,
                 is_open: isOpen,
                 is_active: isActive,
+                cuk_verdict: cukVerdict,
+                cuk_analysis: cukAnalysis,
                 updated_at: new Date().toISOString()
             });
             repairedCount++;

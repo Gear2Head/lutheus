@@ -383,9 +383,13 @@ export default function Cases() {
                 <tr
                   key={c.case_id}
                   onClick={() => setDrawerCase(c)}
-                  className="border-b border-border/30 hover:bg-secondary/20 cursor-pointer transition-colors"
+                  className={`border-b border-border/30 hover:bg-secondary/20 cursor-pointer transition-colors ${
+                    c.cuk_verdict === 'invalid'
+                      ? 'bg-red-500/10 hover:bg-red-500/20 text-red-200 border-red-500/20'
+                      : ''
+                  }`}
                 >
-                  <td className="py-3 px-4" onClick={(e) => e.stopPropagation()}>
+                  <td className={`py-3 px-4 ${c.cuk_verdict === 'invalid' ? 'border-l-4 border-l-red-500' : ''}`} onClick={(e) => e.stopPropagation()}>
                     {canEdit && (
                       <input
                         type="checkbox"
@@ -408,13 +412,13 @@ export default function Cases() {
                   <td className="py-3 px-3">
                     <div className="flex items-center gap-2">
                       <img src={c.author_avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${c.author_discord_id}`} alt="" className="w-7 h-7 rounded-full bg-secondary" />
-                      <span className="font-medium text-foreground">{getModName(c.author_discord_id, c.author_display_name)}</span>
+                      <span className={`font-medium ${c.cuk_verdict === 'invalid' ? 'text-red-200' : 'text-foreground'}`}>{getModName(c.author_discord_id, c.author_display_name)}</span>
                     </div>
                   </td>
                   <td className="py-3 px-3 max-w-[200px]">
-                    <span className="truncate block text-muted-foreground text-xs">{c.reason_raw || '—'}</span>
+                    <span className={`truncate block text-xs ${c.cuk_verdict === 'invalid' ? 'text-red-300 font-medium' : 'text-muted-foreground'}`}>{c.reason_raw || '—'}</span>
                   </td>
-                  <td className="py-3 px-3 text-xs text-muted-foreground whitespace-nowrap">
+                  <td className={`py-3 px-3 text-xs whitespace-nowrap ${c.cuk_verdict === 'invalid' ? 'text-red-300 font-medium' : 'text-muted-foreground'}`}>
                     <div className="flex items-center gap-1.5">
                       <span
                         className={`inline-block w-2 h-2 rounded-full shrink-0 ${c.is_open ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)] animate-pulse-dot' : 'bg-destructive/60'}`}
@@ -423,7 +427,7 @@ export default function Cases() {
                       <span>{c.is_permanent ? 'Kalıcı' : minutesToHuman(Math.floor((c.duration_ms || 0) / 60000))}</span>
                     </div>
                   </td>
-                  <td className="py-3 px-3 text-xs text-muted-foreground whitespace-nowrap">
+                  <td className={`py-3 px-3 text-xs whitespace-nowrap ${c.cuk_verdict === 'invalid' ? 'text-red-300 font-medium' : 'text-muted-foreground'}`}>
                     {relativeTime(c.created_at_sapphire)}
                   </td>
                   <td className="py-3 px-4 text-center">

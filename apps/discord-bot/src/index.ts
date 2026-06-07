@@ -26,6 +26,7 @@ import { createServer } from 'node:http';
 import { supabase, botToken, logChannelId, guildId } from './botConfig.js';
 import { EmergencyLockdownCommand } from './commands/critical/EmergencyLockdown.js';
 import { QueryCaseCommand } from './commands/queryCase.js';
+import { OzetCommand } from './commands/ozet.js';
 import { QueryStaffCommand } from './commands/queryStaff.js';
 // SECTION: MOD_COMMANDS_IMPORTS
 // PURPOSE: Moderasyon komutları - ban, kick, timeout, warn, purge, userinfo, serverinfo, modlogs, unban
@@ -175,6 +176,7 @@ const commands = [
     },
     EmergencyLockdownCommand,
     QueryCaseCommand,
+    OzetCommand,
     QueryStaffCommand,
     // Moderasyon
     BanCommand,
@@ -367,28 +369,32 @@ async function registerSlashCommands() {
             targetGuildIds = [...client.guilds.cache.keys()];
         }
 
-        if (targetGuildIds.length === 0) {
-            console.warn('Discord Bot: No joined guilds found. Skipping command registration.');
-            return;
-        }
+        const commandBody = commands.map(cmd => {
+            const builder = cmd.data as any;
+            if (builder && typeof builder.setIntegrationTypes === 'function' && builder.name !== 'setup') {
+                builder.setIntegrationTypes(0, 1);
+                builder.setContexts(0, 1, 2);
+            }
+            return builder.toJSON();
+        });
 
-        const commandBody = commands.map(cmd => cmd.data.toJSON());
-        console.log(`Discord Bot: Registering slash commands for App ID ${clientAppId} in guilds: ${targetGuildIds.join(', ')}`);
+        console.log(`Discord Bot: Registering global slash commands for App ID ${clientAppId}...`);
+        await rest.put(
+            Routes.applicationCommands(clientAppId),
+            { body: commandBody }
+        );
+        console.log('Discord Bot: Global slash commands registered successfully.');
 
+        // Clear local guild commands to avoid duplicates
         for (const targetGuildId of targetGuildIds) {
             try {
                 await rest.put(
                     Routes.applicationGuildCommands(clientAppId, targetGuildId),
-                    { body: commandBody }
+                    { body: [] }
                 );
-                console.log(`Discord Bot: Slash commands registered for guild ${targetGuildId}.`);
+                console.log(`Discord Bot: Cleared guild commands for guild ${targetGuildId}.`);
             } catch (error: unknown) {
-                const discordError = error as { code?: string | number; status?: string | number };
-                if (String(discordError.code) === '50001' || String(discordError.status) === '403') {
-                    console.error(`Discord Bot: Slash command registration missing access for guild ${targetGuildId}. Reinvite bot with applications.commands scope and verify DISCORD_GUILD_ID.`);
-                } else {
-                    console.error(`Discord Bot: Slash command registration failed for guild ${targetGuildId}:`, error);
-                }
+                console.warn(`Discord Bot: Failed to clear guild commands for guild ${targetGuildId}:`, error);
             }
         }
     } catch (error) {
@@ -424,15 +430,23 @@ async function syncModeratorProfiles(actor = 'system') {
 
                 const { data: existingProfile } = await supabase.from('staff_profiles').select('*').eq('discord_id', discordId).maybeSingle();
 
+                const accessStatus = existingProfile?.access_status || 'pending';
+                const isApproved = accessStatus === 'approved';
+
                 const profileUpdate = {
                     discord_id: discordId,
                     display_name: displayName,
                     username: user.username,
                     avatar_url: avatarUrl,
                     staff_rank: row.staff_rank,
-                    permission_group: row.staff_rank === 'admin' ? 'admin' : (row.staff_rank === 'yonetici' ? 'management' : 'moderator'),
-                    permission_level: row.staff_rank === 'admin' ? 100 : (row.staff_rank === 'yonetici' ? 80 : 50),
-                    is_active_staff: true,
+                    permission_group: isApproved
+                        ? (row.staff_rank === 'admin' ? 'admin' : (row.staff_rank === 'yonetici' ? 'management' : 'moderator'))
+                        : 'pending',
+                    permission_level: isApproved
+                        ? (row.staff_rank === 'admin' ? 100 : (row.staff_rank === 'yonetici' ? 80 : 50))
+                        : 0,
+                    is_active_staff: isApproved,
+                    access_status: accessStatus,
                     last_seen_at: new Date().toISOString(),
                     raw_payload: {
                         ...(existingProfile?.raw_payload || {}),
@@ -479,11 +493,100 @@ async function syncModeratorProfiles(actor = 'system') {
     }
 }
 
+async function pollInvalidCasesAlerts() {
+    try {
+        const { data: cases, error } = await supabase
+            .from('sapphire_cases')
+            .select('*')
+            .eq('cuk_verdict', 'invalid');
+
+        if (error || !cases) return;
+
+        const pendingAlerts = cases.filter(c => {
+            const payload = c.legacy_payload || {};
+            return payload.alert_sent !== true;
+        });
+
+        if (pendingAlerts.length === 0) return;
+
+        // Fetch active senior staff members to send DMs
+        const { data: staffList } = await supabase
+            .from('staff_profiles')
+            .select('discord_id, staff_rank, is_active_staff')
+            .eq('is_active_staff', true);
+
+        const seniorRanks = ['kurucu', 'admin', 'yonetici', 'genel_sorumlu', 'discord_yoneticisi', 'kidemli_discord_moderatoru', 'senior_moderator'];
+        const activeSeniors = (staffList || []).filter(s => {
+            const rank = String(s.staff_rank || '').toLowerCase();
+            return s.is_active_staff === true && seniorRanks.includes(rank);
+        });
+
+        for (const row of pendingAlerts) {
+            const caseId = row.case_id;
+            const durationText = row.duration_raw || (row.is_permanent ? 'Süresiz' : 'Geçici');
+            const activeText = row.is_open ? 'Aktif' : 'Pasif / Süresi Bitti';
+            const authorText = row.author_display_name ? `${row.author_display_name} (ID: ${row.author_discord_id || '-'})` : 'Bilinmiyor';
+
+            const embed = new EmbedBuilder()
+                .setTitle(`🚨 Hatalı Ceza Bildirimi - #${caseId}`)
+                .setColor(0xff4757)
+                .addFields(
+                    { name: 'Case ID', value: `#${caseId}`, inline: true },
+                    { name: 'Ceza Süresi', value: durationText, inline: true },
+                    { name: 'Aktiflik Durumu', value: activeText, inline: true },
+                    { name: 'Doğruluk', value: '❌ Hatalı', inline: true },
+                    { name: 'Cezayı Uygulayan Yetkili', value: authorText, inline: false }
+                )
+                .setTimestamp();
+
+            // Send to logs channel
+            const targetChannelId = guildConfigsCache[row.guild_id]?.logChannelId || logChannelId;
+            if (targetChannelId) {
+                const channel = await client.channels.fetch(targetChannelId).catch(() => null);
+                if (channel && channel.isTextBased()) {
+                    await (channel as any).send({ embeds: [embed] }).catch(() => null);
+                }
+            }
+
+            // Send DM to active senior staff
+            for (const staff of activeSeniors) {
+                if (!staff.discord_id) continue;
+                try {
+                    const user = await client.users.fetch(staff.discord_id).catch(() => null);
+                    if (user) {
+                        await user.send({ embeds: [embed] }).catch(() => null);
+                    }
+                } catch (dmErr) {
+                    // Ignore DM errors
+                }
+            }
+
+            // Update database so we don't send again
+            const updatedPayload = {
+                ...(row.legacy_payload || {}),
+                alert_sent: true
+            };
+
+            await supabase
+                .from('sapphire_cases')
+                .update({ legacy_payload: updatedPayload })
+                .eq('case_id', caseId)
+                .eq('guild_id', row.guild_id);
+        }
+    } catch (err: any) {
+        console.error('Discord Bot: pollInvalidCasesAlerts failed:', err.message);
+    }
+}
+
 let lastProcessedTime = new Date().toISOString();
 let lastTriggerTimestamp = 0;
 
 function startSupabasePolling() {
     console.log('Discord Bot: Initializing Supabase polling...');
+
+    // Poll invalid cases alerts every 15 seconds
+    pollInvalidCasesAlerts();
+    setInterval(pollInvalidCasesAlerts, 15000);
 
     // Sapphire case polling has been removed as requested.
 
@@ -950,6 +1053,19 @@ client.on('interactionCreate', async (interaction) => {
     const command = commands.find(cmd => cmd.data.name === interaction.commandName);
     if (!command) return;
 
+    // Intercept moderation/critical commands that require a guild context
+    const serverOnlyCommands = [
+        'setup', 'lockdown', 'unlockdown', 'ban', 'kick', 'timeout', 
+        'uyar', 'uyarılar', 'uyarilar', 'temizle', 'kullanici-bilgi', 'serverinfo', 'modlogs', 'unban'
+    ];
+    if (serverOnlyCommands.includes(interaction.commandName) && !interaction.guildId) {
+        await interaction.reply({ 
+            content: '❌ Bu komut sunucuya bağlı moderasyon işlemi gerektirdiği için sadece bir sunucu (guild) içerisinde çalıştırılabilir.', 
+            ephemeral: true 
+        });
+        return;
+    }
+
     try {
         await command.execute(interaction);
     } catch (err) {
@@ -1084,14 +1200,14 @@ client.on('messageCreate', async (message) => {
 async function handleDmMessage(message: any): Promise<void> {
     const discordId = message.author.id;
 
-    // Yetkili kontrolü: staff_profiles tablosundan is_active_staff = true olanı ara
+    // Yetkili kontrolü: staff_profiles tablosundan is_active_staff = true ve access_status = approved olanı ara
     const { data: staffProfile, error: profileErr } = await supabase
         .from('staff_profiles')
-        .select('discord_id, display_name, staff_rank, is_active_staff')
+        .select('discord_id, display_name, staff_rank, is_active_staff, access_status')
         .eq('discord_id', discordId)
         .maybeSingle();
 
-    if (profileErr || !staffProfile || !staffProfile.is_active_staff) {
+    if (profileErr || !staffProfile || !staffProfile.is_active_staff || staffProfile.access_status !== 'approved') {
         // Yetkili değil veya aktif değil → sessiz kal
         return;
     }

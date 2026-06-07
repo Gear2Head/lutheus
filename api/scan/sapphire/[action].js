@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const { supabase } = require('../../_lib/supabaseClient');
 const { requirePermission, requireUser } = require('../../_lib/serverAuth');
 const { PERMISSIONS, normalizeRole, ROLES } = require('../../_lib/roles');
+const { validateCase } = require('../../_lib/cukEngine');
 
 const SESSION_LOCKOUT_MS = 15 * 60 * 1000;
 const ACTIVE_SESSION_STATUSES = ['pending', 'running'];
@@ -130,6 +131,16 @@ function flattenCaseForDb(data) {
     if (!data) return {};
     const capturedVia = data.capturedVia || data.source || 'unknown';
 
+    // Run CUK validation
+    const durationMins = data.durationMs ? Math.round(data.durationMs / 60000) : 0;
+    const analysis = validateCase(data.reason || '', durationMins);
+    const cukVerdict = analysis.valid ? 'valid' : 'invalid';
+    const cukAnalysis = {
+        message: analysis.message,
+        category: analysis.categoryMatched || 'Diğer',
+        score: analysis.score
+    };
+
     return {
         case_id: data.caseId || data.id,
         guild_id: data.guildId || '1223431616081166336',
@@ -161,10 +172,10 @@ function flattenCaseForDb(data) {
         active_source: null,
         conflict_detected: false,
         conflict_reason: null,
-        cuk_verdict: null,
+        cuk_verdict: cukVerdict,
         cuk_confidence: null,
         cuk_flags: [],
-        cuk_analysis: null,
+        cuk_analysis: cukAnalysis,
         is_stale: false,
         stale_reason: null,
         stale_detected_at: null,
@@ -442,7 +453,8 @@ async function upsertStaffProfilesForIngest(dedupedCases) {
             staff_rank: existing.staff_rank || p.staff_rank,
             permission_group: existing.permission_group || p.permission_group,
             permission_level: existing.permission_level !== undefined ? existing.permission_level : p.permission_level,
-            is_active_staff: existing.is_active_staff !== undefined ? existing.is_active_staff : p.is_active_staff
+            is_active_staff: existing.is_active_staff !== undefined ? existing.is_active_staff : p.is_active_staff,
+            access_status: existing.access_status || p.access_status
         };
         // Preserve display_name from DB when incoming name is degraded
         if (isDegradedName(p.display_name) && existing.display_name && !isDegradedName(existing.display_name)) {

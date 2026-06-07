@@ -201,7 +201,7 @@ export default function Access() {
     setActionTarget(discordId);
     try {
       const { AdminApiClient } = await import('../../../lib/adminApiClient.js') as unknown as { AdminApiClient: AdminApiClientType };
-      const role = approveRole[discordId] || 'discord_moderatoru';
+      const role = approveRole[discordId] || 'discord_destek_ekibi';
       const rejectionReason = action === 'reject' ? 'Yonetici tarafindan reddedildi' : undefined;
       await AdminApiClient.approveStaffAccess(discordId, action, role, rejectionReason);
       
@@ -307,7 +307,7 @@ export default function Access() {
 
                   <div className="flex items-center gap-2 flex-wrap shrink-0">
                     <select
-                      value={approveRole[req.discordId] || 'discord_moderatoru'}
+                      value={approveRole[req.discordId] || 'discord_destek_ekibi'}
                       onChange={e => setApproveRole(prev => ({ ...prev, [req.discordId]: e.target.value }))}
                       className="h-8 px-2 rounded-lg bg-secondary/50 border border-border/50 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
                     >

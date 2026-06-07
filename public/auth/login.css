@@ -6,7 +6,7 @@
     align-items: center;
     justify-content: center;
     padding: 24px;
-    background-image: url('../../public/background.png');
+    background-image: url('/public/background.png');
     background-size: cover;
     background-position: center;
     background-repeat: no-repeat;
@@ -183,7 +183,7 @@
 .login-right {
     width: 50%;
     position: relative;
-    background-image: url('../../public/banner.png');
+    background-image: url('/public/banner.png');
     background-size: cover;
     background-position: center;
     padding: 32px;

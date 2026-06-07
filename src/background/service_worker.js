@@ -894,79 +894,93 @@ async function runAutonomousScan(options = {}) {
             break;
         }
 
-        if (pageInfo.current !== pageNum) {
-            const previousFirstCase = pageInfo.firstCase || '';
-            const navigated = await sendToContentScript(tabId, { action: 'GO_TO_PAGE', page: pageNum });
-            if (!navigated?.success) {
-                failures.push({ page: pageNum, error: navigated?.error || 'PAGE_NAV_FAILED' });
-                scannedCount++;
-                continue;
-            }
-            const waited = await sendToContentScript(tabId, {
-                action: 'WAIT_FOR_PAGE',
-                page: pageNum,
-                previousFirstCase,
-                previousSignature: pageInfo.signature || '',
-                timeout: Math.max(6000, scanDelay * 4)
-            });
-            if (!waited?.success) {
-                console.warn('[Lutheus SW] PAGE_NAV_TIMEOUT fallback action on page:', pageNum, waited?.error);
-                failures.push({ page: pageNum, error: waited?.error || 'PAGE_NAV_TIMEOUT' });
-                // Sleep for 800ms to allow Svelte DOM settling
-                await new Promise((resolve) => setTimeout(resolve, 800));
-            }
-            pageInfo = await sendToContentScript(tabId, { action: 'GET_PAGE_INFO' }) || pageInfo;
-        }
+        let retryAttempt = 0;
+        let pageSettled = false;
+        let result = null;
+        let filtered = [];
+        let pageSignature = '';
 
-        let result = await sendToContentScript(tabId, { action: 'SCRAPE_PAGE' });
-        if (!result?.success || !Array.isArray(result.data)) {
-            for (let attempt = 0; attempt < retryCount; attempt++) {
+        while (retryAttempt < 3 && !pageSettled) {
+            if (retryAttempt > 0) {
+                console.warn(`[Lutheus SW] Duplicate page signature detected. Retry attempt ${retryAttempt} for page ${pageNum}...`);
                 await injectContentScripts(tabId);
-                await new Promise((resolve) => setTimeout(resolve, 800));
-                const retry = await sendToContentScript(tabId, { action: 'SCRAPE_PAGE' });
-                if (retry?.success && Array.isArray(retry.data)) {
-                    result = retry;
-                    break;
+                await new Promise((resolve) => setTimeout(resolve, 1500));
+            }
+
+            if (pageInfo.current !== pageNum) {
+                const previousFirstCase = pageInfo.firstCase || '';
+                const navigated = await sendToContentScript(tabId, { action: 'GO_TO_PAGE', page: pageNum });
+                if (!navigated?.success) {
+                    failures.push({ page: pageNum, error: navigated?.error || 'PAGE_NAV_FAILED' });
+                    retryAttempt++;
+                    continue;
+                }
+                const waited = await sendToContentScript(tabId, {
+                    action: 'WAIT_FOR_PAGE',
+                    page: pageNum,
+                    previousFirstCase,
+                    previousSignature: pageInfo.signature || '',
+                    timeout: Math.max(6000, scanDelay * 4)
+                });
+                if (!waited?.success) {
+                    console.warn('[Lutheus SW] PAGE_NAV_TIMEOUT fallback action on page:', pageNum, waited?.error);
+                }
+                pageInfo = await sendToContentScript(tabId, { action: 'GET_PAGE_INFO' }) || pageInfo;
+            }
+
+            result = await sendToContentScript(tabId, { action: 'SCRAPE_PAGE' });
+            if (!result?.success || !Array.isArray(result.data)) {
+                for (let attempt = 0; attempt < retryCount; attempt++) {
+                    await injectContentScripts(tabId);
+                    await new Promise((resolve) => setTimeout(resolve, 800));
+                    const retry = await sendToContentScript(tabId, { action: 'SCRAPE_PAGE' });
+                    if (retry?.success && Array.isArray(retry.data)) {
+                        result = retry;
+                        break;
+                    }
                 }
             }
 
-            if (!result?.success || !Array.isArray(result.data)) {
-                failures.push({
-                    page: pageNum,
-                    error: result?.error || 'SCRAPE_PAGE_FAILED'
-                });
-                scannedCount++;
-                emitRuntimeEvent(ACTIONS.SCAN_PROGRESS_EVENT, {
-                    runId,
-                    currentPage: pageNum,
-                    totalPages: pagesToScan.length,
-                    scannedCount,
-                    casesFound: allCases.length,
-                    failures: failures.length
-                });
-                continue;
+            if (result?.success && Array.isArray(result.data)) {
+                filtered = result.data.filter((entry) => isInDateRange(entry, parsedStart, parsedEnd));
+                pageSignature = `${pageNum}:${filtered.map((entry) => entry.id || entry.caseId).filter(Boolean).join(',')}`;
+                
+                if (pageSignature !== previousPageSignature || pageNum === 1) {
+                    pageSettled = true;
+                } else {
+                    retryAttempt++;
+                }
+            } else {
+                retryAttempt++;
             }
         }
+
+        if (!pageSettled && pageNum !== 1) {
+            console.warn(`[Lutheus SW] Failed to settle page ${pageNum} after 3 attempts. Skipping page.`);
+            failures.push({ page: pageNum, error: 'DUPLICATE_PAGE_SIGNATURE_EXCEEDED' });
+            scannedCount++;
+            emitRuntimeEvent(ACTIONS.SCAN_PROGRESS_EVENT, {
+                runId,
+                currentPage: pageNum,
+                totalPages: pagesToScan.length,
+                scannedCount,
+                casesFound: allCases.length,
+                failures: failures.length
+            });
+            continue;
+        }
+
         if (result?.success && Array.isArray(result.data)) {
             scrapedRaw += result.data.length;
             if (pageNum === 1) domRowsPage1 = result.data.length;
             if (pageNum === 2) domRowsPage2 = result.data.length;
 
-            let filtered = result.data.filter((entry) => isInDateRange(entry, parsedStart, parsedEnd));
-            const pageSignature = `${pageNum}:${filtered.map((entry) => entry.id || entry.caseId).filter(Boolean).join(',')}`;
-            if (pageSignature === previousPageSignature) {
-                duplicatePageHits += 1;
-                failures.push({ page: pageNum, error: 'DUPLICATE_PAGE_SIGNATURE' });
-                if (duplicatePageHits > Math.max(1, retryCount)) {
-                    break;
-                }
-            } else {
-                duplicatePageHits = 0;
-                previousPageSignature = pageSignature;
-            }
-            if (effectiveMode === 'detail' && filtered.length) {
-                const limit = detailLimit > 0 ? detailLimit : filtered.length;
-                const enriched = await enrichCaseDetails(guildId, filtered.slice(0, limit), scanDelay, (payload) => {
+            previousPageSignature = pageSignature;
+
+            let finalFiltered = filtered;
+            if (effectiveMode === 'detail' && finalFiltered.length) {
+                const limit = detailLimit > 0 ? detailLimit : finalFiltered.length;
+                const enriched = await enrichCaseDetails(guildId, finalFiltered.slice(0, limit), scanDelay, (payload) => {
                     if (onProgress) {
                         onProgress({
                             currentPage: pageNum,
@@ -978,9 +992,9 @@ async function runAutonomousScan(options = {}) {
                     }
                 });
                 const enrichedMap = new Map(enriched.map((entry) => [entry.id || entry.caseId, entry]));
-                filtered = filtered.map((entry) => enrichedMap.get(entry.id || entry.caseId) || entry);
+                finalFiltered = finalFiltered.map((entry) => enrichedMap.get(entry.id || entry.caseId) || entry);
             }
-            allCases = allCases.concat(filtered);
+            allCases = allCases.concat(finalFiltered);
             if (result.userInfo) {
                 await setLocal('activeUser', result.userInfo);
             }
@@ -996,7 +1010,7 @@ async function runAutonomousScan(options = {}) {
                 scannedCount,
                 casesFound: allCases.length,
                 totalCases: detectedTotalCases,
-                visibleRows: result.data.length
+                visibleRows: result?.data?.length || 0
             });
         }
         emitRuntimeEvent(ACTIONS.SCAN_PROGRESS_EVENT, {
@@ -1027,17 +1041,17 @@ async function runAutonomousScan(options = {}) {
     });
 
     if (allCases.length > 0) {
-        await storageSaveCases(allCases, true);
-        if (typeof activeJobId !== 'undefined' && activeJobId) {
-            const isPartial = detectedTotalCases > 0 && allCases.length < detectedTotalCases;
-            const status = isPartial ? 'partial' : 'completed';
-            
-            if (isPartial) {
-                console.warn(`[Lutheus SW] Scan partial! Scraped ${allCases.length} unique cases but Sapphire reported ${detectedTotalCases}. Difference: ${detectedTotalCases - allCases.length} cases missing/duplicate/invalid.`);
-            }
-
-            await forwardToVercelIngest(allCases, activeJobId, `https://dashboard.sapph.xyz/${guildId}/moderation/cases`, true, status);
+        await storageSaveCases(allCases, true, { skipRemoteIngest: true });
+        
+        const jobId = activeJobId || generateUUID();
+        const isPartial = detectedTotalCases > 0 && allCases.length < detectedTotalCases;
+        const status = isPartial ? 'partial' : 'completed';
+        
+        if (isPartial) {
+            console.warn(`[Lutheus SW] Scan partial! Scraped ${allCases.length} unique cases but Sapphire reported ${detectedTotalCases}. Difference: ${detectedTotalCases - allCases.length} cases missing/duplicate/invalid.`);
         }
+
+        await forwardToVercelIngest(allCases, jobId, `https://dashboard.sapph.xyz/${guildId}/moderation/cases`, !activeJobId, status);
     }
 
     if (onComplete) {

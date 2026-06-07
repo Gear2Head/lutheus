@@ -1,9 +1,9 @@
 /**
- * Deterministic CUK (Ceza Uygulama Kitapçığı) Engine v2
- * Exact port from public/auth/rolePolicy.js + src/lib/cukEngine.js
+ * Deterministic CUK (Ceza Uygulama Kitapçığı) Engine
+ * CommonJS version for Vercel Serverless Functions
  */
 
-export const ROLE_HIERARCHY: Record<string, number> = {
+const ROLE_HIERARCHY = {
   kurucu: 100,
   admin: 100,
   yonetici: 100,
@@ -19,14 +19,7 @@ const INVALID_KEYWORDS = [
   'hatalı ceza', 'ceza değiştirildi', 'yanlış ceza', 'iptal edildi', 'ceza iptali',
 ];
 
-export interface CUKResult {
-  valid: boolean;
-  score: number;
-  message: string;
-  categoryMatched: string | null;
-}
-
-export function isDurationAllowed(mins: number, allowed: number[]): boolean {
+function isDurationAllowed(mins, allowed) {
   if (allowed.includes(mins)) return true;
   // Apply 5 minutes tolerance pay for finite non-zero allowed durations
   for (const a of allowed) {
@@ -37,7 +30,7 @@ export function isDurationAllowed(mins: number, allowed: number[]): boolean {
   return false;
 }
 
-function normalizeTurkishText(value: string | null | undefined): string {
+function normalizeTurkishText(value) {
   if (typeof value !== 'string') return '';
   return value
     .replace(/I/g, 'ı')
@@ -55,13 +48,9 @@ function normalizeTurkishText(value: string | null | undefined): string {
     .replace(/\s+/g, ' ');
 }
 
-export function getRuleDetails(reasonRaw: string): {
-  category: string | null;
-  degree: number | null;
-  allowedMinutes: number[];
-} {
+function getRuleDetails(reasonRaw) {
   const reason = normalizeTurkishText(reasonRaw);
-  const match = (kwList: string[]) => kwList.some((k) => reason.includes(normalizeTurkishText(k)));
+  const match = (kwList) => kwList.some((k) => reason.includes(normalizeTurkishText(k)));
 
   // 1. Yönetim kararı
   if (match(['yönetim kararı', 'yönetim onaylı', 'üst yönetim', 'admin kararı'])) {
@@ -162,7 +151,7 @@ export function getRuleDetails(reasonRaw: string): {
   return { category: null, degree: null, allowedMinutes: [] };
 }
 
-export function validateCase(reasonRaw: string, durationMinutes?: number | null): CUKResult {
+function validateCase(reasonRaw, durationMinutes) {
   const reason = normalizeTurkishText(reasonRaw);
   const mins = durationMinutes || 0;
 
@@ -202,7 +191,7 @@ export function validateCase(reasonRaw: string, durationMinutes?: number | null)
     return { valid: true, score: 1.0, message: 'Süre ve tür kurallarla uyumlu.', categoryMatched: rule.category };
   }
 
-  const formatMins = (m: number) => {
+  const formatMins = (m) => {
     if (m === 0) return 'Süresiz';
     if (m < 60) return `${m} dk`;
     if (m % 60 === 0) return `${m / 60} saat`;
@@ -218,111 +207,10 @@ export function validateCase(reasonRaw: string, durationMinutes?: number | null)
   };
 }
 
-export function calculatePerformanceScore(validCount: number, invalidCount: number, pendingCount: number): number {
-  return validCount * 2 - invalidCount * 3 - pendingCount;
-}
-
-export function getReliabilityStatus(validCount: number, invalidCount: number): string {
-  const total = validCount + invalidCount;
-  if (total === 0) return 'Bekleyen';
-  const acc = (validCount / total) * 100;
-  if (acc >= 70) return 'Guvenilir';
-  if (acc >= 50) return 'Izlemede';
-  return 'Riskli';
-}
-
-export type DurationVerdict = 'valid' | 'invalid' | 'pending' | 'manual';
-
-export interface ValidDurationsResult {
-  category: string | null;
-  degree: number | null;
-  allowedMinutes: number[];
-  allowedLabels: string[];
-  minMinutes: number | null;
-  maxMinutes: number | null;
-  isPermanentAllowed: boolean;
-  currentMinutes: number | null;
-  verdict: DurationVerdict;
-  message: string;
-}
-
-function minutesToLabel(mins: number): string {
-  if (mins === 0 || mins === Infinity || mins > 50000000) return 'Süresiz';
-  if (mins < 60) return `${mins} dk`;
-  if (mins < 60 * 24) return `${Math.round(mins / 60)} saat`;
-  if (mins < 60 * 24 * 7) return `${Math.round(mins / (60 * 24))} gün`;
-  return `${Math.round(mins / (60 * 24 * 7))} hafta`;
-}
-
-export function getValidDurationsForCase(input: {
-  reason_raw?: string;
-  duration_ms?: number | null;
-  is_permanent?: boolean;
-  type?: string;
-}): ValidDurationsResult {
-  const reason = (input.reason_raw || '').trim();
-  const durationMins = input.is_permanent
-    ? 0
-    : input.duration_ms != null
-      ? Math.floor(input.duration_ms / 60000)
-      : 0;
-
-  const result = validateCase(reason, durationMins);
-  const rule = getRuleDetails(reason);
-
-  if (!rule.category) {
-    return {
-      category: null,
-      degree: null,
-      allowedMinutes: [],
-      allowedLabels: [],
-      minMinutes: null,
-      maxMinutes: null,
-      isPermanentAllowed: false,
-      currentMinutes: durationMins,
-      verdict: 'pending',
-      message: result.message,
-    };
-  }
-
-  if (rule.category === 'Yönetim') {
-    return {
-      category: rule.category,
-      degree: null,
-      allowedMinutes: [],
-      allowedLabels: ['Yönetim onayı — süre kısıtı yok'],
-      minMinutes: null,
-      maxMinutes: null,
-      isPermanentAllowed: true,
-      currentMinutes: durationMins,
-      verdict: 'valid',
-      message: result.message,
-    };
-  }
-
-  const allowedMinutes = rule.allowedMinutes.filter((m) => m > 0);
-  const isPermanentAllowed = rule.allowedMinutes.includes(0);
-  const allowedLabels = [
-    ...allowedMinutes.map(minutesToLabel),
-    ...(isPermanentAllowed ? ['Süresiz / Ban'] : []),
-  ];
-
-  let verdict: DurationVerdict = 'manual';
-  if (result.valid) verdict = 'valid';
-  else if (result.score === 0 && result.message.includes('Geçersiz')) verdict = 'invalid';
-  else if (!reason) verdict = 'pending';
-
-  const finite = allowedMinutes.filter((m) => m > 0);
-  return {
-    category: rule.category,
-    degree: rule.degree,
-    allowedMinutes: rule.allowedMinutes,
-    allowedLabels,
-    minMinutes: finite.length ? Math.min(...finite) : null,
-    maxMinutes: finite.length ? Math.max(...finite) : null,
-    isPermanentAllowed,
-    currentMinutes: durationMins,
-    verdict,
-    message: result.message,
-  };
-}
+module.exports = {
+  ROLE_HIERARCHY,
+  INVALID_KEYWORDS,
+  isDurationAllowed,
+  getRuleDetails,
+  validateCase
+};

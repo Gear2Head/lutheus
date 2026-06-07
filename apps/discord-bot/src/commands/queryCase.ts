@@ -3,7 +3,6 @@
 
 import { SlashCommandBuilder, ChatInputCommandInteraction, EmbedBuilder } from 'discord.js';
 import { supabase, guildId as envGuildId } from '../botConfig.js';
-import { runDbHealthCheck, formatDiagnosticsBlock } from '../lib/dbDiagnostics.js';
 
 export const QueryCaseCommand = {
     data: new SlashCommandBuilder()
@@ -22,21 +21,28 @@ export const QueryCaseCommand = {
         try {
             const targetGuildId = interaction.guildId || envGuildId || '1223431616081166336';
 
-            const { data: row } = await supabase
+            let { data: row } = await supabase
                 .from('sapphire_cases')
                 .select('*')
                 .eq('case_id', caseId)
                 .eq('guild_id', targetGuildId)
                 .maybeSingle();
 
+            // Fallback: search globally if not found under the current guild
             if (!row) {
-                const snapshot = await runDbHealthCheck(targetGuildId);
+                const { data: globalRow } = await supabase
+                    .from('sapphire_cases')
+                    .select('*')
+                    .eq('case_id', caseId)
+                    .maybeSingle();
+                if (globalRow) {
+                    row = globalRow;
+                }
+            }
+
+            if (!row) {
                 await interaction.editReply({
-                    content: [
-                        `❌ **Ceza Bulunamadı:** \`${caseId}\` guild \`${targetGuildId}\` altında yok.`,
-                        '',
-                        formatDiagnosticsBlock(snapshot),
-                    ].join('\n'),
+                    content: `❌ **Ceza Bulunamadı:** \`#${caseId}\` kodlu ceza kaydı veritabanında bulunamadı.`
                 });
                 return;
             }

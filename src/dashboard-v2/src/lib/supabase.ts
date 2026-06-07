@@ -101,15 +101,8 @@ export async function supabaseFetch<T = unknown>(
 export function enrichCaseWithCuk(c: SapphireCase): SapphireCase {
   const analysis = validateCase(c.reason_raw, Math.round((c.duration_ms || 0) / 60000));
   
-  if (!c.cuk_verdict || c.cuk_verdict === 'pending') {
+  if (!c.cuk_verdict || c.cuk_verdict === 'pending' || c.cuk_verdict === 'valid' || c.cuk_verdict === 'invalid') {
     c.cuk_verdict = analysis.valid ? 'valid' : 'invalid';
-    c.cuk_analysis = {
-      message: analysis.message,
-      category: analysis.categoryMatched || 'Diğer',
-      score: analysis.score
-    };
-  } else if (c.cuk_verdict === 'valid' && !analysis.valid) {
-    c.cuk_verdict = 'invalid';
     c.cuk_analysis = {
       message: analysis.message,
       category: analysis.categoryMatched || 'Diğer',

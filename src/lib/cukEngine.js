@@ -1,6 +1,3 @@
-// Lutheus CezaRapor - CUK Engine (Ceza Uygulama Kitapçığı)
-// Intelligent penalty validation system
-
 import {
     matchesKeyword,
     normalizeMatchText,
@@ -9,6 +6,211 @@ import {
 } from './ruleMatching.js';
 
 export const CUK_VERSION = '1.0.0';
+
+export const CUK_RULES = {
+    autoInvalid: {
+        emptyReason: true,
+        keywords: [
+            'hatalı ceza',
+            'ceza değiştirildi',
+            'yanlış ceza',
+            'iptal edildi',
+            'ceza iptali'
+        ]
+    },
+    categories: {
+        'Yetkililere Saygısızlık': {
+            keywords: ['yetkili', 'adal', 'doğukan', 'admin', 'mod', 'üst yönetim', 'ekip', 'ismini kötüleme', 'aşağılama', 'iftira'],
+            repeats: {
+                1: { duration: 720, type: 'mute' },
+                2: { duration: 1440, type: 'mute' },
+                3: { duration: 2880, type: 'mute' },
+                4: { type: 'ban', notes: 'Kısıtlama' }
+            }
+        },
+        'Oyunculara Saygısızlık': {
+            keywords: ['oyuncu', 'şahsa', 'kişiye', 'üyeye', 'saygısızlık', 'hakaret'],
+            degrees: [
+                {
+                    degree: 1,
+                    keywords: ['şahsa hakaret', '1. derece saygısızlık', 'sahsa edilmis hakaret'],
+                    repeats: {
+                        1: { duration: 180, type: 'mute' },
+                        2: { duration: 360, type: 'mute' },
+                        3: { duration: 720, type: 'mute' },
+                        4: { type: 'ban', notes: 'Kısıtlama' }
+                    }
+                },
+                {
+                    degree: 2,
+                    keywords: ['ailevi', '2. derece saygısızlık', 'aileye'],
+                    repeats: {
+                        1: { duration: 360, type: 'mute' },
+                        2: { duration: 720, type: 'mute' },
+                        3: { duration: 1440, type: 'mute' },
+                        4: { type: 'ban', notes: 'Kısıtlama' }
+                    }
+                },
+                {
+                    degree: 3,
+                    keywords: ['rahatsız edici', 'troll', '3. derece saygısızlık', 'trol', 'huzur bozma', 'rahatsızlık'],
+                    repeats: {
+                        1: { duration: 360, type: 'mute' },
+                        2: { duration: 720, type: 'mute' },
+                        3: { duration: 1440, type: 'mute' },
+                        4: { type: 'ban', notes: 'Kısıtlama' }
+                    }
+                },
+                {
+                    degree: 4,
+                    keywords: ['kitleye hakaret', '4. derece saygısızlık'],
+                    repeats: {
+                        1: { duration: 720, type: 'mute' },
+                        2: { duration: 1440, type: 'mute' },
+                        3: { duration: 2880, type: 'mute' },
+                        4: { type: 'ban', notes: 'Kısıtlama' }
+                    }
+                }
+            ]
+        },
+        'Küfür/Hakaret': {
+            keywords: ['küfür', 'argo', 'uygunsuz', 'kelime', 'mesaj', 'içerik'],
+            degrees: [
+                {
+                    degree: 1,
+                    keywords: ['yöneltme olmayan', '1. derece küfür'],
+                    repeats: {
+                        1: { duration: 15, type: 'mute' }, 2: { duration: 30, type: 'mute' }, 3: { duration: 60, type: 'mute' },
+                        4: { duration: 120, type: 'mute' }, 5: { duration: 240, type: 'mute' }, 6: { duration: 480, type: 'mute' },
+                        7: { duration: 960, type: 'mute' }, 8: { duration: 1920, type: 'mute' }, 9: { type: 'ban', notes: 'Kısıtlama' }
+                    }
+                },
+                {
+                    degree: 2,
+                    keywords: ['cinsellik', '2. derece küfür', 'sex', 'nsfw', 'cinsel'],
+                    repeats: {
+                        1: { duration: 720, type: 'mute' },
+                        2: { duration: 1440, type: 'mute' },
+                        3: { duration: 2880, type: 'mute' },
+                        4: { type: 'ban', notes: 'Kısıtlama' }
+                    }
+                }
+            ]
+        },
+        'Dini/Milli Değerler': {
+            keywords: ['dini değer', 'milli değer', 'kutsal', 'atatürk', 'din', 'milli', 'kutsala'],
+            repeats: {
+                1: { duration: 10080, type: 'mute' },
+                2: { type: 'ban', notes: 'Kısıtlama' }
+            }
+        },
+        'Sunucu Dinamiği': {
+            keywords: ['sunucu dinamiği', 'dinamik', 'sunucu düzeni', 'kanalın amacı', 'ekran', ' flood', 'flood', 'spam', 'sohbet bütünlüğü', 'sohbetin bütünlüğü', 'bütünlüğünü bozacak'],
+            degrees: [
+                {
+                    degree: 1,
+                    keywords: ['amacı dışında', 'görsel odası', '1. derece dinamik', 'kanalın amacı'],
+                    repeats: {
+                        1: { duration: 15, type: 'mute' }, 2: { duration: 30, type: 'mute' }, 3: { duration: 60, type: 'mute' },
+                        4: { duration: 120, type: 'mute' }, 5: { duration: 240, type: 'mute' }, 6: { duration: 480, type: 'mute' },
+                        7: { duration: 960, type: 'mute' }, 8: { duration: 1920, type: 'mute' }, 9: { type: 'ban', notes: 'Kısıtlama' }
+                    }
+                },
+                {
+                    degree: 2,
+                    keywords: ['markasına zarar', 'adalances zarar', '2. derece dinamik', 'markaya', 'marka'],
+                    repeats: {
+                        1: { duration: 1440, type: 'mute' },
+                        2: { duration: 2880, type: 'mute' },
+                        3: { duration: 5760, type: 'mute' },
+                        4: { type: 'ban', notes: 'Kısıtlama' }
+                    }
+                },
+                {
+                    degree: 3,
+                    keywords: ['yanlış bilgi', 'yanıltıcı bilgi', '3. derece dinamik', 'yanlış'],
+                    repeats: {
+                        1: { duration: 360, type: 'mute' },
+                        2: { duration: 720, type: 'mute' },
+                        3: { duration: 1440, type: 'mute' },
+                        4: { type: 'ban', notes: 'Kısıtlama' }
+                    }
+                },
+                {
+                    degree: 4,
+                    keywords: ['polemik', 'siyasi', 'ırki', '4. derece dinamik', 'ırki', 'politika', 'siyaset'],
+                    repeats: {
+                        1: { duration: 360, type: 'mute' },
+                        2: { duration: 720, type: 'mute' },
+                        3: { duration: 1440, type: 'mute' },
+                        4: { type: 'ban', notes: 'Kısıtlama' }
+                    }
+                },
+                {
+                    degree: 5,
+                    keywords: ['flood', 'latin alfabesi dışı', 'embed', '5. derece dinamik', 'bütünlüğü', 'harf uzatma', 'capstalk', 'spam', 'sohbet bütünlüğü', 'sohbetin bütünlüğü', 'bütünlüğünü bozacak'],
+                    repeats: {
+                        1: { duration: 15, type: 'mute' }, 2: { duration: 30, type: 'mute' }, 3: { duration: 60, type: 'mute' },
+                        4: { duration: 120, type: 'mute' }, 5: { duration: 240, type: 'mute' }, 6: { duration: 480, type: 'mute' },
+                        7: { duration: 960, type: 'mute' }, 8: { duration: 1920, type: 'mute' }, 9: { type: 'ban', notes: 'Kısıtlama' }
+                    }
+                },
+                {
+                    degree: 6,
+                    keywords: ['kampanya', '6. derece dinamik', 'kampanya başlatmak'],
+                    repeats: {
+                        1: { duration: 360, type: 'mute' },
+                        2: { duration: 720, type: 'mute' },
+                        3: { duration: 1440, type: 'mute' },
+                        4: { type: 'ban', notes: 'Kısıtlama' }
+                    }
+                },
+                {
+                    degree: 7,
+                    keywords: ['yönetime etiket', 'admin etiket', '7. derece dinamik', 'yetkiliye etiket', 'etiketleme'],
+                    repeats: {
+                        1: { duration: 180, type: 'mute' },
+                        2: { duration: 360, type: 'mute' },
+                        3: { duration: 720, type: 'mute' },
+                        4: { type: 'ban', notes: 'Kısıtlama' }
+                    }
+                }
+            ]
+        },
+        'Reklam': {
+            keywords: ['reklam', 'davet linki', 'discord.gg', 'youtube.com', 'üye çekme', 'minecraft sunucusu'],
+            repeats: {
+                1: { duration: 1440, type: 'mute' },
+                2: { type: 'ban', notes: 'Kısıtlama' }
+            }
+        },
+        'Destek Talebi': {
+            keywords: ['destek talebi', 'bilet', 'ticket', 'ticket troll', 'tekrarlı bilet'],
+            degrees: [
+                {
+                    degree: 1,
+                    keywords: ['tekrarlı bilet', 'aynı konu', 'bilet açımı'],
+                    repeats: { 1: { duration: 60, type: 'mute' } }
+                },
+                {
+                    degree: 2,
+                    keywords: ['uygunsuz üslup', 'üslup', 'troll', 'destek troll'],
+                    repeats: { 1: { duration: 1440, type: 'mute' } }
+                }
+            ]
+        },
+        'Yönetim': {
+            keywords: ['yönetim kararı', 'yönetim onaylı', 'üst yönetim', 'admin kararı'],
+            type: 'approved',
+            notes: 'Yönetim onayı ile verilmiş özel ceza. Otomatik doğrulanmış sayılır.'
+        },
+        'Discord ToS': {
+            type: 'ban',
+            keywords: ['tos', 'discord terms', 'kural dışı', '13 yaş', 'terör', '3. parti'],
+            notes: 'Süresiz Kısıtlama'
+        }
+    }
+};
 
 // Ceza durumları
 export const PenaltyStatus = {
@@ -97,388 +299,242 @@ export function formatDuration(minutes) {
     return `${Math.round(minutes / (60 * 24 * 365))} yıl`;
 }
 
-// CUK Kuralları - Temel yapı (kullanıcı tarafından güncellenebilir)
-export const CUK_RULES = {
-    // Direkt hatalı sayılacak durumlar
-    autoInvalid: {
-        emptyReason: true,          // Boş sebep
-        keywords: [                  // Bu kelimeler içeriyorsa
-            'hatalı ceza',
-            'ceza değiştirildi',
-            'yanlış ceza',
-            'iptal edildi',
-            'ceza iptali'
-        ]
-    },
+function normalizeTurkishText(value) {
+    if (typeof value !== 'string') return '';
+    return value
+        .replace(/I/g, 'ı')
+        .replace(/İ/g, 'i')
+        .toLowerCase()
+        .normalize('NFKD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/ı/g, 'i')
+        .replace(/ğ/g, 'g')
+        .replace(/ü/g, 'u')
+        .replace(/ş/g, 's')
+        .replace(/ö/g, 'o')
+        .replace(/ç/g, 'c')
+        .trim()
+        .replace(/\s+/g, ' ');
+}
 
-    // Ceza kategorileri ve kuralları
-    categories: {
-        'Yetkililere Saygısızlık': {
-            keywords: ['yetkili', 'adal', 'doğukan', 'admin', 'mod', 'üst yönetim', 'ekip', 'ismini kötüleme', 'aşağılama', 'iftira'],
-            repeats: {
-                1: { duration: 720, type: 'mute' },  // 12 Saat
-                2: { duration: 1440, type: 'mute' }, // 24 Saat
-                3: { duration: 2880, type: 'mute' }, // 48 Saat
-                4: { type: 'ban', notes: 'Kısıtlama' }
-            }
-        },
-        'Oyunculara Saygısızlık': {
-            keywords: ['oyuncu', 'şahsa', 'kişiye', 'üyeye', 'saygısızlık', 'hakaret'],
-            degrees: [
-                {
-                    degree: 1, // Şahsa edilmiş hakaret
-                    keywords: ['şahsa hakaret', '1. derece saygısızlık', 'sahsa edilmis hakaret'],
-                    repeats: {
-                        1: { duration: 180, type: 'mute' },  // 3 Saat
-                        2: { duration: 360, type: 'mute' },  // 6 Saat
-                        3: { duration: 720, type: 'mute' },  // 12 Saat
-                        4: { type: 'ban', notes: 'Kısıtlama' }
-                    }
-                },
-                {
-                    degree: 2, // Ailevi değerler
-                    keywords: ['ailevi', '2. derece saygısızlık', 'aileye'],
-                    repeats: {
-                        1: { duration: 360, type: 'mute' }, // 6 Saat
-                        2: { duration: 720, type: 'mute' }, // 12 Saat
-                        3: { duration: 1440, type: 'mute' }, // 24 Saat
-                        4: { type: 'ban', notes: 'Kısıtlama' }
-                    }
-                },
-                {
-                    degree: 3, // Rahatsız edici davranış/troll
-                    keywords: ['rahatsız edici', 'troll', '3. derece saygısızlık', 'trol', 'huzur bozma', 'rahatsızlık'],
-                    repeats: {
-                        1: { duration: 360, type: 'mute' },  // 6 Saat
-                        2: { duration: 720, type: 'mute' },  // 12 Saat
-                        3: { duration: 1440, type: 'mute' }, // 24 Saat
-                        4: { type: 'ban', notes: 'Kısıtlama' }
-                    }
-                },
-                {
-                    degree: 4, // Kitleye hakaret
-                    keywords: ['kitleye hakaret', '4. derece saygısızlık'],
-                    repeats: {
-                        1: { duration: 720, type: 'mute' },  // 12 Saat
-                        2: { duration: 1440, type: 'mute' }, // 24 Saat
-                        3: { duration: 2880, type: 'mute' }, // 48 Saat
-                        4: { type: 'ban', notes: 'Kısıtlama' }
-                    }
-                }
-            ]
-        },
-        'Küfür/Hakaret': {
-            keywords: ['küfür', 'argo', 'uygunsuz', 'kelime', 'mesaj', 'içerik'],
-            degrees: [
-                {
-                    degree: 1, // Yöneltme olmayan hakaret
-                    keywords: ['yöneltme olmayan', '1. derece küfür'],
-                    repeats: {
-                        1: { duration: 15, type: 'mute' }, 2: { duration: 30, type: 'mute' }, 3: { duration: 60, type: 'mute' },
-                        4: { duration: 120, type: 'mute' }, 5: { duration: 240, type: 'mute' }, 6: { duration: 480, type: 'mute' },
-                        7: { duration: 960, type: 'mute' }, 8: { duration: 1920, type: 'mute' }, 9: { type: 'ban', notes: 'Kısıtlama' }
-                    }
-                },
-                {
-                    degree: 2, // Cinsellik
-                    keywords: ['cinsellik', '2. derece küfür', 'sex', 'nsfw', 'cinsel'],
-                    repeats: {
-                        1: { duration: 720, type: 'mute' }, // 12 Saat
-                        2: { duration: 1440, type: 'mute' }, // 24 Saat
-                        3: { duration: 2880, type: 'mute' }, // 48 Saat
-                        4: { type: 'ban', notes: 'Kısıtlama' }
-                    }
-                }
-            ]
-        },
-        'Dini/Milli Değerler': {
-            keywords: ['dini değer', 'milli değer', 'kutsal', 'atatürk', 'din', 'milli', 'kutsala'],
-            repeats: {
-                1: { duration: 10080, type: 'mute' }, // 7 Gün
-                2: { type: 'ban', notes: 'Kısıtlama' }
-            }
-        },
-        'Sunucu Dinamiği': {
-            keywords: ['sunucu dinamiği', 'dinamik', 'sunucu düzeni', 'kanalın amacı', 'ekran', ' flood', 'flood', 'spam', 'sohbet bütünlüğü', 'sohbetin bütünlüğü', 'bütünlüğünü bozacak'],
-            degrees: [
-                {
-                    degree: 1, // Amacı dışında kullanım
-                    keywords: ['amacı dışında', 'görsel odası', '1. derece dinamik', 'kanalın amacı'],
-                    repeats: {
-                        1: { duration: 15, type: 'mute' }, 2: { duration: 30, type: 'mute' }, 3: { duration: 60, type: 'mute' },
-                        4: { duration: 120, type: 'mute' }, 5: { duration: 240, type: 'mute' }, 6: { duration: 480, type: 'mute' },
-                        7: { duration: 960, type: 'mute' }, 8: { duration: 1920, type: 'mute' }, 9: { type: 'ban', notes: 'Kısıtlama' }
-                    }
-                },
-                {
-                    degree: 2, // Markaya zarar
-                    keywords: ['markasına zarar', 'adalances zarar', '2. derece dinamik', 'markaya', 'marka'],
-                    repeats: {
-                        1: { duration: 1440, type: 'mute' }, // 24 Saat
-                        2: { duration: 2880, type: 'mute' }, // 48 Saat
-                        3: { duration: 5760, type: 'mute' }, // 96 Saat
-                        4: { type: 'ban', notes: 'Kısıtlama' }
-                    }
-                },
-                {
-                    degree: 3, // Yanlış/yanıltıcı bilgi
-                    keywords: ['yanlış bilgi', 'yanıltıcı bilgi', '3. derece dinamik', 'yanlış'],
-                    repeats: {
-                        1: { duration: 360, type: 'mute' },  // 6 Saat
-                        2: { duration: 720, type: 'mute' },  // 12 Saat
-                        3: { duration: 1440, type: 'mute' }, // 24 Saat
-                        4: { type: 'ban', notes: 'Kısıtlama' }
-                    }
-                },
-                {
-                    degree: 4, // Polemik (dini/milli/ırki/siyasi)
-                    keywords: ['polemik', 'siyasi', 'ırki', '4. derece dinamik', 'ırki', 'politika', 'siyaset'],
-                    repeats: {
-                        1: { duration: 360, type: 'mute' },  // 6 Saat
-                        2: { duration: 720, type: 'mute' },  // 12 Saat
-                        3: { duration: 1440, type: 'mute' }, // 24 Saat
-                        4: { type: 'ban', notes: 'Kısıtlama' }
-                    }
-                },
-                {
-                    degree: 5, // Sohbet bütünlüğü/Flood/Embed
-                    keywords: ['flood', 'latin alfabesi dışı', 'embed', '5. derece dinamik', 'bütünlüğü', 'harf uzatma', 'capstalk', 'spam', 'sohbet bütünlüğü', 'sohbetin bütünlüğü', 'bütünlüğünü bozacak'],
-                    repeats: {
-                        1: { duration: 15, type: 'mute' }, 2: { duration: 30, type: 'mute' }, 3: { duration: 60, type: 'mute' },
-                        4: { duration: 120, type: 'mute' }, 5: { duration: 240, type: 'mute' }, 6: { duration: 480, type: 'mute' },
-                        7: { duration: 960, type: 'mute' }, 8: { duration: 1920, type: 'mute' }, 9: { type: 'ban', notes: 'Kısıtlama' }
-                    }
-                },
-                {
-                    degree: 6, // Kampanya başlatmak
-                    keywords: ['kampanya', '6. derece dinamik', 'kampanya başlatmak'],
-                    repeats: {
-                        1: { duration: 360, type: 'mute' },  // 6 Saat
-                        2: { duration: 720, type: 'mute' },  // 12 Saat
-                        3: { duration: 1440, type: 'mute' }, // 24 Saat
-                        4: { type: 'ban', notes: 'Kısıtlama' }
-                    }
-                },
-                {
-                    degree: 7, // Yönetime etiket
-                    keywords: ['yönetime etiket', 'admin etiket', '7. derece dinamik', 'yetkiliye etiket', 'etiketleme'],
-                    repeats: {
-                        1: { duration: 180, type: 'mute' }, // 3 Saat
-                        2: { duration: 360, type: 'mute' }, // 6 Saat
-                        3: { duration: 720, type: 'mute' }, // 12 Saat
-                        4: { type: 'ban', notes: 'Kısıtlama' }
-                    }
-                }
-            ]
-        },
-        'Reklam': {
-            keywords: ['reklam', 'davet linki', 'discord.gg', 'youtube.com', 'üye çekme', 'minecraft sunucusu'],
-            repeats: {
-                1: { duration: 1440, type: 'mute' }, // 24 Saat / 1 Gün
-                2: { type: 'ban', notes: 'Kısıtlama' }
-            }
-        },
-        'Destek Talebi': {
-            keywords: ['destek talebi', 'bilet', 'ticket', 'ticket troll', 'tekrarlı bilet'],
-            degrees: [
-                {
-                    degree: 1, // Devamlı bilet açımı
-                    keywords: ['tekrarlı bilet', 'aynı konu', 'bilet açımı'],
-                    repeats: { 1: { duration: 60, type: 'mute' } } // 1 Saat
-                },
-                {
-                    degree: 2, // Uygunsuz üslup / troll
-                    keywords: ['uygunsuz üslup', 'üslup', 'troll', 'destek troll'],
-                    repeats: { 1: { duration: 1440, type: 'mute' } } // 24 Saat
-                }
-            ]
-        },
-        'Yönetim': {
-            keywords: ['yönetim kararı', 'yönetim onaylı', 'üst yönetim', 'admin kararı'],
-            type: 'approved',
-            notes: 'Yönetim onayı ile verilmiş özel ceza. Otomatik doğrulanmış sayılır.'
-        },
-        'Discord ToS': {
-            type: 'ban',
-            keywords: ['tos', 'discord terms', 'kural dışı', '13 yaş', 'terör', '3. parti'],
-            notes: 'Süresiz Kısıtlama'
+export function getRuleDetails(reasonRaw) {
+    const reason = normalizeTurkishText(reasonRaw);
+    const match = (kwList) => kwList.some((k) => reason.includes(normalizeTurkishText(k)));
+
+    // 1. Yönetim kararı
+    if (match(['yönetim kararı', 'yönetim onaylı', 'üst yönetim', 'admin kararı'])) {
+        return { category: 'Yönetim', degree: null, allowedMinutes: [] };
+    }
+
+    // 2. Discord ToS
+    if (match(['tos', 'discord terms', 'kural dışı', '13 yaş', 'terör', '3. parti', 'doxx', 'nsfw'])) {
+        return { category: 'Discord ToS', degree: null, allowedMinutes: [0] };
+    }
+
+    // 3. Dini / Milli Değerler
+    if (['dini', 'milli', 'kutsal', 'atatürk', 'kutsala', 'allah', 'peygamber', 'bayrak'].some((k) => {
+        const normK = normalizeTurkishText(k);
+        if (normK === 'din' && (reason.includes('dinamik') || reason.includes('dinamig') || reason.includes('dinamiğ') || reason.includes('dinamik'))) {
+            return false;
+        }
+        return reason.includes(normK);
+    })) {
+        return { category: 'Dini/Milli Değerler', degree: null, allowedMinutes: [10080, 0] };
+    }
+
+    // 4. Reklam
+    if (match(['reklam', 'davet linki', 'discord.gg', 'üye çekme'])) {
+        return { category: 'Reklam', degree: null, allowedMinutes: [1440, 0] };
+    }
+
+    // 5. Destek Talebi
+    if (match(['destek talebi', 'bilet', 'ticket'])) {
+        if (match(['üslup', 'uygunsuz', 'troll'])) {
+            return { category: 'Destek Talebi', degree: 2, allowedMinutes: [1440, 0] };
+        }
+        if (match(['tekrarlı', 'aynı konu', 'bilet açımı'])) {
+            return { category: 'Destek Talebi', degree: 1, allowedMinutes: [60, 0] };
+        }
+        return { category: 'Destek Talebi', degree: null, allowedMinutes: [60, 1440, 0] };
+    }
+
+    // 6. Yetkililere Saygısızlık
+    if (match(['yetkili', 'adal', 'doğukan', 'admin', 'mod', 'ekip', 'ismini kötüleme', 'aşağılama', 'iftira'])) {
+        return { category: 'Yetkililere Saygısızlık', degree: null, allowedMinutes: [720, 1440, 2880, 0] };
+    }
+
+    // 7. Oyunculara Saygısızlık
+    if (match(['oyuncu', 'şahsa', 'kişiye', 'üyeye', 'saygısızlık', 'hakaret', 'aptal', 'mal', 'salak', 'beyin yok', 'geri zekâlı', 'aile', 'ailevi', 'anne', 'baba', 'ananı', 'anneniz', 'orospu', 'troll', 'toxic', 'toksik', 'rahatsız', 'kitle', 'topluluk', 'herkes'])) {
+        if (match(['aile', 'ailevi', 'anne', 'baba', 'ananı', 'anneniz', 'orospu'])) {
+            return { category: 'Oyunculara Saygısızlık', degree: 2, allowedMinutes: [360, 720, 1440, 0] };
+        }
+        if (match(['troll', 'toxic', 'toksik', 'rahatsız'])) {
+            return { category: 'Oyunculara Saygısızlık', degree: 3, allowedMinutes: [360, 720, 1440, 0] };
+        }
+        if (match(['kitle', 'topluluk', 'herkes'])) {
+            return { category: 'Oyunculara Saygısızlık', degree: 4, allowedMinutes: [720, 1440, 2880, 0] };
+        }
+        return { category: 'Oyunculara Saygısızlık', degree: 1, allowedMinutes: [180, 360, 720, 0] };
+    }
+
+    // 8. Küfür / Hakaret
+    if (match(['cinsellik', 'cinsel', 'fantezi', 'sex', 'nsfw', 'sikerim', 'götünü', 'amını', 'şişe'])) {
+        return { category: 'Küfür/Hakaret', degree: 2, allowedMinutes: [720, 1440, 2880, 0] };
+    }
+    if (match(['küfür', 'argo', 'uygunsuz', 'kelime', 'mesaj', 'içerik', 'amk', 'amınakoyum', 'hassiktir', 'vay amk'])) {
+        return { category: 'Küfür/Hakaret', degree: 1, allowedMinutes: [15, 30, 60, 120, 240, 480, 960, 1920, 0] };
+    }
+
+    // 9. Sunucu Dinamiği
+    if (match(['sunucu dinamiği', 'dinamik', 'sunucu düzeni', 'kanalın amacı', 'ekran', 'flood', 'spam', 'polemik', 'bütünlüğünü boz', 'harf uzatma', 'sohbet bütünlüğü', 'sohbetin bütünlüğü', 'sohbet boz', 'bütünlük', 'kanal dışı', 'amacı dışında', 'protesto', 'yönetimistifa', 'istifa', 'etiket', 'etiketleme', 'kampanya', 'yalan', 'yanlış bilgi', 'yanıltıcı', 'marka', 'zarar'])) {
+        if (match(['zarar', 'itibar', 'marka'])) {
+            return { category: 'Sunucu Dinamiği', degree: 2, allowedMinutes: [1440, 2880, 5760, 0] };
+        }
+        if (match(['yalan', 'yanlış bilgi', 'yanıltıcı', 'kapanacak'])) {
+            return { category: 'Sunucu Dinamiği', degree: 3, allowedMinutes: [360, 720, 1440, 0] };
+        }
+        if (match(['polemik', 'siyasi', 'politika', 'siyaset'])) {
+            return { category: 'Sunucu Dinamiği', degree: 4, allowedMinutes: [360, 720, 1440, 0] };
+        }
+        if (match(['kampanya', 'protesto', 'istifa', 'yönetimistifa'])) {
+            return { category: 'Sunucu Dinamiği', degree: 6, allowedMinutes: [360, 720, 1440, 0] };
+        }
+        if (match(['etiket', 'etiketleme'])) {
+            return { category: 'Sunucu Dinamiği', degree: 7, allowedMinutes: [180, 360, 720, 0] };
+        }
+        if (match(['kanal dışı', 'amacı dışında', 'kanalın amacı', 'görsel odası'])) {
+            return { category: 'Sunucu Dinamiği', degree: 1, allowedMinutes: [15, 30, 60, 120, 180, 240, 360, 480, 720, 960, 1440, 1920, 2880, 5760, 0] };
+        }
+        if (match(['flood', 'spam', 'bütünlüğünü boz', 'harf uzatma', 'sohbet bütünlüğü', 'sohbetin bütünlüğü', 'sohbet boz', 'bütünlük', 'latin alfabesi dışı', 'embed'])) {
+            return { category: 'Sunucu Dinamiği', degree: 5, allowedMinutes: [15, 30, 60, 120, 180, 240, 360, 480, 720, 960, 1440, 1920, 2880, 5760, 0] };
+        }
+        // Generic fallback for Sunucu Dinamiği
+        return {
+            category: 'Sunucu Dinamiği',
+            degree: null,
+            allowedMinutes: [15, 30, 60, 120, 180, 240, 360, 480, 720, 960, 1440, 1920, 2880, 5760, 0],
+        };
+    }
+
+    return { category: null, degree: null, allowedMinutes: [] };
+}
+
+const INVALID_KEYWORDS = [
+    'hatalı ceza', 'ceza değiştirildi', 'yanlış ceza', 'iptal edildi', 'ceza iptali',
+];
+
+export function isDurationAllowed(mins, allowed) {
+    if (allowed.includes(mins)) return true;
+    for (const a of allowed) {
+        if (a > 0 && Math.abs(mins - a) <= 5) {
+            return true;
         }
     }
-};
+    return false;
+}
 
-// CUK Engine
+export function validateCase(reasonRaw, durationMinutes) {
+    const reason = normalizeTurkishText(reasonRaw);
+    const mins = durationMinutes || 0;
+
+    if (!reason) {
+        return { valid: false, score: 0, message: 'Ceza sebebi girilmemiş.', categoryMatched: 'Yok' };
+    }
+
+    for (const kw of INVALID_KEYWORDS) {
+        if (reason.includes(normalizeTurkishText(kw))) {
+            return { valid: false, score: 0, message: `İptal kelimesi içeriyor: ${kw}`, categoryMatched: 'İptal' };
+        }
+    }
+
+    const rule = getRuleDetails(reasonRaw);
+
+    if (!rule.category) {
+        const placeholders = new Set([
+            'ada', 'de', 'denem', 'deneme', 'test', 'tst', 'placeholder', 'bos', 'boslar', 'yok',
+            'abc', 'denemeler', 'asdasd', 'qwerty', 'denemee', 'deneme123', '/', '...', '.', '..', '-', '_'
+        ]);
+        const isPlaceholder = placeholders.has(reason) || 
+            /^[^a-z0-9]*$/i.test(reason) || 
+            (reason.length <= 3);
+
+        if (isPlaceholder) {
+            return { valid: false, score: 0, message: 'Geçersiz veya placeholder ceza sebebi. CUK kitapçığına uygun açıklama girilmelidir.', categoryMatched: 'Diğer' };
+        }
+
+        return { valid: false, score: 0, message: 'Tanımlanamayan ceza kategorisi.', categoryMatched: 'Diğer' };
+    }
+
+    if (rule.category === 'Yönetim') {
+        return { valid: true, score: 1.0, message: 'Yönetim inisiyatifi, kural onaylandı.', categoryMatched: 'Yönetim' };
+    }
+
+    if (isDurationAllowed(mins, rule.allowedMinutes)) {
+        return { valid: true, score: 1.0, message: 'Süre ve tür kurallarla uyumlu.', categoryMatched: rule.category };
+    }
+
+    const formatMins = (m) => {
+        if (m === 0) return 'Süresiz';
+        if (m < 60) return `${m} dk`;
+        if (m % 60 === 0) return `${m / 60} saat`;
+        return `${m} dk`;
+    };
+    const expectedList = rule.allowedMinutes.map(formatMins).join(', ');
+    const givenLabel = mins === 0 ? 'Süresiz' : formatMins(mins);
+    return {
+        valid: false,
+        score: 0,
+        message: `Geçersiz süre. Verilen: ${givenLabel}. İzin verilen süreler: ${expectedList}`,
+        categoryMatched: rule.category
+    };
+}
+
 export const CUKEngine = {
     version: CUK_VERSION,
     rules: { ...CUK_RULES },
 
-    /**
-     * Güncel kuralları yükle (Storage'dan gelir)
-     */
     setRules(dynamicRules) {
         if (!dynamicRules) return;
-
-        // Deep merge logic simplified for categories
         if (dynamicRules.categories) {
             this.rules.categories = { ...CUK_RULES.categories, ...dynamicRules.categories };
         }
-
         if (dynamicRules.autoInvalid) {
             this.rules.autoInvalid = { ...CUK_RULES.autoInvalid, ...dynamicRules.autoInvalid };
         }
     },
 
-    /**
-     * Sebebi normalize et (Benzerleri birleştir)
-     * @param {string} reason 
-     * @returns {string}
-     */
     normalizeReason(reason) {
         if (!reason) return 'Belirtilmemiş';
-
-        // Temizle ve küçük harfe çevir
         let normalized = reason.toLowerCase().trim();
-
-        // Derece ve tekrar bilgilerini temizle (Grup yapmak için)
         normalized = normalized.replace(/\d+\.\s*derece/i, '').replace(/d\d+/i, '');
         normalized = normalized.replace(/\d+\.\s*tekrar/i, '').replace(/t\d+/i, '').replace(/x\d+/i, '');
         normalized = normalized.replace(/\d+x/i, '');
-
-        // Fazla boşlukları temizle
         normalized = normalized.replace(/\s+/g, ' ').trim();
 
-        // İlk harfi büyüt (Okunabilirlik için)
         if (normalized.length > 0) {
             normalized = normalized.charAt(0).toUpperCase() + normalized.slice(1);
         } else {
             normalized = 'Diğer';
         }
-
         return normalized;
     },
 
-    /**
-     * Ceza sebebinden kategori çıkar
-     * @param {string} reason - Ceza sebebi
-     * @returns {{category: string|null, degree: number|null, repeat: number|null}}
-     */
     parseReason(reason) {
-        if (!reason) return { category: null, degree: null, repeat: null };
-
-        const lowerReason = normalizeMatchText(reason);
-
-        // Derece tespiti
-        let degree = null;
-        const degreePatterns = [
-            /(\d+)\.\s*derece/i,
-            /derece\s*[:\-]?\s*(\d+)/i,
-            /d(\d+)/i,
-            /(\d+)x/i
-        ];
-        for (const pattern of degreePatterns) {
-            const match = reason.match(pattern);
-            if (match) {
-                degree = parseInt(match[1]);
-                break;
-            }
-        }
-
-        // Tekrar tespiti
-        let repeat = null;
-        const repeatPatterns = [
-            /(\d+)\.\s*tekrar/i,
-            /tekrar\s*[:\-]?\s*(\d+)/i,
-            /t(\d+)/i,
-            /x(\d+)/i
-        ];
-        for (const pattern of repeatPatterns) {
-            const match = reason.match(pattern);
-            if (match) {
-                repeat = parseInt(match[1]);
-                break;
-            }
-        }
-
-        // Kategori tespiti (Daha akıllı eşleşme)
-        let category = null;
-
-        // Priority to 'Yönetim'
-        const mgmtKeywords = this.rules.categories['Yönetim']?.keywords || ['yönetim', 'onaylı', 'onayli', 'onay'];
-        if (mgmtKeywords.some((kw) => matchesKeyword(lowerReason, kw))) {
-            return { category: 'Yönetim', degree: null, repeat: null };
-        }
-
-        // Akıllı eşleşmeler (Zorunlu Kurallar)
-        const sunucuDinamigiD5Keywords = [
-            'sohbet bütünlüğünü bozacak davranış',
-            'sohbetin bütünlüğünü bozacak davranış',
-            'sohbet bütünlüğü',
-            'bütünlüğünü bozacak',
-            'spam',
-            'flood',
-            'harf uzatma',
-            'latin alfabesi dışı',
-            'embed'
-        ];
-        if (sunucuDinamigiD5Keywords.some((kw) => matchesKeyword(lowerReason, kw))) {
-            return { category: 'Sunucu Dinamiği', degree: 5, repeat: repeat };
-        }
-
-        if (
-            matchesKeyword(lowerReason, 'kutsal') ||
-            matchesKeyword(lowerReason, 'dini') ||
-            matchesKeyword(lowerReason, 'milli') ||
-            matchesKeyword(lowerReason, 'atatürk') ||
-            matchesKeyword(lowerReason, 'dinlere')
-        ) {
-            return { category: 'Dini/Milli Değerler', degree: null, repeat: repeat };
-        }
-
-        if (
-            matchesKeyword(lowerReason, 'markasına zarar') ||
-            matchesKeyword(lowerReason, 'markaya zarar') ||
-            matchesKeyword(lowerReason, 'lutheus markası') ||
-            matchesKeyword(lowerReason, 'sunucuya/lutheus markasına')
-        ) {
-            return { category: 'Sunucu Dinamiği', degree: 2, repeat: repeat };
-        }
-
-        const scores = {};
-        for (const [cat, rule] of Object.entries(this.rules.categories)) {
-            let score = scoreKeywordMatches(lowerReason, rule.keywords || []);
-
-            if (rule.degrees) {
-                rule.degrees.forEach((d) => {
-                    const degreeScore = scoreKeywordMatches(lowerReason, d.keywords || []);
-                    if (degreeScore > 0) {
-                        score += degreeScore * 1.5;
-                    }
-                });
-            }
-
-            if (score > 0) scores[cat] = score;
-        }
-
-        const bestCategory = pickBestScoredCategory(scores);
-        if (bestCategory) {
-            category = bestCategory;
-        }
-
-        return { category, degree, repeat };
+        const rule = getRuleDetails(reason);
+        return {
+            category: rule.category,
+            degree: rule.degree,
+            repeat: null
+        };
     },
 
-    /**
-     * Cezayı doğrula
-     * @param {Object} caseData - Case verisi
-     * @returns {{status: string, reason: string, details: Object}}
-     */
     validate(caseData) {
-        const { reason: rawReason, duration, type, reviewStatus, note, evidenceText, description, proofText, raw } = caseData;
+        const { reason: rawReason, duration, type, reviewStatus, note } = caseData;
         const reason = typeof rawReason === 'object' && rawReason
             ? String(rawReason.raw || rawReason.normalized || '').trim()
             : String(rawReason || '').trim();
-        const repeatIndex = caseData.repeatIndex !== undefined ? Number(caseData.repeatIndex) : null;
+        const durationMinutes = parseDuration(duration);
 
-        // 0. Manuel Override Kontrolü
         if (reviewStatus && (reviewStatus === PenaltyStatus.VALID || reviewStatus === PenaltyStatus.INVALID)) {
             return {
                 status: reviewStatus,
@@ -487,235 +543,31 @@ export const CUKEngine = {
             };
         }
 
-        // 1. Boş sebep kontrolü
-        if (!reason || reason.trim() === '') {
-            return {
-                status: PenaltyStatus.INVALID,
-                reason: 'Ceza sebebi boş',
-                details: { rule: 'autoInvalid.emptyReason' }
-            };
+        const result = validateCase(reason, durationMinutes);
+
+        let status = PenaltyStatus.PENDING;
+        if (result.categoryMatched === 'Yok') {
+            status = PenaltyStatus.INVALID;
+        } else if (result.categoryMatched === 'Diğer') {
+            status = result.valid ? PenaltyStatus.VALID : PenaltyStatus.INVALID;
+        } else {
+            status = result.valid ? PenaltyStatus.VALID : PenaltyStatus.INVALID;
         }
 
-        // 2. Otomatik hatalı anahtar kelime kontrolü
-        const lowerReason = normalizeMatchText(reason);
-        for (const keyword of this.rules.autoInvalid.keywords) {
-            if (matchesKeyword(lowerReason, keyword)) {
-                return {
-                    status: PenaltyStatus.INVALID,
-                    reason: `Otomatik hatalı: "${keyword}" ifadesi tespit edildi`,
-                    details: { rule: 'autoInvalid.keywords', keyword }
-                };
-            }
-        }
-
-        // 3. Kategori bazlı kontrol
-        const parsed = this.parseReason(reason);
-
-        // Kategori bulunamadıysa manuel inceleme
-        if (!parsed.category) {
-            const norm = reason.toLowerCase().trim();
-            const placeholders = new Set([
-                'ada', 'de', 'denem', 'deneme', 'test', 'tst', 'placeholder', 'bos', 'boslar', 'yok',
-                'abc', 'denemeler', 'asdasd', 'qwerty', 'denemee', 'deneme123', '/', '...', '.', '..', '-', '_'
-            ]);
-            const isPlaceholder = placeholders.has(norm) || 
-              /^[^a-z0-9ğışçöü]*$/i.test(norm) || 
-              (norm.length <= 3);
-
-            if (isPlaceholder) {
-                return {
-                    status: PenaltyStatus.INVALID,
-                    reason: 'Geçersiz veya placeholder ceza sebebi. CUK kitapçığına uygun açıklama girilmelidir.',
-                    details: { parsed }
-                };
-            }
-
-            return {
-                status: PenaltyStatus.PENDING,
-                reason: 'Kategori tespit edilemedi',
-                details: { parsed }
-            };
-        }
-
-        const rule = this.rules.categories[parsed.category];
-        if (!rule) {
-            return { status: PenaltyStatus.PENDING, reason: 'Kural tanımı yok' };
-        }
-
-        // 3.1 Yönetim Kararı Kontrolü
-        if (rule.type === 'approved' || parsed.category === 'Yönetim') {
-            return {
-                status: PenaltyStatus.VALID,
-                reason: 'Yönetim onaylı işlem',
-                details: { rule: 'managementApproval', category: 'Yönetim' }
-            };
-        }
-
-        // 3.2 Akıllı Alt Derece Eşleşmesi (Kanıt, açıklama, not, vb. alanlardan alt ihlal/derece tespiti)
-        let matchedDegree = parsed.degree;
-        if (matchedDegree === null && rule.degrees) {
-            const contextText = [
-                evidenceText,
-                description,
-                note,
-                proofText,
-                typeof raw === 'string' ? raw : (raw && JSON.stringify(raw))
-            ].filter(Boolean).join(' ');
-
-            const normalizedContext = normalizeMatchText(contextText);
-            for (const d of rule.degrees) {
-                if (d.keywords && d.keywords.some((kw) => matchesKeyword(normalizedContext, kw))) {
-                    matchedDegree = d.degree;
-                    break;
-                }
-            }
-        }
-
-        // 4. Süre ve Tür Kontrolü (Esnek Eşleşme)
-        const durationMinutes = parseDuration(duration);
-        const givenType = type ? type.toLowerCase() : 'unknown';
-        const isPerma = durationMinutes === Infinity || durationMinutes > 50000000;
-
-        // Beklenen olası cezalar listesi
-        const possiblePenalties = [];
-
-        // Hiyerarşiyi tarayarak olası süreleri/türleri topla
-        const collectPossibilities = (r, specificDegree = null) => {
-            const currentDegree = specificDegree !== null ? specificDegree : (r.degree || null);
-            if (r.duration) possiblePenalties.push({ duration: r.duration, type: r.type || 'mute', degree: currentDegree });
-            if (r.type === 'ban') possiblePenalties.push({ type: 'ban', degree: currentDegree });
-            if (r.type === 'warn') possiblePenalties.push({ type: 'warn', degree: currentDegree });
-
-            if (r.repeats) {
-                if (repeatIndex && repeatIndex > 0) {
-                    const keys = Object.keys(r.repeats).map(Number).sort((a, b) => a - b);
-                    if (keys.length > 0) {
-                        const targetKey = keys.includes(repeatIndex) ? repeatIndex : keys[keys.length - 1];
-                        const rep = r.repeats[targetKey];
-                        if (rep) {
-                            if (rep.duration) possiblePenalties.push({ duration: rep.duration, type: rep.type || 'mute', degree: currentDegree });
-                            if (rep.type === 'ban' || (rep.notes && (rep.notes.toLowerCase().includes('ban') || rep.notes.toLowerCase().includes('kısıtlama')))) {
-                                possiblePenalties.push({ type: 'ban', degree: currentDegree });
-                            }
-                        }
-                    }
-                } else {
-                    Object.values(r.repeats).forEach(rep => {
-                        if (rep.duration) possiblePenalties.push({ duration: rep.duration, type: rep.type || 'mute', degree: currentDegree });
-                        if (rep.type === 'ban' || (rep.notes && (rep.notes.toLowerCase().includes('ban') || rep.notes.toLowerCase().includes('kısıtlama')))) {
-                            possiblePenalties.push({ type: 'ban', degree: currentDegree });
-                        }
-                    });
-                }
-            }
-            if (r.degrees) {
-                if (specificDegree !== null) {
-                    const d = r.degrees.find(x => x.degree === specificDegree);
-                    if (d) collectPossibilities(d, specificDegree);
-                } else {
-                    r.degrees.forEach(d => collectPossibilities(d, d.degree));
-                }
-            }
-            if (r.flexible) {
-                r.flexible.forEach(f => possiblePenalties.push({ ...f, degree: currentDegree }));
-            }
-            if (r.type === 'mute' && !r.duration && !r.repeats && !r.degrees) {
-                possiblePenalties.push({ type: 'mute', degree: currentDegree });
+        return {
+            status: status,
+            reason: result.message,
+            details: {
+                category: result.categoryMatched,
+                givenDuration: durationMinutes
             }
         };
-
-        collectPossibilities(rule, matchedDegree);
-
-        let match = false;
-        let matchedPenalty = null;
-
-        // 1. Ban/Perma kontrolü
-        if (givenType.includes('ban') || isPerma) {
-            matchedPenalty = possiblePenalties.find(p => p.type === 'ban');
-            if (matchedPenalty) match = true;
-        }
-
-        // 2. Süreli ceza kontrolü
-        if (!match && (durationMinutes || givenType !== 'unknown')) {
-            matchedPenalty = possiblePenalties.find(p => {
-                if (p.type && givenType !== 'unknown' && !givenType.includes(p.type)) return false;
-
-                if (p.duration) {
-                    if (!durationMinutes) return false;
-                    const diff = Math.abs(p.duration - durationMinutes);
-                    // 10% tolerance or up to 60 minutes difference
-                    return diff <= 60 || (diff / p.duration) <= 0.10;
-                }
-
-                if (p.type === 'mute' && durationMinutes) return false;
-                return p.type && givenType.includes(p.type);
-            });
-            if (matchedPenalty) match = true;
-        }
-
-        // 3.3 Dereceye ve Kategori Kuralına Göre Sonuç Oluşturma
-        const multiDegreeCategories = [
-            'Oyunculara Saygısızlık',
-            'Küfür/Hakaret/Uygunsuz Öge İçerikli Mesaj',
-            'Sunucu Dinamiğini Sarsmak',
-            'Destek Talebi'
-        ];
-
-        if (match) {
-            return {
-                status: PenaltyStatus.VALID,
-                reason: matchedDegree !== null ? 'Kategori, alt ihlal ve süre CUK ile uyumlu' : 'Süre ve tür kurallarla uyumlu',
-                details: {
-                    category: parsed.category,
-                    degree: matchedDegree || (matchedPenalty ? matchedPenalty.degree : null),
-                    repeat: repeatIndex
-                }
-            };
-        } else {
-            // Detaylı hata mesajı
-            const expectedList = [...new Set(possiblePenalties.map(p => {
-                if (p.type === 'ban') return 'Ban';
-                if (p.duration) return formatDuration(p.duration);
-                return p.type || 'Bilinmiyor';
-            }))];
-
-            const expected = expectedList.join(' veya ');
-            const givenLabel = isPerma ? 'Süresiz' : formatDuration(durationMinutes);
-
-            if (multiDegreeCategories.includes(parsed.category) && matchedDegree === null) {
-                return {
-                    status: PenaltyStatus.INVALID,
-                    reason: "Verilen süre bu kategori altındaki hiçbir CUK süresiyle uyumlu değil",
-                    details: {
-                        category: parsed.category,
-                        degree: null,
-                        given: {
-                            type: type || 'mute',
-                            durationMinutes: durationMinutes
-                        }
-                    }
-                };
-            }
-
-            return {
-                status: PenaltyStatus.INVALID,
-                reason: `Uyumsuz ceza: ${givenLabel} verilmiş. Beklenen: ${expected}`,
-                details: { given: durationMinutes, expected: possiblePenalties }
-            };
-        }
     },
 
-    /**
-     * Performans skoru hesapla
-     * Skor = (Doğru × 2) – (Hatalı × 3) – (Belirsiz × 1)
-     * @param {Object} counts - {valid, invalid, pending}
-     * @returns {{score: number, status: string, color: string}}
-     */
     calculatePerformanceScore(counts) {
         const { valid = 0, invalid = 0, pending = 0 } = counts;
         const score = (valid * 2) - (invalid * 3) - (pending * 1);
 
-        // Status belirleme
         let status, color;
         const total = valid + invalid + pending;
         const validPercent = total > 0 ? (valid / total) * 100 : 0;
@@ -734,11 +586,6 @@ export const CUKEngine = {
         return { score, status, color, validPercent: Math.round(validPercent) };
     },
 
-    /**
-     * Hızlı kontrol - Tek tık analiz
-     * @param {Object} caseData 
-     * @returns {Object}
-     */
     quickCheck(caseData) {
         const result = this.validate(caseData);
         return {
@@ -750,9 +597,6 @@ export const CUKEngine = {
         };
     },
 
-    /**
-     * Ceza için CUK kapsamındaki geçerli süreleri listeler (dashboard / extension).
-     */
     getValidDurationsForCase(caseData = {}) {
         const reasonRaw = caseData.reason ?? caseData.reason_raw ?? '';
         const reason = typeof reasonRaw === 'object' && reasonRaw
@@ -762,11 +606,11 @@ export const CUKEngine = {
         const durationMinutes = caseData.durationMinutes !== undefined
             ? caseData.durationMinutes
             : parseDuration(duration);
-        const repeatIndex = caseData.repeatIndex !== undefined ? Number(caseData.repeatIndex) : null;
-        const type = (caseData.type || 'unknown').toLowerCase();
 
-        const parsed = this.parseReason(reason);
-        if (!parsed.category) {
+        const rule = getRuleDetails(reason);
+        const result = validateCase(reason, durationMinutes);
+
+        if (!rule.category) {
             return {
                 category: null,
                 degree: null,
@@ -777,29 +621,13 @@ export const CUKEngine = {
                 isPermanentAllowed: false,
                 currentMinutes: durationMinutes,
                 verdict: 'pending',
-                message: 'Kategori tespit edilemedi'
+                message: result.message
             };
         }
 
-        const rule = this.rules.categories[parsed.category];
-        if (!rule) {
+        if (rule.category === 'Yönetim') {
             return {
-                category: parsed.category,
-                degree: parsed.degree,
-                allowedMinutes: [],
-                allowedLabels: [],
-                minMinutes: null,
-                maxMinutes: null,
-                isPermanentAllowed: false,
-                currentMinutes: durationMinutes,
-                verdict: 'pending',
-                message: 'Kural tanımı yok'
-            };
-        }
-
-        if (rule.type === 'approved' || parsed.category === 'Yönetim') {
-            return {
-                category: parsed.category,
+                category: rule.category,
                 degree: null,
                 allowedMinutes: [],
                 allowedLabels: ['Yönetim onayı — süre kısıtı yok'],
@@ -808,99 +636,33 @@ export const CUKEngine = {
                 isPermanentAllowed: true,
                 currentMinutes: durationMinutes,
                 verdict: 'valid',
-                message: 'Yönetim onaylı işlem'
+                message: result.message
             };
         }
 
-        const possiblePenalties = [];
-        const collectPossibilities = (r, specificDegree = null) => {
-            const currentDegree = specificDegree !== null ? specificDegree : (r.degree || null);
-            if (r.duration) {
-                possiblePenalties.push({ duration: r.duration, type: r.type || 'mute', degree: currentDegree });
-            }
-            if (r.type === 'ban') {
-                possiblePenalties.push({ type: 'ban', degree: currentDegree });
-            }
-            if (r.repeats) {
-                const keys = repeatIndex && repeatIndex > 0
-                    ? (Object.keys(r.repeats).map(Number).includes(repeatIndex)
-                        ? [repeatIndex]
-                        : Object.keys(r.repeats).map(Number).sort((a, b) => a - b).slice(-1))
-                    : Object.keys(r.repeats).map(Number);
-                keys.forEach((key) => {
-                    const rep = r.repeats[key];
-                    if (!rep) return;
-                    if (rep.duration) {
-                        possiblePenalties.push({ duration: rep.duration, type: rep.type || 'mute', degree: currentDegree });
-                    }
-                    if (rep.type === 'ban' || (rep.notes && /ban|kısıtlama/i.test(rep.notes))) {
-                        possiblePenalties.push({ type: 'ban', degree: currentDegree });
-                    }
-                });
-            }
-            if (r.degrees) {
-                if (specificDegree !== null) {
-                    const d = r.degrees.find((x) => x.degree === specificDegree);
-                    if (d) collectPossibilities(d, specificDegree);
-                } else {
-                    r.degrees.forEach((d) => collectPossibilities(d, d.degree));
-                }
-            }
-        };
-
-        let matchedDegree = parsed.degree;
-        if (matchedDegree === null && rule.degrees) {
-            const contextText = normalizeMatchText(reason);
-            for (const d of rule.degrees) {
-                if (d.keywords && d.keywords.some((kw) => matchesKeyword(contextText, kw))) {
-                    matchedDegree = d.degree;
-                    break;
-                }
-            }
-        }
-
-        collectPossibilities(rule, matchedDegree);
-
-        const durationSet = new Set();
-        let isPermanentAllowed = false;
-        for (const p of possiblePenalties) {
-            if (p.type === 'ban') isPermanentAllowed = true;
-            if (p.duration != null) durationSet.add(p.duration);
-        }
-        if (possiblePenalties.some((p) => p.duration === 0) || isPermanentAllowed) {
-            durationSet.add(0);
-        }
-
-        const allowedMinutes = Array.from(durationSet).filter((m) => m > 0).sort((a, b) => a - b);
+        const allowedMinutes = rule.allowedMinutes.filter((m) => m > 0);
+        const isPermanentAllowed = rule.allowedMinutes.includes(0);
         const allowedLabels = [
             ...allowedMinutes.map((m) => formatDuration(m)),
             ...(isPermanentAllowed ? ['Süresiz / Ban'] : [])
         ];
 
-        const validation = this.validate({
-            reason,
-            duration,
-            type,
-            repeatIndex
-        });
-
         let verdict = 'pending';
-        if (validation.status === PenaltyStatus.VALID) verdict = 'valid';
-        else if (validation.status === PenaltyStatus.INVALID) verdict = 'invalid';
-        else verdict = 'manual';
+        if (result.valid) verdict = 'valid';
+        else verdict = 'invalid';
 
-        const finite = allowedMinutes.filter((m) => m > 0 && m < Infinity);
+        const finite = allowedMinutes.filter((m) => m > 0);
         return {
-            category: parsed.category,
-            degree: matchedDegree,
-            allowedMinutes,
+            category: rule.category,
+            degree: rule.degree,
+            allowedMinutes: rule.allowedMinutes,
             allowedLabels,
             minMinutes: finite.length ? Math.min(...finite) : null,
             maxMinutes: finite.length ? Math.max(...finite) : null,
             isPermanentAllowed,
             currentMinutes: durationMinutes,
             verdict,
-            message: validation.reason || validation.message || ''
+            message: result.message
         };
     }
 };
@@ -909,7 +671,6 @@ export function getValidDurationsForCase(caseData) {
     return CUKEngine.getValidDurationsForCase(caseData);
 }
 
-// Export for global access
 if (typeof window !== 'undefined') {
     window.CUKEngine = CUKEngine;
     window.PenaltyStatus = PenaltyStatus;

@@ -3,7 +3,6 @@
 
 import { SlashCommandBuilder, ChatInputCommandInteraction, EmbedBuilder } from 'discord.js';
 import { supabase, guildId as envGuildId } from '../botConfig.js';
-import { runDbHealthCheck, formatDiagnosticsBlock } from '../lib/dbDiagnostics.js';
 
 function classifyReason(reason: string): string {
     const raw = String(reason || '').toLowerCase();
@@ -52,13 +51,8 @@ export const RaporCommand = {
             }
 
             if (!cases || cases.length === 0) {
-                const snapshot = await runDbHealthCheck(targetGuildId);
                 await interaction.editReply({
-                    content: [
-                        `ℹ️ **Veri Bulunamadı:** Guild \`${targetGuildId}\` altında taranmış ceza kaydı bulunamadı.`,
-                        '',
-                        formatDiagnosticsBlock(snapshot),
-                    ].join('\n'),
+                    content: 'ℹ️ **Veri Bulunamadı:** Veritabanında taranmış ceza kaydı bulunamadı.'
                 });
                 return;
             }

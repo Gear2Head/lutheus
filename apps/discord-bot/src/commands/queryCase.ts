@@ -3,6 +3,12 @@
 
 import { SlashCommandBuilder, ChatInputCommandInteraction, EmbedBuilder } from 'discord.js';
 import { supabase, guildId as envGuildId } from '../botConfig.js';
+import {
+    buildSapphireCaseUrl,
+    formatAuthorField,
+    formatCaseDuration,
+    formatCaseIdField,
+} from '../lib/caseEmbed.js';
 
 export const QueryCaseCommand = {
     data: new SlashCommandBuilder()
@@ -50,18 +56,33 @@ export const QueryCaseCommand = {
             const status = String(row.cuk_verdict || 'pending').toLowerCase();
             const color = status === 'valid' ? 0x2ed573 : status === 'invalid' ? 0xff4757 : 0xffa502;
             const statusEmoji = status === 'valid' ? '✅ DOĞRULANDI (VALID)' : status === 'invalid' ? '❌ HATALI (INVALID)' : '❓ İNCELENİYOR (PENDING)';
+            const cukMessage = row.cuk_analysis?.message;
+            const verdictDetail = status === 'invalid' && cukMessage
+                ? `**${statusEmoji}**\n${cukMessage}`
+                : `**${statusEmoji}**`;
+
+            let staffProfile: any = null;
+            if (row.author_discord_id) {
+                const { data } = await supabase
+                    .from('staff_profiles')
+                    .select('discord_id, username, in_game_name, display_name')
+                    .eq('discord_id', row.author_discord_id)
+                    .maybeSingle();
+                staffProfile = data;
+            }
 
             const embed = new EmbedBuilder()
                 .setTitle(`🔨 Ceza Sorgu Raporu - #${caseId}`)
-                .setURL(row.case_url || `https://dashboard.sapph.xyz/`)
+                .setURL(row.case_url || buildSapphireCaseUrl(row.guild_id, caseId))
                 .setColor(color)
                 .setDescription(`Sistem tarafından saptanan ceza detayları ve kural analizleri aşağıda listelenmiştir.`)
                 .addFields(
+                    { name: 'Case ID', value: formatCaseIdField(row), inline: false },
                     { name: '👤 Cezalı Kullanıcı', value: `**${row.punished_user_display_name || 'Bilinmiyor'}**\nID: \`${row.punished_user_discord_id || '-'}\``, inline: true },
-                    { name: '👮 Cezayı Atan Yetkili', value: `**${row.author_display_name || 'Bilinmiyor'}**\nID: \`${row.author_discord_id || '-'}\``, inline: true },
-                    { name: '⚡ Ceza Türü / Süre', value: `\`${String(row.type || 'unknown').toUpperCase()}\` / \`${row.duration_raw || (row.is_permanent ? 'Süresiz' : 'Geçici')}\``, inline: true },
+                    { name: '👮 Cezayı Atan Yetkili', value: formatAuthorField(row, staffProfile), inline: true },
+                    { name: '⚡ Ceza Türü / Süre', value: `\`${String(row.type || 'unknown').toUpperCase()}\` / \`${formatCaseDuration(row)}\``, inline: true },
                     { name: '📝 İlan Edilen Sebep', value: `\`\`\`\n${row.reason_raw || '-'}\n\`\`\`` },
-                    { name: '📊 SRE Değerlendirme Durumu', value: `**${statusEmoji}**` }
+                    { name: '📊 SRE Değerlendirme Durumu', value: verdictDetail }
                 );
 
             const legacyPayload = row.legacy_payload || {};

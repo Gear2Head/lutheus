@@ -24,6 +24,13 @@ import {
 } from './lib/groq.js';
 import { createServer } from 'node:http';
 import { supabase, botToken, logChannelId, guildId } from './botConfig.js';
+import {
+    formatAuthorField,
+    formatCaseDuration,
+    formatCaseIdField,
+    formatVerdictField,
+    type StaffProfileRow,
+} from './lib/caseEmbed.js';
 import { EmergencyLockdownCommand } from './commands/critical/EmergencyLockdown.js';
 import { QueryCaseCommand } from './commands/queryCase.js';
 import { OzetCommand } from './commands/ozet.js';
@@ -521,20 +528,33 @@ async function pollInvalidCasesAlerts() {
             return s.is_active_staff === true && seniorRanks.includes(rank);
         });
 
+        const authorIds = [...new Set(pendingAlerts.map(c => c.author_discord_id).filter(Boolean))];
+        const staffById = new Map<string, StaffProfileRow>();
+        if (authorIds.length > 0) {
+            const { data: authorProfiles } = await supabase
+                .from('staff_profiles')
+                .select('discord_id, username, in_game_name, display_name')
+                .in('discord_id', authorIds);
+            for (const profile of authorProfiles || []) {
+                staffById.set(profile.discord_id, profile);
+            }
+        }
+
         for (const row of pendingAlerts) {
             const caseId = row.case_id;
-            const durationText = row.duration_raw || (row.is_permanent ? 'Süresiz' : 'Geçici');
+            const staffProfile = row.author_discord_id ? staffById.get(row.author_discord_id) : undefined;
+            const durationText = formatCaseDuration(row);
             const activeText = row.is_open ? 'Aktif' : 'Pasif / Süresi Bitti';
-            const authorText = row.author_display_name ? `${row.author_display_name} (ID: ${row.author_discord_id || '-'})` : 'Bilinmiyor';
+            const authorText = formatAuthorField(row, staffProfile);
 
             const embed = new EmbedBuilder()
                 .setTitle(`🚨 Hatalı Ceza Bildirimi - #${caseId}`)
                 .setColor(0xff4757)
                 .addFields(
-                    { name: 'Case ID', value: `#${caseId}`, inline: true },
+                    { name: 'Case ID', value: formatCaseIdField(row), inline: false },
                     { name: 'Ceza Süresi', value: durationText, inline: true },
                     { name: 'Aktiflik Durumu', value: activeText, inline: true },
-                    { name: 'Doğruluk', value: '❌ Hatalı', inline: true },
+                    { name: 'Doğruluk', value: formatVerdictField(row), inline: false },
                     { name: 'Cezayı Uygulayan Yetkili', value: authorText, inline: false }
                 )
                 .setTimestamp();
@@ -1271,23 +1291,7 @@ async function handleDmMessage(message: any): Promise<void> {
     // Typing göstergesi
     await message.channel.sendTyping().catch(() => null);
 
-    // Kota tüket
-    let quotaResult: { remaining: number; limit: number };
-    try {
-        quotaResult = await consumeQuota(discordId, role);
-    } catch (err: any) {
-        if (err.message === 'AI_DISABLED_FOR_ROLE') {
-            await message.reply('❌ Rütbeniz AI sorgu iznine sahip değil.');
-            return;
-        }
-        if (err.message === 'AI_RATE_LIMIT_EXCEEDED') {
-            await message.reply(`⚠️ Günlük AI kotanız doldu. Kalan: **0/${quota.limit}**. Kota gece yarısı sıfırlanır.`);
-            return;
-        }
-        throw err;
-    }
-
-    // Groq API çağrısı
+    // Groq API çağrısı (Önce çağırıp başarılı olursa kota düşeceğiz)
     let analysis: Record<string, unknown>;
     try {
         analysis = await callGroq({
@@ -1295,8 +1299,26 @@ async function handleDmMessage(message: any): Promise<void> {
             imageUrl: imageUrl || undefined,
         });
     } catch (err: any) {
-        await message.reply(`❌ AI analizi başarısız oldu: \`${err.message}\`. Kota tüketilmedi sayılabilir, lütfen tekrar dene.`);
+        await message.reply(`❌ AI analizi başarısız oldu: \`${err.message}\`. Kota tüketilmedi, lütfen tekrar dene.`);
         return;
+    }
+
+    // Kota tüket (Sadece AI servis aktifse tüket)
+    let quotaResult = { remaining: quota.remaining, limit: quota.limit };
+    if (!analysis?.degraded) {
+        try {
+            quotaResult = await consumeQuota(discordId, role);
+        } catch (err: any) {
+            if (err.message === 'AI_DISABLED_FOR_ROLE') {
+                await message.reply('❌ Rütbeniz AI sorgu iznine sahip değil.');
+                return;
+            }
+            if (err.message === 'AI_RATE_LIMIT_EXCEEDED') {
+                await message.reply(`⚠️ Günlük AI kotanız doldu. Kalan: **0/${quota.limit}**. Kota gece yarısı sıfırlanır.`);
+                return;
+            }
+            throw err;
+        }
     }
 
     // OCR okunabilirlik kontrolü
@@ -1307,6 +1329,22 @@ async function handleDmMessage(message: any): Promise<void> {
             .setDescription('Yüklediğin görselde okunabilir metin, kullanıcı adı veya ihlal içeriği tespit edemedim. Lütfen daha net bir ekran görüntüsü yolla.')
             .setFooter({ text: `Kalan Kota: ${quotaResult.remaining}/${quotaResult.limit}` });
         await message.reply({ embeds: [warnEmbed] });
+        return;
+    }
+
+    if (analysis.degraded) {
+        // AI kapalıysa deterministik doğrulamayı çalıştır ve bunu bildir
+        const resultEmbed = new EmbedBuilder()
+            .setTitle('⚠️ AI Geçici Olarak Kullanılamıyor')
+            .setColor(0xffa502)
+            .setDescription('Deterministik CUK doğrulaması çalıştırıldı.\n\nSonuç:\n')
+            .addFields(
+                { name: '💬 Özet', value: String(analysis.summary || 'AI service unavailable. Deterministic validation only.').slice(0, 300) },
+                { name: '🔎 Güven Notu', value: String(analysis.confidenceNote || 'Fallback mode activated.').slice(0, 200) }
+            )
+            .setFooter({ text: `Kalan Kota: ${quotaResult.remaining}/${quotaResult.limit} • Lutheus CUK Denetim` })
+            .setTimestamp();
+        await message.reply({ embeds: [resultEmbed] });
         return;
     }
 

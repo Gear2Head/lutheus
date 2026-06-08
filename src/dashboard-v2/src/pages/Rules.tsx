@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
@@ -6,6 +6,7 @@ import { Card } from '../components/ui/Card';
 import { Trash2, Plus, Save, Upload, X, BookOpen } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { hasPermission } from '../lib/auth';
+import { useToast } from '../contexts/ToastContext';
 
 interface Category {
   id: string;
@@ -67,13 +68,36 @@ function TagInput({ tags, onAdd, onRemove, placeholder, disabled }: {
 
 export default function Rules() {
   const { session } = useAuth();
+  const { showToast } = useToast();
   const canEdit = hasPermission(session?.role || '', 'penalty_accuracy:update');
 
   const [categories, setCategories] = useState<Category[]>(DEFAULT_CATEGORIES);
   const [activeId, setActiveId] = useState(DEFAULT_CATEGORIES[0].id);
   const [saved, setSaved] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   const active = categories.find((c) => c.id === activeId) || categories[0];
+
+  // Load rules on mount from backend
+  useEffect(() => {
+    const loadBackendRules = async () => {
+      try {
+        const { AdminApiClient } = await import('../../../lib/adminApiClient.js') as unknown as { AdminApiClient: any };
+        const policy = await AdminApiClient.getRolePolicy();
+        if (policy && policy.cukCategories) {
+          setCategories(policy.cukCategories);
+          if (policy.cukCategories.length > 0) {
+            setActiveId(policy.cukCategories[0].id);
+          }
+        }
+      } catch (err: any) {
+        console.error('Failed to load rules from backend:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadBackendRules();
+  }, []);
 
   const update = <K extends keyof Category>(field: K, value: Category[K]) => {
     setCategories((prev) => prev.map((c) => c.id === activeId ? { ...c, [field]: value } : c));
@@ -107,14 +131,41 @@ export default function Rules() {
     setActiveId(categories[0].id);
   };
 
-  const handleSave = () => {
-    // Save to chrome.storage for use by the CUK engine
+  const handleSave = async () => {
+    // Save to chrome.storage/localStorage local fallbacks
     if (typeof chrome !== 'undefined' && chrome.storage?.local) {
       chrome.storage.local.set({ cukCategories: categories });
     } else {
       localStorage.setItem('cukCategories', JSON.stringify(categories));
     }
-    setSaved(true);
+
+    try {
+      const { AdminApiClient } = await import('../../../lib/adminApiClient.js') as unknown as { AdminApiClient: any };
+      const currentPolicy = await AdminApiClient.getRolePolicy();
+
+      // Transform categories list into mapped format for rule engine
+      const mappedCategories = categories.reduce((acc, cat) => {
+        acc[cat.name] = {
+          keywords: cat.keywords,
+          invalidKeywords: cat.invalidKeywords,
+          color: cat.color
+        };
+        return acc;
+      }, {} as Record<string, any>);
+
+      const updatedPolicy = {
+        ...currentPolicy,
+        cukCategories: categories,
+        categories: mappedCategories
+      };
+
+      await AdminApiClient.saveRolePolicy(updatedPolicy);
+      setSaved(true);
+      showToast('CUK kuralları başarıyla kaydedildi!', 'success');
+    } catch (err: any) {
+      showToast(`Kaydedilemedi: ${err.message || err}`, 'error');
+    }
+
     setTimeout(() => setSaved(false), 2000);
   };
 

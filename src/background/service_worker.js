@@ -343,29 +343,46 @@ async function updateRegistryFromCases(cases) {
     });
 
     for (const entry of cases) {
-        if (entry.authorId && entry.authorName) {
+        if (entry.authorId) {
             const authorId = entry.authorId;
-            const authorName = entry.authorName;
-            const previous = registry[authorId] || {};
             const roleEntry = findRoleCacheEntry(authorId);
+            if (!roleEntry) continue;
+
+            const previous = registry[authorId] || {};
+            const authorName = pickStaffDisplayName(entry.authorName, previous.name, authorId);
             const aliases = Array.from(new Set([
                 ...(previous.aliases || []),
                 previous.name,
                 authorName
             ].filter(Boolean)));
-            
+
             registry[authorId] = {
                 ...previous,
                 id: authorId,
                 name: authorName,
                 avatar: entry.authorAvatar || previous.avatar || null,
-                role: roleEntry ? normalizeRole(roleEntry.role) : (previous.role || null),
+                role: normalizeRole(roleEntry.role),
                 aliases,
                 source: previous.source || 'sapphire-intercept-listener',
                 scanCount: Number(previous.scanCount || 0) + 1,
                 lastSeen: Date.now()
             };
             changedRegistry = true;
+
+            directory[authorId] = {
+                ...(directory[authorId] || {}),
+                sapphireAuthorId: authorId,
+                discordUserId: authorId,
+                displayName: authorName,
+                avatar: entry.authorAvatar || directory[authorId]?.avatar || null,
+                role: normalizeRole(roleEntry.role),
+                aliases: Array.from(new Set([...(directory[authorId]?.aliases || []), authorName].filter(Boolean))),
+                source: directory[authorId]?.source || 'sapphire-intercept-listener',
+                scanCount: Number(directory[authorId]?.scanCount || 0) + 1,
+                lastSeen: Date.now(),
+                updatedAt: new Date().toISOString()
+            };
+            changedDirectory = true;
         }
 
         if (entry.userId && entry.user) {
@@ -377,33 +394,13 @@ async function updateRegistryFromCases(cases) {
                 id: userId,
                 name: user,
                 avatar: entry.userAvatar || previous.avatar || null,
-                role: previous.role,
+                role: null,
                 aliases: Array.from(new Set([...(previous.aliases || []), previous.name, user].filter(Boolean))),
-                source: previous.source || 'sapphire-intercept-target',
+                source: 'punished-user',
                 scanCount: Number(previous.scanCount || 0) + 1,
                 lastSeen: Date.now()
             };
             changedRegistry = true;
-        }
-
-        if (entry.authorId || (entry.authorName && !isUnknownAuthorName(entry.authorName))) {
-            const roleEntry = entry.authorId ? findRoleCacheEntry(entry.authorId) : null;
-            const key = entry.authorId || `name:${entry.authorName}`;
-            const aliases = [entry.authorName].filter(Boolean);
-            directory[key] = {
-                ...(directory[key] || {}),
-                sapphireAuthorId: entry.authorId || directory[key]?.sapphireAuthorId || '',
-                discordUserId: directory[key]?.discordUserId || entry.authorId || '',
-                displayName: entry.authorName || directory[key]?.displayName || 'Bilinmiyor',
-                avatar: entry.authorAvatar || directory[key]?.avatar || null,
-                role: normalizeRole(roleEntry?.role || directory[key]?.role || 'discord_destek_ekibi'),
-                aliases: Array.from(new Set([...(directory[key]?.aliases || []), ...aliases])),
-                source: directory[key]?.source || 'sapphire-intercept-listener',
-                scanCount: Number(directory[key]?.scanCount || 0) + 1,
-                lastSeen: Date.now(),
-                updatedAt: new Date().toISOString()
-            };
-            changedDirectory = true;
         }
     }
 
@@ -443,39 +440,62 @@ function isUnknownAuthorName(value) {
     return /^(unknown|bilinmiyor|bilinmeyen yetkili)$/i.test(String(value || '').trim());
 }
 
+const GENERIC_STAFF_NAME_RE = /^(unknown moderator|bilinmiyor|bilinmeyen yetkili|yetkili\s*\(\d{1,8}\)|moderator\s*\(\d{1,8}\))$/i;
+
+function isGenericStaffName(name, discordId) {
+    const clean = String(name || '').replace(/\(\)?/g, '').trim();
+    if (!clean) return true;
+    if (discordId && clean.toLowerCase() === String(discordId).toLowerCase()) return true;
+    return GENERIC_STAFF_NAME_RE.test(clean) || isUnknownAuthorName(clean);
+}
+
+function pickStaffDisplayName(incomingName, previousName, discordId) {
+    if (!isGenericStaffName(incomingName, discordId) && incomingName) return incomingName;
+    if (!isGenericStaffName(previousName, discordId) && previousName) return previousName;
+    return incomingName || previousName || 'Bilinmiyor';
+}
+
+function parseDurationTextInline(value) {
+    if (value === null || value === undefined || value === '') return null;
+    if (typeof value === 'number') return value;
+
+    let str = String(value).toLowerCase().trim();
+    const index = str.search(/\b(in|kalan)\b/i);
+    if (index !== -1) str = str.substring(0, index).trim();
+    str = str.replace(/\s*\(\s*$/, '').trim();
+
+    if (str.includes('süresiz') || str.includes('perma') || str.includes('kalıcı') || str.includes('kalici') || str.includes('permanent')) {
+        return Infinity;
+    }
+
+    const patterns = [
+        { regex: /(\d+)\s*(dakika|min|minutes?|dk|m)(?![a-zA-ZçğıöşüÇĞIÖŞÜ])/i, multiplier: 1 },
+        { regex: /(\d+)\s*(saat|hours?|hour|sa|h)(?![a-zA-ZçğıöşüÇĞIÖŞÜ])/i, multiplier: 60 },
+        { regex: /(\d+)\s*(gün|gun|days?|day|g|d)(?![a-zA-ZçğıöşüÇĞIÖŞÜ])/i, multiplier: 60 * 24 },
+    ];
+
+    let totalMinutes = 0;
+    let found = false;
+    for (const { regex, multiplier } of patterns) {
+        const matches = str.match(new RegExp(regex.source, 'gi'));
+        if (matches) {
+            for (const match of matches) {
+                const numMatch = match.match(/\d+/);
+                if (numMatch) {
+                    totalMinutes += parseInt(numMatch[0], 10) * multiplier;
+                    found = true;
+                }
+            }
+        }
+    }
+    return found ? totalMinutes : null;
+}
+
 function normalizeDurationMs(value) {
-    const text = String(value || '').trim().toLowerCase();
-    if (!text) return null;
-    const match = text.match(/^(\d+(?:[.,]\d+)?)\s*(ms|s|sec|secs|second|seconds|m|min|mins|minute|minutes|h|hr|hrs|hour|hours|d|day|days|gün|gun|saat|dakika)$/i);
-    if (!match) return null;
-    const amount = Number(match[1].replace(',', '.'));
-    if (!Number.isFinite(amount)) return null;
-    const multipliers = {
-        ms: 1,
-        s: 1000,
-        sec: 1000,
-        secs: 1000,
-        second: 1000,
-        seconds: 1000,
-        m: 60 * 1000,
-        min: 60 * 1000,
-        mins: 60 * 1000,
-        minute: 60 * 1000,
-        minutes: 60 * 1000,
-        dakika: 60 * 1000,
-        h: 60 * 60 * 1000,
-        hr: 60 * 60 * 1000,
-        hrs: 60 * 60 * 1000,
-        hour: 60 * 60 * 1000,
-        hours: 60 * 60 * 1000,
-        saat: 60 * 60 * 1000,
-        d: 24 * 60 * 60 * 1000,
-        day: 24 * 60 * 60 * 1000,
-        days: 24 * 60 * 60 * 1000,
-        gün: 24 * 60 * 60 * 1000,
-        gun: 24 * 60 * 60 * 1000
-    };
-    return Math.round(amount * multipliers[match[2].toLowerCase()]);
+    const parsed = parseDurationTextInline(value);
+    if (parsed === null) return null;
+    if (parsed === Infinity) return null;
+    return Math.round(parsed * 60 * 1000);
 }
 
 function getDurationText(duration) {
@@ -1576,12 +1596,16 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
                                 user: r.user || r.username || `Unknown User (${r.userId})`,
                                 userId: r.userId || '',
                                 authorId: r.authorId || '',
-                                authorName: r.authorName || r.moderator || `Unknown Moderator (${r.authorId})`,
+                                // authorName WS'de genellikle boş — normalizeCase null döner, DB isimleri ezilmez
+                                authorName: r.authorName || r.moderator || '',
                                 reason: r.reason || '',
                                 type: r.type || 'unknown',
                                 duration: r.duration || '',
                                 durationMs,
-                                isPermanent: durationMs === null,
+                                // timestamp korunuyor — normalizeCase (isWsSource) createdAt için bunu kullanır
+                                timestamp: r.timestamp || null,
+                                expiringTimestamp: r.expiringTimestamp || null,
+                                isPermanent: durationMs === null || durationMs === 0,
                                 createdRaw: r.timestamp ? new Date(r.timestamp).toISOString() : '',
                                 scrapedAt: Date.now(),
                                 sourceUrl: meta.sourceUrl || `https://dashboard.sapph.xyz/${guildId}/moderation/cases/${caseId}`,
@@ -1675,7 +1699,7 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
                 }
 
                 case ACTIONS.OPEN_ADMIN: {
-                    const adminUrl = chrome.runtime.getURL('src/dashboard-v2/dist/index.html');
+                    const adminUrl = chrome.runtime.getURL('src/dashboard-v2/dist-web/index.html');
                     const adminTabs = await chrome.tabs.query({ url: adminUrl });
                     if (adminTabs.length > 0) {
                         await chrome.tabs.update(adminTabs[0].id, { active: true });

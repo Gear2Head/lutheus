@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo } from 'react';
 import { Search, RefreshCw, Filter, CheckCircle2, XCircle, ExternalLink, Zap } from 'lucide-react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useSearchParams } from 'react-router-dom';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { CaseIdBadge } from '../components/ui/CaseIdBadge';
@@ -8,6 +8,7 @@ import { CopyButton } from '../components/ui/CopyButton';
 import { StatusBadge, type StatusKind } from '../components/ui/StatusBadge';
 import { ValidDurationsPanel } from '../components/ui/ValidDurationsPanel';
 import { buildSapphireCaseUrl } from '../lib/sapphireUrl';
+import { buildLutheusCaseUrl } from '../lib/lutheusUrl';
 import { Skeleton } from '../components/ui/Skeleton';
 import { Drawer } from '../components/ui/Drawer';
 import { ConfirmationModal } from '../components/ui/ConfirmationModal';
@@ -50,6 +51,7 @@ function isFormerStaff(profile: StaffProfile | undefined): boolean {
 export default function Cases() {
   const { session } = useAuth();
   const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { showToast } = useToast();
   const canEdit = hasPermission(session?.role || '', 'penalties:update');
 
@@ -113,6 +115,16 @@ export default function Cases() {
       window.history.replaceState({}, document.title);
     }
   }, [location.state]);
+
+  // Open drawer when linked via ?case= query param (e.g. Discord embed)
+  useEffect(() => {
+    if (loading || cases.length === 0) return;
+    const caseId = searchParams.get('case');
+    if (!caseId) return;
+    const match = cases.find((c) => c.case_id === caseId);
+    if (match) setDrawerCase(match);
+    setSearchParams({}, { replace: true });
+  }, [loading, cases, searchParams, setSearchParams]);
 
   // Auto-run CUK on cases that are still pending
   const runAutoValidate = async () => {
@@ -567,6 +579,14 @@ export default function Cases() {
                   onClick={() => openSapphireCase(drawerCase, showToast)}
                 >
                   <ExternalLink className="w-3.5 h-3.5" /> Sapphire&apos;da Aç
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full"
+                  onClick={() => window.open(buildLutheusCaseUrl(drawerCase.case_id), '_blank', 'noopener,noreferrer')}
+                >
+                  <ExternalLink className="w-3.5 h-3.5" /> Lutheus&apos;ta Paylaş
                 </Button>
               </div>
             )}

@@ -3,6 +3,7 @@ const { supabase } = require('../../_lib/supabaseClient');
 const { requirePermission, requireUser } = require('../../_lib/serverAuth');
 const { PERMISSIONS, normalizeRole, ROLES } = require('../../_lib/roles');
 const { validateCase } = require('../../_lib/cukEngine');
+const { resolveDurationMinutesForCuk } = require('../../_lib/durationResolve');
 
 const SESSION_LOCKOUT_MS = 15 * 60 * 1000;
 const ACTIVE_SESSION_STATUSES = ['pending', 'running'];
@@ -92,10 +93,10 @@ function dbRowToDomain(row) {
         guildId: row.guild_id,
         caseId: row.case_id,
         userId: row.punished_user_discord_id || '',
-        userName: row.punished_user_display_name || 'Unknown',
+        userName: row.punished_user_display_name || null,
         userAvatar: row.punished_user_avatar_url || null,
         authorId: row.author_discord_id || '',
-        authorName: row.author_display_name || 'Bilinmiyor',
+        authorName: row.author_display_name || null,
         authorAvatar: row.author_avatar_url || null,
         type: row.type || 'unknown',
         reason: row.reason_raw || '',
@@ -131,10 +132,24 @@ function flattenCaseForDb(data) {
     if (!data) return {};
     const capturedVia = data.capturedVia || data.source || 'unknown';
 
-    // Run CUK validation
-    const durationMins = data.durationMs ? Math.round(data.durationMs / 60000) : 0;
-    const analysis = validateCase(data.reason || '', durationMins);
-    const cukVerdict = analysis.valid ? 'valid' : 'invalid';
+    // Run CUK validation (prefer duration_raw, then durationMs; unknown → pending)
+    const durationMins = resolveDurationMinutesForCuk(data);
+    let cukVerdict;
+    let analysis;
+    // durationMs=0: expiresAt=timestamp olan kalıcı banlar için (Sapphire pattern)
+    const effectiveDurationMins = (durationMins === null && data.isPermanent === true) ? 0 : durationMins;
+    if (effectiveDurationMins === null) {
+        cukVerdict = 'pending';
+        analysis = {
+            valid: false,
+            score: 0,
+            message: 'Süre belirlenemedi — manuel inceleme gerekir.',
+            categoryMatched: 'Beklemede',
+        };
+    } else {
+        analysis = validateCase(data.reason || '', effectiveDurationMins);
+        cukVerdict = analysis.valid ? 'valid' : 'invalid';
+    }
     const cukAnalysis = {
         message: analysis.message,
         category: analysis.categoryMatched || 'Diğer',
@@ -440,7 +455,12 @@ async function upsertStaffProfilesForIngest(dedupedCases) {
         /^unknown moderator/i,
         /^bilinmeyen yetkili/i,
         /^mod\s*\[/i,
-        /^moderator\s*\[/i
+        /^moderator\s*\[/i,
+        // WS/DOM fallback placeholder'lar — gerçek isimleri ezmesin
+        /^bilinmiyor$/i,
+        /^unknown$/i,
+        /^yetkili$/i,
+        /^unknown user/i
     ];
     const isDegradedName = (name) => !name || DEGRADED_NAME_PATTERNS.some((rx) => rx.test(name.trim()));
 

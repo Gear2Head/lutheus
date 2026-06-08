@@ -1,6 +1,25 @@
 const { supabase } = require('../_lib/supabaseClient');
 const { requirePermission } = require('../_lib/serverAuth');
 const { DEFAULT_GROQ_LIMITS, PERMISSIONS, normalizeRole } = require('../_lib/roles');
+const fs = require('fs');
+const path = require('path');
+
+// Load CUK Rules dynamically
+let cukRules = {
+    "sunucu_dinamigi": {
+        "allowed": [
+            15, 30, 60, 120, 180, 240, 360, 480, 720, 960, 1440, 1920, 2880, 5760, 0
+        ]
+    }
+};
+try {
+    const rulesPath = path.resolve(__dirname, '../../packages/cuk/rules.json');
+    if (fs.existsSync(rulesPath)) {
+        cukRules = JSON.parse(fs.readFileSync(rulesPath, 'utf8'));
+    }
+} catch (e) {
+    console.warn('CUK Rules load failed, using default rules:', e.message);
+}
 
 // SECTION: AI_SERVICE
 // PURPOSE: Handles server-side AI evaluation with Groq, utilizing Supabase Auth and app_settings-based rate limits.
@@ -30,7 +49,7 @@ function resolveQuotaId(actor) {
     return String(actor.uid || '').replace(/^discord:/, '');
 }
 
-async function consumeQuota(quotaId, role) {
+async function checkQuota(quotaId, role) {
     const limit = await resolveLimit(role);
     if (limit <= 0) throw new Error('AI_DISABLED_FOR_ROLE');
 
@@ -47,24 +66,40 @@ async function consumeQuota(quotaId, role) {
 
     if (used >= limit) throw new Error('AI_RATE_LIMIT_EXCEEDED');
 
-    await supabase.from('app_settings').upsert([{
-        key,
-        value: {
-            discordId: quotaId,
-            role,
-            date: todayKey(),
-            used: used + 1,
-            limit,
-            updatedAt: new Date().toISOString()
-        }
-    }], { onConflict: 'key' });
+    return { limit, used, remaining: limit - used };
+}
 
-    return { limit, used: used + 1, remaining: limit - used - 1 };
+async function consumeQuota(quotaId, role) {
+    const key = `ai_quota_${quotaId}_${todayKey()}`;
+    const limit = await resolveLimit(role);
+
+    const { data, error } = await supabase.rpc('increment_ai_quota', {
+        key_param: key,
+        role_param: role,
+        limit_param: limit
+    });
+
+    if (error) {
+        throw new Error(error.message || 'FAILED_TO_CONSUME_QUOTA');
+    }
+
+    const used = Number(data?.used || 0);
+    return { limit, used, remaining: Math.max(0, limit - used) };
 }
 
 async function callGroq(payload) {
     const key = process.env.GROQ_API_KEY;
-    if (!key) throw new Error('GROQ_API_KEY_MISSING');
+    if (!key) {
+        return {
+            valid: null,
+            degraded: true,
+            categoryMatched: "AI Disabled",
+            summary: "AI service unavailable. Deterministic validation only.",
+            riskReasons: "GROQ_API_KEY_MISSING",
+            recommendedAction: null,
+            confidenceNote: "Fallback mode activated."
+        };
+    }
 
     const model = payload.image ? 'llama-3.2-11b-vision-preview' : (process.env.GROQ_MODEL || 'llama-3.1-8b-instant');
     const userContent = [];
@@ -110,7 +145,7 @@ CUK Kural Kitabı (Güncel):
 3. Küfür/Hakaret (küfür, argo, uygunsuz kelime/mesaj/içerik): Kademe süreler: 15, 30, 60, 120, 240, 480, 720, 960, 1440, 1920, 2880 dk veya süresiz.
    - Cinsellik içeriyorsa: 12s (720dk), 24s (1440dk), 48s (2880dk) veya süresiz.
 4. Dini/Milli Değerler (dini, milli, kutsal, atatürk, allah, peygamber, bayrak): Min 7 gün (10080dk) veya süresiz. ("Dinamik" gibi kelimelerde "din" ile eşleştirme yapma!)
-5. Sunucu Dinamiği (sunucu dinamiği, dinamik, flood, spam, polemik, sohbet bütünlüğü, kanal dışı, etiket, kampanya, yalan): Kademe süreler: 15, 30, 60, 120, 180, 240, 360, 480, 720, 960, 1440, 1920, 2880, 5760 dk veya süresiz.
+5. Sunucu Dinamiği (sunucu dinamiği, dinamik, flood, spam, polemik, sohbet bütünlüğü, kanal dışı, etiket, kampanya, yalan): İzin verilen süreler: ${JSON.stringify(cukRules.sunucu_dinamigi.allowed)} dk veya süresiz.
 6. Reklam (reklam, davet linki, discord.gg, youtube.com): Min 24s (1440dk) veya süresiz.
 7. Destek Talebi (destek, bilet, ticket, tekrarlı bilet): Tekrarlı bilet: 1s (60dk); Troll/Uygunsuz üslup: 24s (1440dk).
 8. Yönetim Kararı / Discord ToS: Her zaman GEÇERLİ.
@@ -143,8 +178,24 @@ JSON ÇIKTI FORMATI:
     if (!response.ok) {
         throw new Error(data?.error?.message || 'GROQ_REQUEST_FAILED');
     }
-    const content = data.choices?.[0]?.message?.content || '{}';
-    return JSON.parse(content);
+    const content = data?.choices?.[0]?.message?.content || '{}';
+    try {
+        const cleaned = content
+            .replace(/```json/g, '')
+            .replace(/```/g, '')
+            .trim();
+        return JSON.parse(cleaned);
+    } catch (err) {
+        console.error('GROQ_PARSE_ERROR', content);
+        return {
+            valid: false,
+            categoryMatched: "Parse Failure",
+            summary: "AI response malformed.",
+            riskReasons: "JSON_PARSE_FAILURE",
+            recommendedAction: "Use deterministic CUK validation.",
+            confidenceNote: "AI output corrupted."
+        };
+    }
 }
 
 module.exports = async function handler(req, res) {
@@ -156,8 +207,28 @@ module.exports = async function handler(req, res) {
     try {
         const actor = await requirePermission(req, PERMISSIONS.DASHBOARD_VIEW);
         const quotaId = resolveQuotaId(actor);
-        const quota = await consumeQuota(quotaId, actor.role);
+        
+        // Check quota first without consuming
+        await checkQuota(quotaId, actor.role);
+
         const analysis = await callGroq(req.body || {});
+
+        let quota = { remaining: 0, limit: 0, used: 0 };
+        if (!analysis?.degraded) {
+            quota = await consumeQuota(quotaId, actor.role);
+        } else {
+            // Get current remaining quota stats without consuming
+            const limit = await resolveLimit(actor.role);
+            const key = `ai_quota_${quotaId}_${todayKey()}`;
+            const { data: row } = await supabase
+                .from('app_settings')
+                .select('*')
+                .eq('key', key)
+                .maybeSingle();
+            const current = row ? (row.value || {}) : {};
+            const used = Number(current.used || 0);
+            quota = { limit, used, remaining: Math.max(0, limit - used) };
+        }
 
         // Write audit log for dashboard queries (same format as bot DM queries)
         try {

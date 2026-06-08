@@ -3,6 +3,7 @@ const { requirePermission, safeDocId } = require('../_lib/serverAuth');
 const { PERMISSIONS, normalizeRole } = require('../_lib/roles');
 const { ok, badRequest, forbidden, serverError } = require('../_lib/apiResponse');
 const { validateCase } = require('../_lib/cukEngine');
+const { resolveDurationMinutesForCuk } = require('../_lib/durationResolve');
 
 // SECTION: ADMIN_CATCH_ALL
 // PURPOSE: Merged administrative API router to comply with Vercel serverless function allocations limit.
@@ -1224,17 +1225,35 @@ async function handleRepairDates(req, res) {
         };
 
         const normalized = normalizeCase(mockItem, c.guild_id);
-        
-        // Re-evaluate CUK validation
-        const durationMins = normalized.durationMs ? Math.round(normalized.durationMs / 60000) : 0;
-        const analysis = validateCase(normalized.reason || '', durationMins);
-        const cukVerdict = analysis.valid ? 'valid' : 'invalid';
+
+        // Re-evaluate CUK validation (prefer duration_raw, snap remaining-time tiers)
+        const durationMins = resolveDurationMinutesForCuk({
+            duration: normalized.duration || c.duration_raw,
+            duration_raw: c.duration_raw,
+            durationMs: normalized.durationMs,
+            isPermanent: normalized.isPermanent,
+        });
+        let cukVerdict;
+        let analysis;
+        if (durationMins === null) {
+            cukVerdict = 'pending';
+            analysis = {
+                valid: false,
+                score: 0,
+                message: 'Süre belirlenemedi — manuel inceleme gerekir.',
+                categoryMatched: 'Beklemede',
+            };
+        } else {
+            analysis = validateCase(normalized.reason || '', durationMins);
+            cukVerdict = analysis.valid ? 'valid' : 'invalid';
+        }
         const cukAnalysis = {
             message: analysis.message,
             category: analysis.categoryMatched || 'Diğer',
             score: analysis.score
         };
 
+        const shouldRevalidateCuk = c.cuk_verdict === 'invalid' || c.duration_parse_status !== 'complete';
         if (
             normalized.durationMs !== c.duration_ms ||
             normalized.isPermanent !== c.is_permanent ||
@@ -1242,7 +1261,8 @@ async function handleRepairDates(req, res) {
             normalized.isOpen !== c.is_open ||
             createdIso !== c.created_at_sapphire ||
             c.cuk_verdict !== cukVerdict ||
-            JSON.stringify(c.cuk_analysis) !== JSON.stringify(cukAnalysis)
+            JSON.stringify(c.cuk_analysis) !== JSON.stringify(cukAnalysis) ||
+            shouldRevalidateCuk
         ) {
             needsUpdate = true;
             durationMs = normalized.durationMs;

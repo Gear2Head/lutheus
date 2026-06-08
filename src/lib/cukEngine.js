@@ -326,6 +326,21 @@ export function getRuleDetails(reasonRaw) {
         return { category: 'Yönetim', degree: null, allowedMinutes: [] };
     }
 
+    // Teyit Sistemi / Teyite Gelmemek
+    if (match(['teyit', 'teyite gelmemek', 'teyitten kacmak', 'teyitten kaçmak'])) {
+        return { category: 'Teyit', degree: null, allowedMinutes: [0] };
+    }
+
+    // Cezadan Kaçma
+    if (match(['cezadan kacmak', 'cezadan kaçmak'])) {
+        return { category: 'Cezadan Kaçma', degree: null, allowedMinutes: [0] };
+    }
+
+    // Yan Hesap Kullanımı
+    if (match(['yan hesap', 'alt account', 'yanhesap'])) {
+        return { category: 'Yan Hesap Kullanımı', degree: null, allowedMinutes: [0] };
+    }
+
     // 2. Discord ToS
     if (match(['tos', 'discord terms', 'kural dışı', '13 yaş', 'terör', '3. parti', 'doxx', 'nsfw'])) {
         return { category: 'Discord ToS', degree: null, allowedMinutes: [0] };
@@ -423,6 +438,12 @@ const INVALID_KEYWORDS = [
     'hatalı ceza', 'ceza değiştirildi', 'yanlış ceza', 'iptal edildi', 'ceza iptali',
 ];
 
+export function snapDurationForValidation(mins) {
+    if (mins === null || mins === undefined || !Number.isFinite(mins) || mins <= 0) return mins ?? 0;
+    if (mins % 60 === 59) return mins + 1;
+    return mins;
+}
+
 export function isDurationAllowed(mins, allowed) {
     if (allowed.includes(mins)) return true;
     for (const a of allowed) {
@@ -435,7 +456,7 @@ export function isDurationAllowed(mins, allowed) {
 
 export function validateCase(reasonRaw, durationMinutes) {
     const reason = normalizeTurkishText(reasonRaw);
-    const mins = durationMinutes || 0;
+    const mins = snapDurationForValidation(durationMinutes || 0);
 
     if (!reason) {
         return { valid: false, score: 0, message: 'Ceza sebebi girilmemiş.', categoryMatched: 'Yok' };

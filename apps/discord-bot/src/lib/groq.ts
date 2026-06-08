@@ -79,52 +79,28 @@ export async function resolveLimit(role: string): Promise<number> {
     }
 }
 
-// ─── Kota Tüketimi ────────────────────────────────────────────────────────
-export async function consumeQuota(discordId: string, role: string): Promise<{ remaining: number; limit: number }> {
-    const limit = await resolveLimit(role);
-    if (limit <= 0) throw new Error('AI_DISABLED_FOR_ROLE');
 
-    const key = quotaKey(discordId);
 
-    const { data: row } = await supabase
-        .from('app_settings')
-        .select('value')
-        .eq('key', key)
-        .maybeSingle();
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-    const current = row?.value || {};
-    const used = Number(current.used || 0);
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
-    if (used >= limit) throw new Error('AI_RATE_LIMIT_EXCEEDED');
-
-    await supabase.from('app_settings').upsert([{
-        key,
-        value: {
-            discordId,
-            role,
-            date: todayKey(),
-            used: used + 1,
-            limit,
-            updatedAt: new Date().toISOString(),
-        },
-    }], { onConflict: 'key' });
-
-    return { remaining: limit - used - 1, limit };
-}
-
-// ─── Kalan Kota Sorgulama (tüketmeden) ────────────────────────────────────
-export async function getRemainingQuota(discordId: string, role: string): Promise<{ remaining: number; limit: number; used: number }> {
-    const limit = await resolveLimit(role);
-    const key = quotaKey(discordId);
-
-    const { data: row } = await supabase
-        .from('app_settings')
-        .select('value')
-        .eq('key', key)
-        .maybeSingle();
-
-    const used = Number(row?.value?.used || 0);
-    return { remaining: Math.max(0, limit - used), limit, used };
+// Load dynamic rules
+let cukRules = {
+    sunucu_dinamigi: {
+        allowed: [15, 30, 60, 120, 180, 240, 360, 480, 720, 960, 1440, 1920, 2880, 5760, 0]
+    }
+};
+try {
+    const rulesPath = path.resolve(__dirname, '../../../../packages/cuk/rules.json');
+    if (fs.existsSync(rulesPath)) {
+        cukRules = JSON.parse(fs.readFileSync(rulesPath, 'utf8'));
+    }
+} catch (e: any) {
+    console.warn('Discord Bot: CUK Rules load failed, using default rules:', e.message);
 }
 
 // ─── CUK System Prompt ────────────────────────────────────────────────────
@@ -141,14 +117,7 @@ CUK Kural Kitabı (Güncel):
    - 1. Derece (Yöneltme Olmayan Küfür) (küfür, argo, uygunsuz kelime/mesaj/içerik): 15dk, 30dk, 60dk, 120dk, 240dk, 480dk, 960dk, 1920dk, süresiz (0).
    - 2. Derece (Cinsellik/NSFW): 12sa (720dk), 24sa (1440dk), 48sa (2880dk), süresiz (0).
 4. Dini/Milli Değerler (dini, milli, kutsal, atatürk, allah, peygamber, bayrak): Sadece 7 gün (10080dk) veya süresiz (0). ("Dinamik" gibi kelimelerde "din" ile eşleştirme yapma!)
-5. Sunucu Dinamiği:
-   - 1. Derece (Kanal Amacı Dışı) (kanal dışı, amacı dışında, kanalın amacı): 15dk, 30dk, 60dk, 120dk, 240dk, 480dk, 960dk, 1920dk, süresiz (0).
-   - 2. Derece (Markaya/Sunucuya Zarar) (itibar, marka, zarar): 24sa (1440dk), 48sa (2880dk), 96sa (5760dk), süresiz (0).
-   - 3. Derece (Yanlış/Yanıltıcı Bilgi) (yalan, yanlış bilgi, yanıltıcı): 6sa (360dk), 12sa (720dk), 24sa (1440dk), süresiz (0).
-   - 4. Derece (Siyasi/Milli/Irki/Polemik): 6sa (360dk), 12sa (720dk), 24sa (1440dk), süresiz (0).
-   - 5. Derece (Sohbet Bütünlüğünü Bozma/Flood/Spam/Latin Alfabesi Dışı): 15dk, 30dk, 60dk, 120dk, 240dk, 480dk, 960dk, 1920dk, süresiz (0).
-   - 6. Derece (Kampanya/Protesto/İstifa): 6sa (360dk), 12sa (720dk), 24sa (1440dk), süresiz (0).
-   - 7. Derece (Yönetime Tekrarlı Etiket): 3sa (180dk), 6sa (360dk), 12sa (720dk), süresiz (0).
+5. Sunucu Dinamiği: İzin verilen süreler: ${JSON.stringify(cukRules.sunucu_dinamigi.allowed)} dk veya süresiz (0).
 6. Reklam (reklam, davet linki, discord.gg, üye çekme): Sadece 24sa (1440dk) veya süresiz (0).
 7. Destek Talebi:
    - 1. Derece (Tekrarlı Bilet Açımı): 1sa (60dk) veya süresiz (0).
@@ -171,7 +140,43 @@ JSON ÇIKTI FORMATI:
   "recommendedAction": "Doğru süre önerisi ve gerekçesi.",
   "confidenceNote": "Semantik sınıflandırma mantığı notu.",
   "imageUnreadable": false
-}`;;
+}`;
+
+// ─── Kota Tüketimi ────────────────────────────────────────────────────────
+export async function consumeQuota(discordId: string, role: string): Promise<{ remaining: number; limit: number }> {
+    const limit = await resolveLimit(role);
+    if (limit <= 0) throw new Error('AI_DISABLED_FOR_ROLE');
+
+    const key = quotaKey(discordId);
+
+    const { data, error } = await supabase.rpc('increment_ai_quota', {
+        key_param: key,
+        role_param: role,
+        limit_param: limit
+    });
+
+    if (error) {
+        throw new Error(error.message || 'FAILED_TO_CONSUME_QUOTA');
+    }
+
+    const used = Number(data?.used || 0);
+    return { remaining: Math.max(0, limit - used), limit };
+}
+
+// ─── Kalan Kota Sorgulama (tüketmeden) ────────────────────────────────────
+export async function getRemainingQuota(discordId: string, role: string): Promise<{ remaining: number; limit: number; used: number }> {
+    const limit = await resolveLimit(role);
+    const key = quotaKey(discordId);
+
+    const { data: row } = await supabase
+        .from('app_settings')
+        .select('value')
+        .eq('key', key)
+        .maybeSingle();
+
+    const used = Number(row?.value?.used || 0);
+    return { remaining: Math.max(0, limit - used), limit, used };
+}
 
 // ─── Groq API Çağrısı ─────────────────────────────────────────────────────
 export async function callGroq(payload: {
@@ -181,7 +186,17 @@ export async function callGroq(payload: {
     question?: string;
 }): Promise<Record<string, unknown>> {
     const apiKey = process.env.GROQ_API_KEY;
-    if (!apiKey) throw new Error('GROQ_API_KEY_MISSING');
+    if (!apiKey) {
+        return {
+            valid: null,
+            degraded: true,
+            categoryMatched: "AI Disabled",
+            summary: "AI service unavailable. Deterministic validation only.",
+            riskReasons: "GROQ_API_KEY_MISSING",
+            recommendedAction: null,
+            confidenceNote: "Fallback mode activated."
+        };
+    }
 
     const hasImage = Boolean(payload.imageUrl);
     const model = hasImage ? 'llama-3.2-11b-vision-preview' : (process.env.GROQ_MODEL || 'llama-3.1-8b-instant');
@@ -227,7 +242,23 @@ export async function callGroq(payload: {
     }
 
     const content = data.choices?.[0]?.message?.content || '{}';
-    return JSON.parse(content);
+    try {
+        const cleaned = content
+            .replace(/```json/g, '')
+            .replace(/```/g, '')
+            .trim();
+        return JSON.parse(cleaned);
+    } catch (err) {
+        console.error('GROQ_PARSE_ERROR', content);
+        return {
+            valid: false,
+            categoryMatched: "Parse Failure",
+            summary: "AI response malformed.",
+            riskReasons: "JSON_PARSE_FAILURE",
+            recommendedAction: "Use deterministic CUK validation.",
+            confidenceNote: "AI output corrupted."
+        };
+    }
 }
 
 // ─── Audit Log Yazma ──────────────────────────────────────────────────────

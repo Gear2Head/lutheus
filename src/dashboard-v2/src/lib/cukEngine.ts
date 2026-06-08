@@ -26,6 +26,12 @@ export interface CUKResult {
   categoryMatched: string | null;
 }
 
+export function snapDurationForValidation(mins: number | null | undefined): number {
+  if (mins === null || mins === undefined || !Number.isFinite(mins) || mins <= 0) return mins ?? 0;
+  if (mins % 60 === 59) return mins + 1;
+  return mins;
+}
+
 export function isDurationAllowed(mins: number, allowed: number[]): boolean {
   if (allowed.includes(mins)) return true;
   // Apply 5 minutes tolerance pay for finite non-zero allowed durations
@@ -66,6 +72,21 @@ export function getRuleDetails(reasonRaw: string): {
   // 1. Yönetim kararı
   if (match(['yönetim kararı', 'yönetim onaylı', 'üst yönetim', 'admin kararı'])) {
     return { category: 'Yönetim', degree: null, allowedMinutes: [] };
+  }
+
+  // Teyit Sistemi / Teyite Gelmemek
+  if (match(['teyit', 'teyite gelmemek', 'teyitten kacmak', 'teyitten kaçmak'])) {
+    return { category: 'Teyit', degree: null, allowedMinutes: [0] };
+  }
+
+  // Cezadan Kaçma
+  if (match(['cezadan kacmak', 'cezadan kaçmak'])) {
+    return { category: 'Cezadan Kaçma', degree: null, allowedMinutes: [0] };
+  }
+
+  // Yan Hesap Kullanımı
+  if (match(['yan hesap', 'alt account', 'yanhesap'])) {
+    return { category: 'Yan Hesap Kullanımı', degree: null, allowedMinutes: [0] };
   }
 
   // 2. Discord ToS
@@ -164,7 +185,7 @@ export function getRuleDetails(reasonRaw: string): {
 
 export function validateCase(reasonRaw: string, durationMinutes?: number | null): CUKResult {
   const reason = normalizeTurkishText(reasonRaw);
-  const mins = durationMinutes || 0;
+  const mins = snapDurationForValidation(durationMinutes || 0);
 
   if (!reason) {
     return { valid: false, score: 0, message: 'Ceza sebebi girilmemiş.', categoryMatched: 'Yok' };

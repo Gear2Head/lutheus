@@ -413,6 +413,25 @@ function getValidation(entry) {
     return CUKEngine.validate(entry);
 }
 
+function verdictLabel(status) {
+    if (status === PenaltyStatus.VALID) return 'DOĞRU';
+    if (status === PenaltyStatus.INVALID) return 'HATALI';
+    if (status === PenaltyStatus.PENDING) return 'BEKLEYEN';
+    return 'BİLİNMEYEN';
+}
+
+function verdictPillClass(status) {
+    if (status === PenaltyStatus.INVALID) return 'pointtrain-pill status-badge invalid';
+    if (status === PenaltyStatus.VALID) return 'pointtrain-pill status-badge valid';
+    return 'pointtrain-pill status-badge pending';
+}
+
+function verdictRowClass(status) {
+    if (status === PenaltyStatus.INVALID) return 'pointtrain-row case-card-status invalid';
+    if (status === PenaltyStatus.VALID) return 'pointtrain-row case-card-status valid';
+    return 'pointtrain-row case-card-status pending';
+}
+
 function avatarImg(url, className, alt) {
     return `<img src="${escapeHtml(resolveAvatar(url))}" class="${className}" alt="${escapeHtml(alt || 'Avatar')}" data-avatar-img>`;
 }
@@ -619,6 +638,10 @@ function renderProfileStats(cases) {
             <div class="comp-value">${validCounts.valid || 0}</div>
         </div>
         <div class="comp-card">
+            <div class="comp-label">Hatali</div>
+            <div class="comp-value" style="color: var(--status-invalid);">${validCounts.invalid || 0}</div>
+        </div>
+        <div class="comp-card">
             <div class="comp-label">Inceleme</div>
             <div class="comp-value">${(validCounts.pending || 0) + (validCounts.unknown || 0)}</div>
         </div>
@@ -687,21 +710,23 @@ async function enterFocusMode(name, id) {
 
     DOM.detailCasesList.innerHTML = filtered.map((entry) => {
         const validation = getValidation(entry);
+        const durationText = entry.duration || (entry.isPermanent ? 'Süresiz' : '—');
         return `
-            <article class="pointtrain-row">
+            <article class="${verdictRowClass(validation.status)}">
                 <div>
                     <button class="case-inline-link open-case-btn" type="button" data-case-id="${escapeHtml(String(entry.id || entry.caseId || ''))}">
                         #${escapeHtml(String(entry.id || entry.caseId || '-'))}
                     </button>
                     <div class="pointtrain-meta">
                         <span>${escapeHtml(entry.reason || 'Sebep yok')}</span>
+                        <span>${escapeHtml(durationText)}</span>
                         <span>${escapeHtml(entry.type || 'tur yok')}</span>
                         <span>${escapeHtml(entry.createdRaw || '-')}</span>
                     </div>
                     <div class="pointtrain-breakdown">${escapeHtml(validation.reason || 'Degerlendirme yok')}</div>
                 </div>
                 <div style="display:flex; align-items:center; gap:8px;">
-                    <span class="pointtrain-pill">${escapeHtml(validation.status || 'unknown')}</span>
+                    <span class="${verdictPillClass(validation.status)}">${escapeHtml(verdictLabel(validation.status))}</span>
                     <button class="toolbar-btn open-case-btn" type="button" data-case-id="${escapeHtml(String(entry.id || entry.caseId || ''))}">
                         <i class="fa-solid fa-arrow-up-right-from-square"></i>
                     </button>

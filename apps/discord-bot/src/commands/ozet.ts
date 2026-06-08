@@ -3,6 +3,7 @@
 
 import { SlashCommandBuilder, ChatInputCommandInteraction, EmbedBuilder } from 'discord.js';
 import { supabase, guildId as envGuildId } from '../botConfig.js';
+import { buildLutheusCaseUrl, buildSapphireCaseUrl, formatCaseDuration } from '../lib/caseEmbed.js';
 
 export const OzetCommand = {
     data: new SlashCommandBuilder()
@@ -47,11 +48,14 @@ export const OzetCommand = {
             }
 
             const description = cases.map(c => {
-                const duration = c.duration_raw || (c.is_permanent ? 'Süresiz' : 'Geçici');
+                const duration = formatCaseDuration(c);
                 const active = c.is_open ? 'Aktif' : 'Pasif';
                 const author = c.author_display_name || 'Bilinmiyor';
-                return `• **#${c.case_id}** | Süre: \`${duration}\` | Aktiflik: \`${active}\` | Doğruluk: \`❌ Hatalı\` | Yetkili: \`${author}\``;
-            }).join('\n');
+                const sapphireUrl = c.case_url || buildSapphireCaseUrl(c.guild_id, c.case_id);
+                const lutheusUrl = buildLutheusCaseUrl(c.case_id);
+                const reason = c.cuk_analysis?.message || 'Sebep belirtilmemiş';
+                return `• [${c.case_id}](${sapphireUrl}) · [Lutheus](${lutheusUrl}) | Süre: \`${duration}\` | Aktiflik: \`${active}\` | Yetkili: \`${author}\`\n  ↳ ${reason}`;
+            }).join('\n\n');
 
             const embed = new EmbedBuilder()
                 .setTitle('🚨 Hatalı Ceza Özet Raporu')

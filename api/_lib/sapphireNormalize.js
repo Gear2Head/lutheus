@@ -65,9 +65,17 @@ function parseDurationText(durationStr) {
         }
     }
 
-    if (str.includes('99 year') || str.includes('99 yıl') || str.includes('99 sene') || str.includes('99y')) return Infinity;
+    if (str.includes('99 year') || str.includes('99 yıl') || str.includes('99 sene') || str.includes('99y') ||
+        str.includes('100y') || str.includes('100 year') || str.includes('100 yıl') || str.includes('100 sene') ||
+        str.includes('36524 gün') || str.includes('36525 gün') || str.includes('36524 gun') || str.includes('36525 gun') ||
+        str.includes('36524 day') || str.includes('36525 day')
+    ) return Infinity;
 
-    return found ? totalMinutes : null;
+    if (found) {
+        if (totalMinutes >= 52000000) return Infinity; // 99+ years
+        return totalMinutes;
+    }
+    return null;
 }
 
 function isLikelyWrongReason(reason) {
@@ -173,9 +181,18 @@ function normalizeCase(item, guildId) {
     const authorId = isDiscordId(rawAuthorId) ? rawAuthorId : embeddedAuthorId;
     
     // Ensure essential string fields are parsed safely
-    const userName = safeString(item.userName || item.user || item.user_name || 'Unknown');
+    const rawUserName = safeString(item.userName || item.user || item.user_name || '');
+    const userName = (rawUserName.toLowerCase() === 'unknown' || !rawUserName) ? null : rawUserName;
     const userAvatar = safeString(item.userAvatar || item.avatar || item.user_avatar || null);
-    const authorName = safeString(item.authorName || item.moderator || item.moderator_name || 'Bilinmiyor').replace(authorId, '').trim();
+    
+    const rawAuthorName = safeString(item.authorName || item.moderator || item.moderator_name || '').replace(authorId, '').replace(/\(\)?/g, '').trim();
+    const cleanAuthorLower = rawAuthorName.toLowerCase();
+    const isGenericAuthor = !rawAuthorName || 
+                            cleanAuthorLower === 'bilinmiyor' || 
+                            cleanAuthorLower === 'unknown' || 
+                            cleanAuthorLower === 'bilinmeyen yetkili' || 
+                            /^(unknown moderator|bilinmeyen yetkili|yetkili\s*\(\d{1,8}\)|moderator\s*\(\d{1,8}\))$/i.test(cleanAuthorLower);
+    const authorName = isGenericAuthor ? null : rawAuthorName;
     const authorAvatar = safeString(item.authorAvatar || item.moderatorAvatar || item.moderator_avatar || null);
     
     const type = safeString(item.type || 'unknown').toLowerCase();
@@ -250,11 +267,17 @@ function normalizeCase(item, guildId) {
     const initialIsOpen = typeof item.isOpen === 'boolean' ? item.isOpen : !item.closed;
 
     // Parse expiring duration metrics
+    // ~99 years in ms — Sapphire uses 100-year bans as "permanent" bans
+    const PERM_MS_THRESHOLD = 52_000_000 * 60 * 1000;
     let durationMs = null;
     if (Number.isFinite(Number(item.durationMs))) {
-        durationMs = Number(item.durationMs);
+        const rawMs = Number(item.durationMs);
+        // Treat 100-year ban durations as permanent (null)
+        durationMs = rawMs >= PERM_MS_THRESHOLD ? null : rawMs;
     } else if (Number.isFinite(Number(item.timestamp)) && Number.isFinite(Number(item.expiringTimestamp))) {
-        durationMs = Math.max(0, Number(item.expiringTimestamp) - Number(item.timestamp));
+        const rawMs = Math.max(0, Number(item.expiringTimestamp) - Number(item.timestamp));
+        // Treat 100-year ban durations as permanent (null)
+        durationMs = rawMs >= PERM_MS_THRESHOLD ? null : rawMs;
     } else if (duration) {
         const parsedDur = parseDurationText(duration);
         if (parsedDur !== Infinity && typeof parsedDur === 'number') {
@@ -331,5 +354,6 @@ function normalizeCase(item, guildId) {
 }
 
 module.exports = {
-    normalizeCase
+    normalizeCase,
+    parseDurationText,
 };

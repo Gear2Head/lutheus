@@ -444,7 +444,8 @@ window.GearTech.Scraper = {
     isDurationCandidate: function (value) {
         const text = String(value || '').trim().toLowerCase();
         return /^(permanent|süresiz|suresiz|---)$/.test(text) ||
-            /^\d+(?:[.,]\d+)?\s*(ms|s|sec|secs|m|min|mins|h|hr|hrs|hour|hours|d|day|days|gün|gun|saat|dakika)\b/i.test(text);
+            /^\d+(?:[.,]\d+)?\s*(ms|s|sec|secs|m|min|mins|dk|h|hr|hrs|hour|hours|sa|d|day|days|gün|gun|saat|dakika)\b/i.test(text) ||
+            /\d+\s*(sa|saat|h)\s+\d+\s*(dk|dakika|m)\b/i.test(text);
     },
 
     extractPenaltyType: function (col) {

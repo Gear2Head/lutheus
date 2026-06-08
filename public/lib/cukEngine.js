@@ -340,6 +340,21 @@ export function getRuleDetails(reasonRaw) {
         return { category: 'Yönetim', degree: null, allowedMinutes: [] };
     }
 
+    // Teyit Sistemi / Teyite Gelmemek
+    if (match(['teyit', 'teyite gelmemek', 'teyitten kacmak', 'teyitten kaçmak'])) {
+        return { category: 'Teyit', degree: null, allowedMinutes: [0] };
+    }
+
+    // Cezadan Kaçma
+    if (match(['cezadan kacmak', 'cezadan kaçmak'])) {
+        return { category: 'Cezadan Kaçma', degree: null, allowedMinutes: [0] };
+    }
+
+    // Yan Hesap Kullanımı
+    if (match(['yan hesap', 'alt account', 'yanhesap'])) {
+        return { category: 'Yan Hesap Kullanımı', degree: null, allowedMinutes: [0] };
+    }
+
     // 2. Discord ToS
     if (match(['tos', 'discord terms', 'kural dışı', '13 yaş', 'terör', '3. parti', 'doxx', 'nsfw'])) {
         return { category: 'Discord ToS', degree: null, allowedMinutes: [0] };

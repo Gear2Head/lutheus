@@ -19,6 +19,12 @@ const INVALID_KEYWORDS = [
   'hatalı ceza', 'ceza değiştirildi', 'yanlış ceza', 'iptal edildi', 'ceza iptali',
 ];
 
+function snapDurationForValidation(mins) {
+  if (mins === null || mins === undefined || !Number.isFinite(mins) || mins <= 0) return mins;
+  if (mins % 60 === 59) return mins + 1;
+  return mins;
+}
+
 function isDurationAllowed(mins, allowed) {
   if (allowed.includes(mins)) return true;
   // Apply 5 minutes tolerance pay for finite non-zero allowed durations
@@ -55,6 +61,21 @@ function getRuleDetails(reasonRaw) {
   // 1. Yönetim kararı
   if (match(['yönetim kararı', 'yönetim onaylı', 'üst yönetim', 'admin kararı'])) {
     return { category: 'Yönetim', degree: null, allowedMinutes: [] };
+  }
+
+  // Teyit Sistemi / Teyite Gelmemek
+  if (match(['teyit', 'teyite gelmemek', 'teyitten kacmak', 'teyitten kaçmak'])) {
+    return { category: 'Teyit', degree: null, allowedMinutes: [0] };
+  }
+
+  // Cezadan Kaçma
+  if (match(['cezadan kacmak', 'cezadan kaçmak'])) {
+    return { category: 'Cezadan Kaçma', degree: null, allowedMinutes: [0] };
+  }
+
+  // Yan Hesap Kullanımı
+  if (match(['yan hesap', 'alt account', 'yanhesap'])) {
+    return { category: 'Yan Hesap Kullanımı', degree: null, allowedMinutes: [0] };
   }
 
   // 2. Discord ToS
@@ -94,6 +115,11 @@ function getRuleDetails(reasonRaw) {
     return { category: 'Yetkililere Saygısızlık', degree: null, allowedMinutes: [720, 1440, 2880, 0] };
   }
 
+  // 8. Küfür / Hakaret (Main category full-name matching)
+  if (reason.includes('kufur/hakaret/uygunsuz') || reason.includes('kufur hakaret uygunsuz')) {
+    return { category: 'Küfür/Hakaret', degree: null, allowedMinutes: [15, 30, 60, 120, 240, 480, 720, 960, 1440, 1920, 2880, 0] };
+  }
+
   // 7. Oyunculara Saygısızlık
   if (match(['oyuncu', 'şahsa', 'kişiye', 'üyeye', 'saygısızlık', 'hakaret', 'aptal', 'mal', 'salak', 'beyin yok', 'geri zekâlı', 'aile', 'ailevi', 'anne', 'baba', 'ananı', 'anneniz', 'orospu', 'troll', 'toxic', 'toksik', 'rahatsız', 'kitle', 'topluluk', 'herkes'])) {
     if (match(['aile', 'ailevi', 'anne', 'baba', 'ananı', 'anneniz', 'orospu'])) {
@@ -105,11 +131,15 @@ function getRuleDetails(reasonRaw) {
     if (match(['kitle', 'topluluk', 'herkes'])) {
       return { category: 'Oyunculara Saygısızlık', degree: 4, allowedMinutes: [720, 1440, 2880, 0] };
     }
+    // If reason is exactly the main category name (e.g. Oyunculara Saygısızlık) without subcategory details
+    if (reason === 'oyunculara saygisizlik') {
+      return { category: 'Oyunculara Saygısızlık', degree: null, allowedMinutes: [180, 360, 720, 1440, 2880, 0] };
+    }
     // Default Şahsa Edilmiş Hakaret
     return { category: 'Oyunculara Saygısızlık', degree: 1, allowedMinutes: [180, 360, 720, 0] };
   }
 
-  // 8. Küfür / Hakaret
+  // 8. Küfür / Hakaret (Sub-keywords matching)
   if (match(['cinsellik', 'cinsel', 'fantezi', 'sex', 'nsfw', 'sikerim', 'götünü', 'amını', 'şişe'])) {
     return { category: 'Küfür/Hakaret', degree: 2, allowedMinutes: [720, 1440, 2880, 0] };
   }
@@ -153,7 +183,7 @@ function getRuleDetails(reasonRaw) {
 
 function validateCase(reasonRaw, durationMinutes) {
   const reason = normalizeTurkishText(reasonRaw);
-  const mins = durationMinutes || 0;
+  const mins = snapDurationForValidation(durationMinutes || 0);
 
   if (!reason) {
     return { valid: false, score: 0, message: 'Ceza sebebi girilmemiş.', categoryMatched: 'Yok' };
@@ -210,6 +240,7 @@ function validateCase(reasonRaw, durationMinutes) {
 module.exports = {
   ROLE_HIERARCHY,
   INVALID_KEYWORDS,
+  snapDurationForValidation,
   isDurationAllowed,
   getRuleDetails,
   validateCase

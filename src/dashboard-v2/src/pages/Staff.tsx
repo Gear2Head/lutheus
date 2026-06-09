@@ -11,7 +11,7 @@ import { Input } from '../components/ui/Input';
 import { Button } from '../components/ui/Button';
 import { getCases, getStaffProfiles, SapphireCase, StaffProfile, updateStaffProfile } from '../lib/supabase';
 import { validateCase, getReliabilityStatus, calculatePerformanceScore } from '../lib/cukEngine';
-import { getRoleLabel, getRoleColor, hasPermission } from '../lib/auth';
+import { getRoleLabel, getRoleColor, hasPermission, isManagementRole, isManagementKadrosu } from '../lib/auth';
 import { formatDate } from '../lib/utils';
 import { useAuth } from '../contexts/AuthContext';
 import { formatStaffName, isGenericStaffName, resolveStaffAvatar, resolveStaffName } from '../lib/staffDisplay';

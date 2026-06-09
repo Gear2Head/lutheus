@@ -7,7 +7,7 @@ import { Skeleton } from '../components/ui/Skeleton';
 import { EmptyState } from '../components/ui/EmptyState';
 import { getCases, getStaffProfiles, SapphireCase, StaffProfile } from '../lib/supabase';
 import { calculatePerformanceScore, getReliabilityStatus } from '../lib/cukEngine';
-import { getRoleLabel, getRoleColor } from '../lib/auth';
+import { getRoleLabel, getRoleColor, isManagementKadrosu } from '../lib/auth';
 import { parseDateSafe } from '../lib/utils';
 import { useToast } from '../contexts/ToastContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -33,9 +33,6 @@ interface PointtrainRow {
 function buildRows(cases: SapphireCase[], periodDays: number | null, staffProfiles: StaffProfile[]): PointtrainRow[] {
   const now = Date.now();
   
-  // Exclude management roles: 'kurucu', 'admin', 'yonetici', 'genel_sorumlu', 'discord_yoneticisi'
-  const managementRoles = new Set(['kurucu', 'admin', 'yonetici', 'genel_sorumlu', 'discord_yoneticisi']);
-  
   const staffMap = new Map<string, StaffProfile>();
   for (const sp of staffProfiles) {
     staffMap.set(sp.discord_id, sp);
@@ -53,7 +50,7 @@ function buildRows(cases: SapphireCase[], periodDays: number | null, staffProfil
     const profile = staffMap.get(id);
     const roleStr = (profile?.role || 'discord_moderatoru').toLowerCase();
     if (
-      managementRoles.has(roleStr)
+      isManagementKadrosu(roleStr)
       || roleStr === 'eski_yetkili'
       || roleStr === 'blocked'
       || profile?.status === 'INACTIVE'

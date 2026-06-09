@@ -71,27 +71,27 @@ export default function Penalties() {
   });
 
   return (
-    <div className="p-6 md:p-8 w-full min-h-screen flex flex-col relative select-none">
+    <div className="p-6 md:p-8 w-full min-h-screen flex flex-col relative select-none bg-gradient-to-b from-[#0f172e] to-[#1a1f3a]">
       
       {/* Top Section Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4 border-b border-white/[0.04] pb-6">
+      <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4 border-b border-purple-500/20 pb-6">
         <div>
           <div className="flex items-center gap-2.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#5E5CE6]" />
-            <span className="text-[11px] font-mono tracking-widest text-[#5E5CE6] font-semibold uppercase">Lutheus Ceza Raporlama</span>
+            <span className="w-1.5 h-1.5 rounded-full bg-purple-500 animate-pulse" />
+            <span className="text-[11px] font-mono tracking-widest text-purple-400 font-semibold uppercase">Lutheus Ceza Raporlama</span>
           </div>
-          <h2 className="text-[22px] font-bold text-white tracking-tight leading-none mt-2">Cezalar</h2>
-          <p className="text-[12px] text-white/40 mt-1.5 font-medium flex items-center gap-1.5">
-            <Info size={12} className="text-white/30" />
-            Sapphire ile entegre gerçek zamanlı işlem paneli • <span className="font-semibold text-white/50">{penaltiesList.length} kayıt listelendi</span>
+          <h2 className="text-[28px] font-bold text-white tracking-tight leading-none mt-2 bg-gradient-to-r from-white to-purple-200 bg-clip-text text-transparent">Cezalar</h2>
+          <p className="text-[13px] text-purple-200/70 mt-2 font-medium flex items-center gap-1.5">
+            <Info size={13} className="text-purple-300/60" />
+            Sapphire ile entegre gerçek zamanlı işlem paneli • <span className="font-semibold text-purple-200">{penaltiesList.length} kayıt</span>
           </p>
         </div>
         
-        {/* Top bar status indicator with removed "Senkronize" text */}
+        {/* Top bar status indicator */}
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2 bg-white/[0.03] border border-white/[0.05] px-3.5 py-1.5 rounded-full backdrop-blur-md">
-            <div className="w-1.5 h-1.5 rounded-full bg-[#32D74B]" />
-            <span className="text-[10px] font-bold text-white/40 tracking-wider">AKTİF</span>
+          <div className="flex items-center gap-2 bg-green-500/15 border border-green-500/30 px-3.5 py-1.5 rounded-full backdrop-blur-md">
+            <div className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+            <span className="text-[10px] font-bold text-green-300 tracking-wider uppercase">AKTİF</span>
           </div>
         </div>
       </div>

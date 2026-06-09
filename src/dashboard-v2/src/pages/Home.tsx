@@ -8,6 +8,7 @@ import { Button } from '../components/ui/Button';
 import { getCases, getStaffProfiles, SapphireCase, StaffProfile } from '../lib/supabase';
 import { getReliabilityStatus } from '../lib/cukEngine';
 import { useAuth } from '../contexts/AuthContext';
+import { isManagementRole, isManagementKadrosu } from '../lib/auth';
 import { resolveStaffAvatar, resolveStaffName } from '../lib/staffDisplay';
 import { useLanguage } from '../contexts/LanguageContext';
 import {
@@ -128,15 +129,21 @@ export default function Home() {
   const pending = Math.max(total - valid - invalid, 0);
   const accuracy = total > 0 ? ((valid / total) * 100).toFixed(1) : '-';
   const staffStats = buildStaffStats(cases, staffProfiles, t);
+  const isTopMgmt = session ? isManagementRole(session.role) : false;
+
+  const managementStats = staffStats.filter(s => isManagementKadrosu(s.role));
+  const regularStaffStats = staffStats.filter(s => !isManagementKadrosu(s.role));
+
   const weeklyData = buildWeeklyChart(cases);
-  const uniqueMods = staffStats.length;
+  const uniqueMods = isTopMgmt ? staffStats.length : regularStaffStats.length;
 
   const generateReport = () => {
-    const lines = staffStats.map((s, i) => {
+    const targetStats = isTopMgmt ? staffStats : regularStaffStats;
+    const lines = targetStats.map((s, i) => {
       const status = getReliabilityStatus(s.valid, s.invalid);
       return `${i + 1}. ${s.name} — ${t('home.total')}: ${s.total} | ${t('pt.valid')}: ${s.valid} | ${t('pt.invalid')}: ${s.invalid} | ${t('home.accuracy')}: %${s.accuracy} | ${translateReliability(status, t)}`;
     });
-    const text = `Lutheus CezaRapor â€” Report\n${'='.repeat(40)}\n${t('home.total')}: ${total} | ${t('pt.valid')}: ${valid} | ${t('pt.invalid')}: ${invalid} | ${t('pt.pending')}: ${pending}\n\n${lines.join('\n')}`;
+    const text = `Lutheus CezaRapor — Report\n${'='.repeat(40)}\n${t('home.total')}: ${total} | ${t('pt.valid')}: ${valid} | ${t('pt.invalid')}: ${invalid} | ${t('pt.pending')}: ${pending}\n\n${lines.join('\n')}`;
     navigator.clipboard.writeText(text).catch(() => {});
   };
 
@@ -234,13 +241,96 @@ export default function Home() {
         )}
       </Card>
 
+      {/* Yönetim Performansı Table */}
+      {isTopMgmt && (
+        <Card className="overflow-hidden border-primary/20 bg-primary/[0.01]">
+          <div className="px-5 py-4 border-b border-border/50 flex items-center justify-between">
+            <h3 className="font-semibold text-sm text-foreground flex items-center gap-2">
+              <Users className="w-4 h-4 text-primary" /> Yönetim Performansı
+            </h3>
+            <span className="text-xs text-muted-foreground">{managementStats.length} yönetici</span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border/50">
+                  <th className="py-3 px-5 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">#</th>
+                  <th className="py-3 px-3 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">{t('home.moderator')}</th>
+                  <th className="py-3 px-3 text-center text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">{t('home.total')}</th>
+                  <th className="py-3 px-3 text-center text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">{t('pt.valid')}</th>
+                  <th className="py-3 px-3 text-center text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">{t('pt.invalid')}</th>
+                  <th className="py-3 px-3 text-center text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">{t('home.accuracy')}</th>
+                  <th className="py-3 px-5 text-center text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">{t('home.status')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loading ? (
+                  Array.from({ length: 3 }).map((_, i) => (
+                    <tr key={i} className="border-b border-border/30">
+                      <td className="py-3 px-5"><Skeleton className="h-4 w-4" /></td>
+                      <td className="py-3 px-3">
+                        <div className="flex items-center gap-2.5">
+                          <Skeleton className="w-8 h-8 rounded-full" />
+                          <Skeleton className="h-4 w-24" />
+                        </div>
+                      </td>
+                      <td className="py-3 px-3 text-center"><Skeleton className="h-4 w-8 mx-auto" /></td>
+                      <td colSpan={4} />
+                    </tr>
+                  ))
+                ) : managementStats.length === 0 ? (
+                  <tr><td colSpan={7} className="py-12 text-center text-muted-foreground text-sm">{t('home.noData')}</td></tr>
+                ) : managementStats.map((s, i) => {
+                  const status = getReliabilityStatus(s.valid, s.invalid);
+                  const statusVariant: 'success' | 'destructive' | 'warning' | 'default' = status === 'Guvenilir' ? 'success' : status === 'Riskli' ? 'destructive' : 'warning';
+                  return (
+                    <tr
+                      key={s.discordId}
+                      className="border-b border-border/30 hover:bg-secondary/20 cursor-pointer transition-colors"
+                      onClick={() => navigate('/cases', { state: { search: s.name } })}
+                    >
+                      <td className="py-3 px-5 text-muted-foreground text-xs font-mono">{i + 1}</td>
+                      <td className="py-3 px-3">
+                        <div className="flex items-center gap-2.5">
+                          <img src={s.avatar} alt="" className="w-8 h-8 rounded-full bg-secondary shrink-0" />
+                          <span
+                            className="font-medium text-sm text-foreground hover:text-primary hover:underline cursor-pointer"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigate('/staff', { state: { discordId: s.discordId } });
+                            }}
+                          >
+                            {s.name}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="py-3 px-3 text-center font-semibold text-foreground">{s.total}</td>
+                      <td className="py-3 px-3 text-center text-emerald-400 font-semibold">{s.valid}</td>
+                      <td className="py-3 px-3 text-center text-destructive font-semibold">{s.invalid}</td>
+                      <td className="py-3 px-3 text-center">
+                        <span className={`font-bold text-sm ${s.accuracy >= 70 ? 'text-emerald-400' : s.accuracy >= 50 ? 'text-amber-400' : 'text-red-500'}`}>
+                          %{s.accuracy}
+                        </span>
+                      </td>
+                      <td className="py-3 px-5 text-center">
+                        <Badge variant={statusVariant}>{translateReliability(status, t)}</Badge>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
+
       {/* Staff Table */}
       <Card className="overflow-hidden">
         <div className="px-5 py-4 border-b border-border/50 flex items-center justify-between">
           <h3 className="font-semibold text-sm text-foreground flex items-center gap-2">
             <Users className="w-4 h-4 text-primary" /> {t('home.staffPerf')}
           </h3>
-          <span className="text-xs text-muted-foreground">{uniqueMods} {t('home.moderator').toLowerCase()}</span>
+          <span className="text-xs text-muted-foreground">{regularStaffStats.length} {t('home.moderator').toLowerCase()}</span>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -270,9 +360,9 @@ export default function Home() {
                     <td colSpan={4} />
                   </tr>
                 ))
-              ) : staffStats.length === 0 ? (
+              ) : regularStaffStats.length === 0 ? (
                 <tr><td colSpan={7} className="py-12 text-center text-muted-foreground text-sm">{t('home.noData')}</td></tr>
-              ) : staffStats.map((s, i) => {
+              ) : regularStaffStats.map((s, i) => {
                 const status = getReliabilityStatus(s.valid, s.invalid);
                 const statusVariant: 'success' | 'destructive' | 'warning' | 'default' = status === 'Guvenilir' ? 'success' : status === 'Riskli' ? 'destructive' : 'warning';
                 return (

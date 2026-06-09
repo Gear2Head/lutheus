@@ -1,67 +1,84 @@
-/* SECTION: THEME_SYSTEM */
-/* PURPOSE: Main design system variables, Tailwind layers, and background styles. */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
-  --background: #0b0a10;
-  --foreground: #f1f0f5;
-  --card: rgba(19, 17, 28, 0.72);
-  --card-foreground: #f1f0f5;
-  --popover: rgba(19, 17, 28, 0.9);
-  --popover-foreground: #f1f0f5;
-  --primary: #9d7bfe;
-  --primary-foreground: #0b0a10;
-  --secondary: rgba(157, 123, 254, 0.12);
-  --secondary-foreground: #d3c3fe;
-  --muted: rgba(255, 255, 255, 0.06);
-  --muted-foreground: rgba(255, 255, 255, 0.52);
-  --accent: #66fcf1;
-  --accent-foreground: #0b0a10;
-  --destructive: #ef4444;
-  --destructive-foreground: #f5f5f7;
-  --border: rgba(157, 123, 254, 0.16);
-  --input: rgba(255, 255, 255, 0.08);
-  --ring: #9d7bfe;
+  --bg: #050505;
+  --surface: rgba(20, 20, 22, 0.6);
+  --surface-hover: rgba(40, 40, 45, 0.6);
+  --border: rgba(255, 255, 255, 0.06);
+  --text-main: #F5F5F7;
+  --text-muted: rgba(235, 235, 245, 0.5);
+  --accent: #5E5CE6;
+  --success: #32D74B;
+  --warning: #FF9F0A;
+  --danger: #FF453A;
 }
 
 body {
-  color: var(--foreground);
-  background-color: var(--background);
-  background-image: linear-gradient(rgba(5, 5, 8, 0.72), rgba(5, 5, 8, 0.72)), url('/background.png');
+  background-color: var(--bg);
+  background-image: url('/background.png');
   background-size: cover;
   background-position: center;
   background-attachment: fixed;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  overflow-x: hidden;
+  color: var(--text-main);
+  font-family: 'Inter', -apple-system, system-ui, sans-serif;
+  margin: 0;
+  overflow: hidden; 
+  font-size: 13px; 
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-.glass-panel {
-  background-color: rgba(19, 17, 28, 0.72);
-  backdrop-filter: blur(24px);
-  border: 1px solid rgba(157, 123, 254, 0.16);
+/* Base App Background Overlay to dim the background image slightly */
+.bg-overlay {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 50% 0%, rgba(94, 92, 230, 0.05) 0%, transparent 50%),
+              radial-gradient(circle at 50% 100%, rgba(50, 215, 75, 0.02) 0%, transparent 50%),
+              rgba(5, 5, 5, 0.7);
+  z-index: -1;
+  pointer-events: none;
 }
 
-.status-online { color: #22c55e; }
-.status-offline { color: #6b7280; }
-.status-error { color: #ef4444; }
-
-/* Custom scrollbars for a premium dashboard feel */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+.compact-glass {
+  background: var(--surface);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--border);
+  box-shadow: 0 4px 24px -2px rgba(0, 0, 0, 0.2);
 }
 
-::-webkit-scrollbar-track {
-  background: #0b0c10;
+.clean-input {
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text-main);
+}
+.clean-input::placeholder {
+  color: var(--text-muted);
 }
 
-::-webkit-scrollbar-thumb {
-  background: #1f2833;
-  border-radius: 3px;
-}
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.15); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.25); }
+.hide-scrollbar::-webkit-scrollbar { display: none; }
+.hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 
-::-webkit-scrollbar-thumb:hover {
-  background: #66fcf1;
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
+.status-badge.success { color: var(--success); background: rgba(50, 215, 75, 0.1); border: 1px solid rgba(50, 215, 75, 0.2); }
+.status-badge.danger { color: var(--danger); background: rgba(255, 69, 58, 0.1); border: 1px solid rgba(255, 69, 58, 0.2); }
+.status-badge.warning { color: var(--warning); background: rgba(255, 159, 10, 0.1); border: 1px solid rgba(255, 159, 10, 0.2); }
+.status-badge.neutral { color: var(--text-muted); background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); }

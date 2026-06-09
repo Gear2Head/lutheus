@@ -112,9 +112,24 @@ export function canAccessAdmin(role: string): boolean {
   return ADMIN_ROLES.has(role?.toLowerCase());
 }
 
-const MANAGEMENT_ROLES = new Set([
-  'kurucu', 'admin', 'yonetici', 'genel_sorumlu', 'discord_yoneticisi'
+export const MANAGEMENT_ROLES = new Set([
+  'kurucu', 'admin', 'yonetici', 'genel_sorumlu', 'discord_yoneticisi',
 ]);
+
+/** Returns true if the given role is a management-level role with DB intervention rights. */
+export function isManagementRole(role: string): boolean {
+  return MANAGEMENT_ROLES.has(role?.toLowerCase());
+}
+
+export const MANAGEMENT_KADROSU_ROLES = new Set([
+  'kurucu', 'admin', 'yonetici', 'genel_sorumlu', 'discord_yoneticisi',
+  'kidemli', 'kidemli_discord_moderatoru', 'senior_moderator'
+]);
+
+/** Returns true if the given role is part of the management staff whose metrics are restricted/separated. */
+export function isManagementKadrosu(role: string): boolean {
+  return MANAGEMENT_KADROSU_ROLES.has(role?.toLowerCase());
+}
 
 export function hasPermission(role: string, permission: string): boolean {
   const normalizedRole = role?.toLowerCase();

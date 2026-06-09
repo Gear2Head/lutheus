@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { getRoleLabel, getRoleColor, getAvatarUrl } from '../lib/auth';
+import { getRoleLabel, getRoleColor, getAvatarUrl, isManagementRole } from '../lib/auth';
 import { Card } from '../components/ui/Card';
 import { Accordion } from '../components/ui/Accordion';
 import { Button } from '../components/ui/Button';
@@ -311,23 +311,41 @@ export default function Settings() {
         </Accordion>
       </div>
 
-      {/* Danger zone */}
+      {/* Danger zone — Management only */}
       <div className="space-y-4">
         <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">{t('settings.dangerZone')}</div>
-        <Card className="p-5 border-destructive/20 bg-destructive/5 space-y-6">
-          <div>
-            <h4 className="font-semibold text-destructive mb-1">{t('settings.purgeCasesTitle')}</h4>
-            <p className="text-xs text-destructive/80 mb-3">{t('settings.purgeCasesDesc')}</p>
-            <Button variant="destructive" size="sm" onClick={handlePurgeCases} disabled={purging}>
-              {purging ? t('nav.syncing') : t('settings.purgeCasesBtn')}
-            </Button>
-          </div>
-          <div className="border-t border-destructive/10 pt-5">
-            <h4 className="font-semibold text-destructive mb-1">{t('settings.resetTitle')}</h4>
-            <p className="text-xs text-destructive/80 mb-3">{t('settings.resetDesc')}</p>
-            <Button variant="destructive" size="sm" disabled>{t('settings.resetBtn')}</Button>
-          </div>
-        </Card>
+        {isManagementRole(session?.role ?? '') ? (
+          <Card className="p-5 border-destructive/20 bg-destructive/5 space-y-6">
+            <div>
+              <h4 className="font-semibold text-destructive mb-1">{t('settings.purgeCasesTitle')}</h4>
+              <p className="text-xs text-destructive/80 mb-3">{t('settings.purgeCasesDesc')}</p>
+              <Button variant="destructive" size="sm" onClick={handlePurgeCases} disabled={purging}>
+                {purging ? t('nav.syncing') : t('settings.purgeCasesBtn')}
+              </Button>
+            </div>
+            <div className="border-t border-destructive/10 pt-5">
+              <h4 className="font-semibold text-destructive mb-1">{t('settings.resetTitle')}</h4>
+              <p className="text-xs text-destructive/80 mb-3">{t('settings.resetDesc')}</p>
+              <Button variant="destructive" size="sm" disabled>{t('settings.resetBtn')}</Button>
+            </div>
+          </Card>
+        ) : (
+          <Card className="p-5 border-border/30 bg-secondary/30">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="w-5 h-5 text-muted-foreground mt-0.5 shrink-0" />
+              <div>
+                <h4 className="font-semibold text-foreground mb-1">
+                  {language === 'tr' ? 'Erişim Kısıtlı' : 'Access Restricted'}
+                </h4>
+                <p className="text-xs text-muted-foreground">
+                  {language === 'tr'
+                    ? 'Bu bölgedeki veritabanı işlemleri (ceza silme, sistem sıfırlama) yalnızca Yönetim ekibi tarafından gerçekleştirilebilir. Kurucu, Admin, Yönetici, Genel Sorumlu veya Discord Yöneticisi rolüne sahip olmanız gerekmektedir.'
+                    : 'Database operations in this section (purging cases, system reset) can only be performed by the Management team. You must have the Founder, Admin, Manager, General Director, or Discord Manager role.'}
+                </p>
+              </div>
+            </div>
+          </Card>
+        )}
       </div>
     </div>
   );

@@ -178,14 +178,14 @@ export default function Staff() {
   };
 
   return (
-    <div className="p-4 md:p-8 w-full min-h-screen flex flex-col relative select-none">
+    <div className="p-4 md:p-8 w-full min-h-screen flex flex-col relative select-none bg-gradient-to-b from-[#0f172e] to-[#1a1f3a]">
       
-      {/* Header bar matching exact screenshot */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between pb-6 mb-6 border-b border-white/[0.04] gap-4">
+      {/* Header bar with purple theme */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between pb-6 mb-6 border-b border-purple-500/20 gap-4">
         <div>
-          <h2 className="text-[22px] font-bold text-white tracking-tight leading-none">Yetkili Listesi</h2>
-          <p className="text-[12px] text-white/40 mt-1.5 font-medium">
-            {staffList.length} yetkili kayıtlı • <span className="text-[#32D74B] font-semibold">{staffList.filter(s => s.roleGroup === 'ACTIVE').length} Aktif</span> • <span className="text-white/30">{staffList.filter(s => s.roleGroup === 'OLD').length} Eski</span>
+          <h2 className="text-[28px] font-bold text-white tracking-tight leading-none bg-gradient-to-r from-white to-purple-200 bg-clip-text text-transparent">Yetkili Listesi</h2>
+          <p className="text-[13px] text-purple-200/70 mt-2 font-medium">
+            {staffList.length} yetkili kayıtlı • <span className="text-green-400 font-semibold">{staffList.filter(s => s.roleGroup === 'ACTIVE').length} Aktif</span> • <span className="text-purple-200/50">{staffList.filter(s => s.roleGroup === 'OLD').length} Eski</span>
           </p>
         </div>
 
@@ -194,18 +194,18 @@ export default function Staff() {
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
             onClick={() => setShowAddModal(true)}
-            className="h-9 px-4 rounded-lg bg-white/[0.04] border border-white/[0.08] text-white hover:bg-[#5E5CE6]/10 hover:border-[#5E5CE6]/20 hover:text-[#5E5CE6] text-[12.5px] font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-lg"
+            className="h-9 px-4 rounded-lg bg-purple-500/10 border border-purple-500/30 text-purple-200 hover:bg-purple-500/20 hover:border-purple-500/50 hover:text-purple-100 text-[12.5px] font-bold transition-all flex items-center gap-1.5 cursor-pointer"
           >
-            <Plus size={14} /> Yetkili Ekle
+            <Plus size={16} /> Yetkili Ekle
           </motion.button>
           <Tooltip content="Yetkili Listesini Yenile">
             <motion.button 
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
               onClick={handleRefresh}
-              className="w-9 h-9 rounded-lg bg-white/[0.04] border border-white/[0.08] hover:bg-white/[0.08] flex items-center justify-center text-white/70 hover:text-white transition-all cursor-pointer shadow-lg"
+              className="w-9 h-9 rounded-lg bg-purple-500/10 border border-purple-500/30 hover:bg-purple-500/20 flex items-center justify-center text-purple-200 hover:text-purple-100 transition-all cursor-pointer"
             >
-              <RefreshCw size={14} className={isLoading ? 'animate-spin text-[#5E5CE6]' : ''} />
+              <RefreshCw size={16} className={isLoading ? 'animate-spin' : ''} />
             </motion.button>
           </Tooltip>
         </div>
@@ -213,17 +213,17 @@ export default function Staff() {
 
       {/* Search Input Filter Controls */}
       <div className="mb-8 max-w-sm relative">
-        <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-white/30" />
+        <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-purple-300/50" />
         <input 
           type="text"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           placeholder="Yetkili ara..."
-          className="clean-input w-full h-9 bg-[#111112] border border-white/10 rounded-lg pl-10 pr-4 text-[12px] transition-all focus:bg-[#151517] focus:border-white/20 font-medium"
+          className="w-full h-10 bg-purple-900/20 border border-purple-500/30 rounded-lg pl-10 pr-4 text-[13px] text-white placeholder-purple-300/50 transition-all focus:bg-purple-900/30 focus:border-purple-500/50 font-medium"
         />
         {searchQuery && (
-          <button onClick={() => setSearchQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-white/40 hover:text-white">
-            <X size={12} />
+          <button onClick={() => setSearchQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-purple-300/60 hover:text-purple-200">
+            <X size={14} />
           </button>
         )}
       </div>
@@ -231,16 +231,16 @@ export default function Staff() {
       {isLoading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 flex-1">
           {[...Array(8)].map((_, i) => (
-            <div key={i} className="h-44 rounded-2xl bg-white/[0.02] border border-white/[0.04] p-5 animate-pulse flex flex-col justify-between">
+            <div key={i} className="h-48 rounded-2xl bg-purple-900/10 border border-purple-500/20 p-5 animate-pulse flex flex-col justify-between">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg bg-white/[0.04]" />
+                <div className="w-12 h-12 rounded-lg bg-purple-500/10" />
                 <div className="space-y-1.5 flex-1">
-                  <div className="h-4 w-1/3 bg-white/[0.04] rounded" />
-                  <div className="h-3 w-1/2 bg-white/[0.04] rounded" />
+                  <div className="h-4 w-2/3 bg-purple-500/10 rounded" />
+                  <div className="h-3 w-1/2 bg-purple-500/5 rounded" />
                 </div>
               </div>
-              <div className="h-10 bg-white/[0.02] rounded-lg" />
-              <div className="h-2 w-full bg-white/[0.04] rounded" />
+              <div className="h-12 bg-purple-500/10 rounded-lg" />
+              <div className="h-2 w-full bg-purple-500/5 rounded" />
             </div>
           ))}
         </div>
@@ -248,16 +248,15 @@ export default function Staff() {
         <motion.div 
           initial={{ opacity: 0, scale: 0.98 }}
           animate={{ opacity: 1, scale: 1 }}
-          className="compact-glass rounded-2xl border border-white/[0.04] p-16 text-center max-w-xl mx-auto relative overflow-hidden bg-[#0c0c0e]/35 shadow-2xl my-6"
+          className="premium-card mx-auto relative overflow-hidden my-8 max-w-md"
         >
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 bg-[#5E5CE6]/5 blur-[70px] rounded-full pointer-events-none" />
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 bg-purple-500/10 blur-[70px] rounded-full pointer-events-none" />
           
-          <div className="w-16 h-16 rounded-2xl bg-white/[0.02] border border-white/[0.08] flex items-center justify-center mx-auto mb-6 relative group shadow-lg">
-            <div className="absolute inset-0 bg-[#5E5CE6]/10 rounded-2xl blur-md opacity-25 group-hover:opacity-60 transition-opacity" />
-            <Users className="text-white/30 relative z-10" size={26} />
+          <div className="w-16 h-16 rounded-2xl bg-purple-500/20 border border-purple-500/30 flex items-center justify-center mx-auto mb-6 relative">
+            <Users className="text-purple-300" size={28} />
           </div>
           
-          <h3 className="text-[16px] font-bold text-white tracking-tight leading-none">Arama Sonucu Bulunamadı</h3>
+          <h3 className="text-[18px] font-bold text-white tracking-tight text-center">Arama Sonucu Bulunamadı</h3>
           <p className="text-[12.5px] text-[#8E8E93] mt-3 mb-6 max-w-xs mx-auto leading-relaxed font-medium">
             "<span className="text-white/85 font-semibold">{searchQuery}</span>" araması ile eşleşen aktif veya eski herhangi bir yetkili kaydı bulunmamaktadır.
           </p>

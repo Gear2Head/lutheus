@@ -247,16 +247,17 @@ export default function Dashboard() {
 
                       {/* Micro inline action toggles */}
                       <div className="flex gap-2">
+                        <Tooltip content="Doğru Olarak İşaretle">
                           <button
                             disabled={isUpdating}
                             onClick={() => handleDashboardUpdateStatus(log.id, 'DOĞRU')}
                             className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold flex items-center justify-center gap-1 transition-all ${
                               log.status === 'DOĞRU'
-                                ? 'bg-[#32D74B]/20 text-[#32D74B] border border-[#32D74B]/30'
-                                : 'bg-white/[0.02] text-white/40 border border-transparent hover:bg-white/[0.04] hover:text-white/70'
+                                ? 'bg-green-500/20 text-green-400 border border-green-500/30'
+                                : 'bg-purple-500/10 text-purple-200/60 border border-transparent hover:bg-purple-500/20 hover:text-purple-200'
                             } cursor-pointer`}
                           >
-                            <CheckCircle2 size={11} />
+                            <CheckCircle2 size={12} />
                             <span>Doğru</span>
                           </button>
                         </Tooltip>
@@ -267,11 +268,11 @@ export default function Dashboard() {
                             onClick={() => handleDashboardUpdateStatus(log.id, 'HATALI')}
                             className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold flex items-center justify-center gap-1 transition-all ${
                               log.status === 'HATALI'
-                                ? 'bg-[#FF453A]/20 text-[#FF453A] border border-[#FF453A]/30'
-                                : 'bg-white/[0.02] text-white/40 border border-transparent hover:bg-white/[0.04] hover:text-white/70'
+                                ? 'bg-red-500/20 text-red-400 border border-red-500/30'
+                                : 'bg-purple-500/10 text-purple-200/60 border border-transparent hover:bg-purple-500/20 hover:text-purple-200'
                             } cursor-pointer`}
                           >
-                            <AlertCircle size={11} />
+                            <AlertCircle size={12} />
                             <span>Hatalı</span>
                           </button>
                         </Tooltip>

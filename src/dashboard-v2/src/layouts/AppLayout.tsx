@@ -31,6 +31,10 @@ export default function AppLayout() {
   const { session, logout, loading, refreshSession } = useAuth();
   const { t, language } = useLanguage();
   
+  const isExt = typeof chrome !== 'undefined' && !!chrome.runtime?.getURL;
+  const logoUrl = isExt ? 'icon128.png' : '/dashboard/icon128.png';
+  const bannerUrl = isExt ? 'banner.png' : '/dashboard/banner.png';
+
   const [profileOpen, setProfileOpen] = useState(false);
   const [notificationCenterOpen, setNotificationCenterOpen] = useState(false);
   const [pendingSync, setPendingSync] = useState(0);
@@ -356,11 +360,17 @@ export default function AppLayout() {
         {/* Brand Area */}
         <div className={`h-[70px] ${isCollapsed ? 'px-3 justify-center' : 'px-5'} flex items-center justify-between border-b border-white/[0.02] relative overflow-hidden`}>
           {!isCollapsed && (
-            <div className="absolute inset-0 z-0 bg-gradient-to-r from-purple-950/50 to-indigo-950/40 backdrop-blur-[1px]" />
+            <div 
+              className="absolute inset-0 z-0 bg-cover bg-center"
+              style={{ backgroundImage: `url('${bannerUrl}')` }}
+            >
+              {/* Dark overlay to ensure contrast */}
+              <div className="absolute inset-0 bg-black/60 backdrop-blur-[1px]" />
+            </div>
           )}
           <div className="flex items-center gap-2 min-w-0 relative z-10">
-            <div className="w-[26px] h-[26px] flex items-center justify-center shrink-0 text-[#5E5CE6]">
-              <Shield className="w-5 h-5" strokeWidth={2.5} />
+            <div className="w-[26px] h-[26px] flex items-center justify-center shrink-0">
+              <img src={logoUrl} className="w-full h-full object-contain" alt="Lutheus Logo" />
             </div>
             {!isCollapsed && (
               <motion.div 

@@ -200,6 +200,7 @@ export default function Settings() {
   const roleColor = session ? getRoleColor(session.role) : '#64748b';
   const roleLabel = session ? getRoleLabel(session.role) : '';
   const displayName = session?.profile?.displayName || session?.profile?.username || '—';
+  const isMgmt = session ? isManagementRole(session.role) : false;
 
   return (
     <div className="p-6 md:p-8 w-full min-h-screen flex flex-col relative select-none bg-[#050506] text-white/90">
@@ -446,9 +447,11 @@ export default function Settings() {
           </div>
         </div>
 
-        {/* SİSTEM CATEGORY TITLE */}
-        <div className="pt-2">
-          <span className="text-[10px] font-mono font-extrabold text-white/40 uppercase tracking-widest block mb-3">SİSTEM</span>
+        {isMgmt && (
+          <>
+            {/* SİSTEM CATEGORY TITLE */}
+            <div className="pt-2">
+              <span className="text-[10px] font-mono font-extrabold text-white/40 uppercase tracking-widest block mb-3">SİSTEM</span>
           
           <div className="space-y-3.5">
             {/* Accordion 3: Genel Ayarlar */}
@@ -830,6 +833,8 @@ export default function Settings() {
             </motion.div>
           )}
         </AnimatePresence>
+          </>
+        )}
 
       </div>
     </div>

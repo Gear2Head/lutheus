@@ -10,7 +10,7 @@ import { useToast } from '../contexts/ToastContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import { motion, AnimatePresence } from 'motion/react';
 import {
-  Megaphone, Plus, Send, Archive, Eye, X, Users,
+  Megaphone, Plus, Send, Archive, Eye, X, Users, Copy,
   ChevronDown, ChevronUp, Bold, Italic, Link, List,
   RefreshCw, CheckCircle, Clock, FileText, Bell, Radio,
   MessageSquare, Sliders, Hash, Loader, Terminal, HelpCircle,
@@ -141,6 +141,7 @@ export default function Announcements() {
 
   // Expanded card state
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
 
   const canManage = session ? hasPermission(session.role, 'announcement:manage') : false;
 
@@ -647,9 +648,13 @@ export default function Announcements() {
                     style={{ borderLeftColor: botProfileColor }}
                   >
                     <span className="text-[10px] text-[#b9bbbe] uppercase tracking-wider font-extrabold block mb-1">{title ? title : 'Sapphire Bildiri Enstitüsü'}</span>
-                    <p className="text-[12px] text-white/95 font-medium leading-relaxed whitespace-pre-wrap break-all select-text selection:bg-[#5865f2]">
-                      {body ? body : "Burası anons önizlemesidir. Sol taraftan metin girdikçe gerçek zamanlı olarak burası simüle edilecektir..."}
-                    </p>
+                    <div className="text-[12px] text-white/95 font-medium leading-relaxed whitespace-pre-wrap break-all select-text selection:bg-[#5865f2] discord-rich-body">
+                      {body ? (
+                        <MarkdownPreview markdown={body} />
+                      ) : (
+                        "Burası anons önizlemesidir. Sol taraftan metin girdikçe gerçek zamanlı olarak burası simüle edilecektir..."
+                      )}
+                    </div>
                     
                     <div className="flex items-center gap-1.5 mt-3 pt-2.5 border-t border-white/[0.03] text-[9.5px] text-white/30 font-semibold font-mono">
                       <span>📡 Sapphire Live Broadcast Engine v2.4</span>
@@ -713,12 +718,21 @@ export default function Announcements() {
             <h3 className="text-[14px] font-black text-white uppercase tracking-tight font-mono">📌 Dahili Yönetim Duyuru Arşivi</h3>
             <p className="text-[11px] text-[#8E8E93] mt-0.5">Sadece bu web paneli kullanan denetim kadrosuna özel bilgilendirme kartları.</p>
           </div>
-          <button 
-            onClick={loadData}
-            className="flex items-center gap-2 px-3 py-2 rounded-xl bg-secondary/50 border border-border/50 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
-          >
-            <RefreshCw className="w-3.5 h-3.5" /> Yenile
-          </button>
+          <div className="flex items-center gap-2 flex-wrap">
+            <input 
+              type="text" 
+              placeholder="Duyurularda ara..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="h-8.5 bg-black/45 border border-white/10 rounded-lg px-3 text-[11.5px] text-white outline-none focus:border-[#BF5AF2]/40 w-44"
+            />
+            <button 
+              onClick={loadData}
+              className="flex items-center gap-2 h-8.5 px-3 rounded-lg bg-white/5 border border-white/10 text-xs font-medium text-white/70 hover:text-white transition-colors cursor-pointer"
+            >
+              <RefreshCw className="w-3.5 h-3.5" /> Yenile
+            </button>
+          </div>
         </div>
 
         {loading ? (
@@ -731,18 +745,26 @@ export default function Announcements() {
               </Card>
             ))}
           </div>
-        ) : items.length === 0 ? (
+        ) : items.filter(item => 
+            item.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
+            item.body_markdown.toLowerCase().includes(searchQuery.toLowerCase())
+          ).length === 0 ? (
           <EmptyState
             icon={<Megaphone className="w-6 h-6" />}
-            title="Henuz duyuru olusturulmamis"
+            title="Aranan kriterde duyuru bulunamadi"
           />
         ) : (
           <div className="space-y-4">
-            {items.map((item, index) => {
-              const cfg = STATUS_CONFIG[item.status] || STATUS_CONFIG.draft;
-              const StatusIcon = cfg.icon;
-              const isExpanded = expanded === item.id;
-              return (
+            {items
+              .filter(item => 
+                item.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                item.body_markdown.toLowerCase().includes(searchQuery.toLowerCase())
+              )
+              .map((item, index) => {
+                const cfg = STATUS_CONFIG[item.status] || STATUS_CONFIG.draft;
+                const StatusIcon = cfg.icon;
+                const isExpanded = expanded === item.id;
+                return (
                 <motion.div
                   key={item.id}
                   initial={{ opacity: 0, y: 15 }}
@@ -800,6 +822,15 @@ export default function Announcements() {
 
                         {/* Actions */}
                         <div className="flex items-center justify-end gap-3 pt-3.5 border-t border-white/[0.03]">
+                          <button 
+                            onClick={() => {
+                              navigator.clipboard.writeText(item.body_markdown);
+                              showToast('Metin panoya kopyalandı!', 'success');
+                            }}
+                            className="px-3 py-1.5 rounded-lg bg-white/[0.02] border border-[#BF5AF2]/10 hover:border-[#BF5AF2]/30 text-white/70 text-[11px] font-bold cursor-pointer transition-all mr-auto"
+                          >
+                            <Copy className="w-3.5 h-3.5 inline mr-1 text-[#BF5AF2]" /> Kopyala
+                          </button>
                           {item.status === 'draft' && (
                             <>
                               <button 

@@ -1699,7 +1699,7 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
                 }
 
                 case ACTIONS.OPEN_ADMIN: {
-                    const adminUrl = chrome.runtime.getURL('src/dashboard-v2/dist-web/index.html');
+                    const adminUrl = chrome.runtime.getURL('src/dashboard-v2/dist/index.html');
                     const adminTabs = await chrome.tabs.query({ url: adminUrl });
                     if (adminTabs.length > 0) {
                         await chrome.tabs.update(adminTabs[0].id, { active: true });

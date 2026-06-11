@@ -58,6 +58,7 @@ export default function Staff() {
   const [savingNewStaff, setSavingNewStaff] = useState(false);
 
   const canManageStaff = session ? hasPermission(session.role, 'staff:update') : false;
+  const isSelfManagement = session ? isManagementKadrosu(session.role) : false;
   const isDirty = Object.keys(bufferedChanges).length > 0;
 
   useEffect(() => {
@@ -392,7 +393,7 @@ export default function Staff() {
     r === 'Guvenilir' ? 'success' : r === 'Riskli' ? 'destructive' : 'warning';
 
   return (
-    <div className="space-y-5 animate-in pb-20 relative">
+    <div className="p-6 md:p-8 w-full space-y-6 md:space-y-8 select-none text-left animate-in pb-20 relative">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pt-2">
         <div>
           <h2 className="text-2xl font-bold tracking-tight">Yetkili Listesi</h2>
@@ -441,13 +442,19 @@ export default function Staff() {
       ) : filtered.length === 0 ? (
         <EmptyState icon={<User className="w-6 h-6" />} title="Yetkili bulunamadı" />
       ) : (() => {
-        const activeStaff = filtered.filter((s) => s.role !== 'eski_yetkili');
+        const isSelfManagement = session ? isManagementKadrosu(session.role) : false;
+
+        const activeManagement = filtered.filter((s) => s.role !== 'eski_yetkili' && isManagementKadrosu(s.role));
+        const activeStaff = filtered.filter((s) => s.role !== 'eski_yetkili' && !isManagementKadrosu(s.role));
         const formerStaff = filtered.filter((s) => s.role === 'eski_yetkili');
         
         const renderStaffCard = (s: StaffWithStats) => {
           const roleColor = getRoleColor(s.role);
           const roleLabel = getRoleLabel(s.role);
           const isModified = !!bufferedChanges[s.discordId];
+          const isTargetManagement = isManagementKadrosu(s.role);
+          const hidePerformance = isTargetManagement && !isSelfManagement;
+
           return (
             <Card
               key={s.discordId}
@@ -471,49 +478,76 @@ export default function Staff() {
                   <div className="text-[10px] text-muted-foreground/80 font-mono mt-0.5 truncate" title={s.discordId}>ID: {s.discordId}</div>
                   <div className="text-[10px] font-bold uppercase tracking-wider mt-0.5" style={{ color: roleColor }}>{roleLabel}</div>
                 </div>
-                <Badge variant={reliabilityVariant(s.reliability)} className="shrink-0 text-[10px]">
-                  {s.reliability}
-                </Badge>
+                {!hidePerformance && (
+                  <Badge variant={reliabilityVariant(s.reliability)} className="shrink-0 text-[10px]">
+                    {s.reliability}
+                  </Badge>
+                )}
               </div>
 
-              <div className="grid grid-cols-3 gap-2">
-                <div className="text-center p-2 rounded-xl bg-secondary/40 border border-border/50">
-                  <div className="text-lg font-bold text-foreground">{s.total}</div>
-                  <div className="text-[10px] text-muted-foreground mt-0.5">Toplam</div>
-                </div>
-                <div className="text-center p-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
-                  <div className="text-lg font-bold text-emerald-400">{s.valid}</div>
-                  <div className="text-[10px] text-emerald-500/80 font-medium mt-0.5">Doğru</div>
-                </div>
-                <div className="text-center p-2 rounded-xl bg-red-500/10 border border-red-500/20">
-                  <div className="text-lg font-bold text-red-400">{s.invalid}</div>
-                  <div className="text-[10px] text-red-500/80 font-medium mt-0.5">Hatalı</div>
-                </div>
-              </div>
+              {!hidePerformance ? (
+                <>
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="text-center p-2 rounded-xl bg-secondary/40 border border-border/50">
+                      <div className="text-lg font-bold text-foreground">{s.total}</div>
+                      <div className="text-[10px] text-muted-foreground mt-0.5">Toplam</div>
+                    </div>
+                    <div className="text-center p-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
+                      <div className="text-lg font-bold text-emerald-400">{s.valid}</div>
+                      <div className="text-[10px] text-emerald-500/80 font-medium mt-0.5">Doğru</div>
+                    </div>
+                    <div className="text-center p-2 rounded-xl bg-red-500/10 border border-red-500/20">
+                      <div className="text-lg font-bold text-red-400">{s.invalid}</div>
+                      <div className="text-[10px] text-red-500/80 font-medium mt-0.5">Hatalı</div>
+                    </div>
+                  </div>
 
-              <div className="mt-3">
-                <div className="flex justify-between text-xs mb-1.5">
-                  <span className="text-muted-foreground">Doğruluk</span>
-                  <span className={`font-bold ${reliabilityColor(s.reliability)}`}>%{s.accuracy}</span>
+                  <div className="mt-3">
+                    <div className="flex justify-between text-xs mb-1.5">
+                      <span className="text-muted-foreground">Doğruluk</span>
+                      <span className={`font-bold ${reliabilityColor(s.reliability)}`}>%{s.accuracy}</span>
+                    </div>
+                    <div className="h-1.5 bg-secondary rounded-full overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all duration-700 ${s.accuracy >= 70 ? 'bg-emerald-500' : s.accuracy >= 50 ? 'bg-amber-500' : 'bg-red-500'}`}
+                        style={{ width: `${s.accuracy}%` }}
+                      />
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="text-center p-4 rounded-xl bg-[#111112]/30 border border-white/[0.03] text-xs text-white/40 italic">
+                  Performans verileri gizli
                 </div>
-                <div className="h-1.5 bg-secondary rounded-full overflow-hidden">
-                  <div
-                    className={`h-full rounded-full transition-all duration-700 ${s.accuracy >= 70 ? 'bg-emerald-500' : s.accuracy >= 50 ? 'bg-amber-500' : 'bg-red-500'}`}
-                    style={{ width: `${s.accuracy}%` }}
-                  />
-                </div>
-              </div>
+              )}
             </Card>
           );
         };
 
         return (
           <div className="space-y-8">
-            {/* Active Staff */}
+            {/* Active Management */}
             <div className="space-y-4">
-              <h2 className="text-sm font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                Aktif Yetkililer ({activeStaff.length})
+              <h2 className="text-sm font-bold text-[#A259FE] uppercase tracking-wider flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-lg bg-[#A259FE]" />
+                Yönetim Kadrosu ({activeManagement.length})
+              </h2>
+              {activeManagement.length === 0 ? (
+                <div className="p-6 rounded-2xl border border-dashed border-border/50 text-center text-xs text-muted-foreground italic bg-secondary/10">
+                  Kayıtlı yönetim yetkilisi bulunmamaktadır.
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {activeManagement.map(renderStaffCard)}
+                </div>
+              )}
+            </div>
+
+            {/* Active Staff */}
+            <div className="space-y-4 pt-6 border-t border-white/[0.04]">
+              <h2 className="text-sm font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-lg bg-emerald-500" />
+                Yetkili ve Destek Ekibi ({activeStaff.length})
               </h2>
               {activeStaff.length === 0 ? (
                 <EmptyState icon={<User className="w-6 h-6" />} title="Aktif yetkili bulunamadı" />
@@ -525,9 +559,9 @@ export default function Staff() {
             </div>
 
             {/* Former Staff */}
-            <div className="space-y-4 pt-6 border-t border-border/40">
+            <div className="space-y-4 pt-6 border-t border-white/[0.04]">
               <h2 className="text-sm font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-slate-500" />
+                <span className="w-2.5 h-2.5 rounded-lg bg-slate-500" />
                 Eski Yetkililer ({formerStaff.length})
               </h2>
               {formerStaff.length === 0 ? (
@@ -630,41 +664,49 @@ export default function Staff() {
             )}
 
             {/* Stats */}
-            <div className="grid grid-cols-2 gap-3">
-              {[
-                { label: 'Toplam Ceza', val: selected.total, color: 'text-foreground' },
-                { label: 'Dogru', val: selected.valid, color: 'text-emerald-400' },
-                { label: 'Hatali', val: selected.invalid, color: 'text-destructive' },
-                { label: 'Dogruluk', val: `%${selected.accuracy}`, color: selected.accuracy >= 70 ? 'text-emerald-400' : selected.accuracy >= 50 ? 'text-amber-400' : 'text-red-500' },
-                { label: 'CUK Skoru', val: selected.score, color: 'text-primary' },
-                { label: 'Güvenilirlik', val: selected.reliability, color: reliabilityColor(selected.reliability) },
-              ].map(({ label, val, color }) => (
-                <div key={label} className="p-3 rounded-xl bg-secondary/30 border border-border/50">
-                  <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">{label}</div>
-                  <div className={`text-xl font-bold ${color}`}>{val}</div>
-                </div>
-              ))}
-            </div>
-
-            {/* Recent cases */}
-            {selected.recentCases.length > 0 && (
-              <div>
-                <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Son Cezalar</div>
-                <div className="space-y-2">
-                  {selected.recentCases.map((c) => (
-                    <div key={c.case_id} className="flex items-center justify-between p-3 rounded-xl bg-secondary/30 border border-border/50">
-                      <div className="flex-1 min-w-0 mr-3">
-                        <div className="text-xs font-mono text-muted-foreground">#{c.case_id}</div>
-                        <div className="text-xs text-foreground truncate mt-0.5">{c.reason_raw || '—'}</div>
-                      </div>
-                      {c.cuk_verdict === 'valid'
-                        ? <Badge variant="success">Dogru</Badge>
-                        : c.cuk_verdict === 'invalid'
-                        ? <Badge variant="destructive">Hatali</Badge>
-                        : <Badge variant="warning">Bekl.</Badge>}
+            {!(isManagementKadrosu(selected.role) && !isSelfManagement) ? (
+              <>
+                <div className="grid grid-cols-2 gap-3">
+                  {[
+                    { label: 'Toplam Ceza', val: selected.total, color: 'text-foreground' },
+                    { label: 'Dogru', val: selected.valid, color: 'text-emerald-400' },
+                    { label: 'Hatali', val: selected.invalid, color: 'text-destructive' },
+                    { label: 'Dogruluk', val: `%${selected.accuracy}`, color: selected.accuracy >= 70 ? 'text-emerald-400' : selected.accuracy >= 50 ? 'text-amber-400' : 'text-red-500' },
+                    { label: 'CUK Skoru', val: selected.score, color: 'text-primary' },
+                    { label: 'Güvenilirlik', val: selected.reliability, color: reliabilityColor(selected.reliability) },
+                  ].map(({ label, val, color }) => (
+                    <div key={label} className="p-3 rounded-xl bg-secondary/30 border border-border/50">
+                      <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">{label}</div>
+                      <div className={`text-xl font-bold ${color}`}>{val}</div>
                     </div>
                   ))}
                 </div>
+
+                {/* Recent cases */}
+                {selected.recentCases.length > 0 && (
+                  <div className="mt-4">
+                    <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Son Cezalar</div>
+                    <div className="space-y-2">
+                      {selected.recentCases.map((c) => (
+                        <div key={c.case_id} className="flex items-center justify-between p-3 rounded-xl bg-secondary/30 border border-border/50">
+                          <div className="flex-1 min-w-0 mr-3">
+                            <div className="text-xs font-mono text-muted-foreground">#{c.case_id}</div>
+                            <div className="text-xs text-foreground truncate mt-0.5">{c.reason_raw || '—'}</div>
+                          </div>
+                          {c.cuk_verdict === 'valid'
+                            ? <Badge variant="success">Dogru</Badge>
+                            : c.cuk_verdict === 'invalid'
+                            ? <Badge variant="destructive">Hatali</Badge>
+                            : <Badge variant="warning">Bekl.</Badge>}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="p-4 rounded-xl bg-[#111112]/30 border border-white/[0.03] text-xs text-white/40 text-center italic">
+                Bu yetkilinin performans istatistikleri ve ceza geçmişi yetkili grubuna gizlidir.
               </div>
             )}
           </div>

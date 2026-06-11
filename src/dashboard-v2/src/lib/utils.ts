@@ -13,7 +13,16 @@ export function parseDateSafe(dateStr: string): Date {
   
   // Try direct ISO parse first (YYYY-MM-DD)
   if (dateStr.includes('-')) {
-    const d = new Date(dateStr);
+    let normalized = dateStr.trim();
+    if (normalized.includes(' ')) {
+      normalized = normalized.replace(' ', 'T');
+    }
+    // If it has no timezone offset indicator (ends with Z or has +HH:MM / -HH:MM offset),
+    // append 'Z' to treat it as a UTC timestamp.
+    if (!normalized.endsWith('Z') && !/[+-]\d{2}:?\d{2}$/.test(normalized) && normalized.includes('T')) {
+      normalized += 'Z';
+    }
+    const d = new Date(normalized);
     if (!isNaN(d.getTime())) return d;
   }
   
@@ -101,3 +110,13 @@ export function minutesToHuman(mins: number): string {
   const d = Math.floor(h / 24);
   return `${d} gün`;
 }
+
+export function isPenaltyActive(c: { is_open: boolean; is_permanent: boolean; expires_at: string }): boolean {
+  if (!c.is_open) return false;
+  if (c.is_permanent) return true;
+  if (!c.expires_at) return false;
+  const expireTime = parseDateSafe(c.expires_at).getTime();
+  if (isNaN(expireTime)) return false;
+  return expireTime > Date.now();
+}
+

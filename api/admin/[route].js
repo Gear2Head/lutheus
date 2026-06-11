@@ -645,7 +645,10 @@ async function assertManageableInstalledGuild(actor, guildId) {
         ? storedGuilds.some((guild) => guild.id === guildId && hasManageGuildPermission(guild))
         : false;
     if (!manageable) {
-        throw Object.assign(new Error('GUILD_MANAGE_PERMISSION_REQUIRED'), { statusCode: 403 });
+        const isMgmt = ['kurucu', 'admin', 'yonetici', 'genel_sorumlu', 'discord_yoneticisi'].includes(actor.role?.toLowerCase());
+        if (!isMgmt) {
+            throw Object.assign(new Error('GUILD_MANAGE_PERMISSION_REQUIRED'), { statusCode: 403 });
+        }
     }
 }
 
@@ -955,6 +958,16 @@ async function handleDiscordBotGuilds(req, res) {
             if (storedGuilds && Array.isArray(storedGuilds)) {
                 userManageableGuilds = storedGuilds.filter(hasManageGuildPermission);
             }
+        }
+
+        const isMgmt = ['kurucu', 'admin', 'yonetici', 'genel_sorumlu', 'discord_yoneticisi'].includes(actor.role?.toLowerCase());
+        if (isMgmt && userManageableGuilds.length === 0) {
+            userManageableGuilds = botGuilds.map(bg => ({
+                id: bg.id,
+                name: 'Server',
+                permissions: String(0x20 | 0x8), // MANAGE_GUILD | ADMINISTRATOR
+                owner: false
+            }));
         }
 
         const installedManageableGuildIds = userManageableGuilds.filter(g => botGuildIds.has(g.id)).map(g => g.id);
@@ -1311,6 +1324,59 @@ async function handleRepairDates(req, res) {
 
 // SECTION: STAFF_ACCESS_REQUESTS
 // PURPOSE: GET pending access requests, PATCH approve/reject. Only management can approve.
+async function handleRequestAccess(req, res) {
+    if (req.method !== 'POST') {
+        res.setHeader('Allow', 'POST');
+        return res.status(405).json({ ok: false, error: 'METHOD_NOT_ALLOWED' });
+    }
+
+    const actor = await requireUser(req);
+    const now = new Date().toISOString();
+
+    const { data: profile } = await supabase
+        .from('staff_profiles')
+        .select('display_name')
+        .eq('discord_id', actor.discordId)
+        .maybeSingle();
+
+    const displayName = profile?.display_name || `Kullanıcı (${actor.discordId})`;
+
+    const { error } = await supabase
+        .from('staff_profiles')
+        .update({
+            access_status: 'pending',
+            access_requested_at: now,
+            updated_at: now
+        })
+        .eq('discord_id', actor.discordId);
+
+    if (error) return serverError(res, error);
+
+    // Send alert notification to the Discord server alerts/CUK logs channel
+    const guildId = process.env.DISCORD_GUILD_ID || '';
+    if (guildId) {
+        try {
+            const configs = await getBotGuildConfig(guildId);
+            const alertChannelId = configs?.alertChannelId;
+            if (alertChannelId) {
+                const embed = {
+                    title: 'Yeni Erişim Talebi 🔐',
+                    description: `**Kullanıcı:** <@${actor.discordId}> (${displayName})\n**Discord ID:** \`${actor.discordId}\`\n\nKullanıcı panel erişimi talep etti. Erişim İstekleri sekmesinden onaylayabilir veya reddedebilirsiniz.`,
+                    color: 0x5e5ce6,
+                    timestamp: now
+                };
+                await sendDiscordMessage(alertChannelId, null, embed);
+            }
+        } catch (discordErr) {
+            console.warn('Failed to send access request discord alert:', discordErr.message || discordErr);
+        }
+    }
+
+    await addAudit('access_requested', actor, { discordId: actor.discordId });
+
+    return ok(res, { success: true });
+}
+
 async function handleStaffAccessRequests(req, res) {
     if (req.method === 'GET') {
         await requirePermission(req, PERMISSIONS.STAFF_ACCESS_APPROVE);
@@ -1318,6 +1384,7 @@ async function handleStaffAccessRequests(req, res) {
             .from('staff_profiles')
             .select('discord_id, display_name, username, avatar_url, staff_rank, access_status, access_requested_at, raw_payload')
             .eq('access_status', 'pending')
+            .not('access_requested_at', 'is', null)
             .order('access_requested_at', { ascending: true });
         if (error) return serverError(res, error);
         return ok(res, { items: (rows || []).map((r) => ({
@@ -1488,6 +1555,7 @@ module.exports = async function handler(req, res) {
         if (route === 'staff-role-config') return await handleStaffRoleConfig(req, res);
         if (route === 'staff-profiles') return await handleStaffProfiles(req, res);
         if (route === 'staff-access-requests') return await handleStaffAccessRequests(req, res);
+        if (route === 'request-access') return await handleRequestAccess(req, res);
         if (route === 'discord-bot-guilds') return await handleDiscordBotGuilds(req, res);
         if (route === 'discord-bot-dashboard') return await handleDiscordBotDashboard(req, res);
         if (route === 'discord-bot-action') return await handleDiscordBotAction(req, res);

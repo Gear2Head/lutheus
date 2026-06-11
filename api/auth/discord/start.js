@@ -4,7 +4,7 @@ const { createState } = require('../../_lib/oauthState');
 // PURPOSE: Discord OAuth start endpoint with redirect URI verification and robust base URL resolution.
 
 function sanitizeReturnTo(value, origin) {
-    const fallback = '/dashboard/admin.html';
+    const fallback = '/dashboard';
     if (!value) return fallback;
     try {
         const parsed = new URL(String(value), origin);

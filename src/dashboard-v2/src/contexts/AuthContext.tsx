@@ -14,12 +14,14 @@ interface AuthContextValue {
   session: LutheusSession | null;
   loading: boolean;
   logout: () => Promise<void>;
+  refreshSession?: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue>({
   session: null,
   loading: true,
   logout: async () => {},
+  refreshSession: async () => {},
 });
 
 const IS_DEV = import.meta.env.DEV;
@@ -68,8 +70,48 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     redirectToLogin();
   };
 
+  const refreshSession = async () => {
+    try {
+      const s = await getSession();
+      if (!s) return;
+
+      const { supabaseFetch } = await import('../lib/supabase');
+      const data = await supabaseFetch<any[]>('staff_profiles', 'GET', `discord_id=eq.${s.profile.discordId}`);
+      const profile = data?.[0];
+      if (profile) {
+        const newRole = profile.staff_rank || 'pending';
+        const isApproved = profile.access_status === 'approved' && profile.is_active_staff === true;
+
+        if (newRole !== s.role || isApproved !== (s.profile.status === 'active')) {
+          const updatedSession: LutheusSession = {
+            ...s,
+            role: newRole,
+            profile: {
+              ...s.profile,
+              role: newRole,
+              status: isApproved ? 'active' : 'pending'
+            }
+          };
+
+          const SESSION_KEY = 'lutheusAuthSession';
+          if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+            await new Promise<void>((resolve) => {
+              chrome.storage.local.set({ [SESSION_KEY]: updatedSession }, resolve);
+            });
+          } else {
+            localStorage.setItem(SESSION_KEY, JSON.stringify(updatedSession));
+          }
+
+          setSession(updatedSession);
+        }
+      }
+    } catch (err) {
+      console.error('[Lutheus Auth] Failed to refresh session:', err);
+    }
+  };
+
   return (
-    <AuthContext.Provider value={{ session, loading, logout }}>
+    <AuthContext.Provider value={{ session, loading, logout, refreshSession }}>
       {children}
     </AuthContext.Provider>
   );

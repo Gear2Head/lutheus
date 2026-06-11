@@ -6,8 +6,8 @@
   "scripts": {
     "dev": "vite --port=3001 --host=0.0.0.0",
     "build": "tsc --noEmit && vite build",
-    "build:extension": "tsc --noEmit && vite build --outDir dist-web",
-    "build:web": "tsc --noEmit && vite build --outDir ..\\..\\public\\dashboard",
+    "build:extension": "tsc --noEmit && vite build --outDir dist",
+    "build:web": "tsc --noEmit && vite build --outDir ../../public/dashboard",
     "build:all": "npm run build:web && npm run build:extension",
     "preview": "vite preview"
   },

@@ -124,7 +124,7 @@
 
 body {
   background-color: var(--background);
-  background-image: linear-gradient(rgba(0, 0, 0, 0.8), rgba(0, 0, 0, 0.8)), url('/background.png');
+  background-image: linear-gradient(rgba(0, 0, 0, 0.8), rgba(0, 0, 0, 0.8)), url('../public/background.png');
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
@@ -194,3 +194,62 @@ body {
 .animate-shake {
   animation: shake 0.5s ease-in-out;
 }
+
+/* Base App Background Overlay to dim the background image slightly */
+.bg-overlay {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 50% 0%, rgba(94, 92, 230, 0.05) 0%, transparent 50%),
+              radial-gradient(circle at 50% 100%, rgba(50, 215, 75, 0.02) 0%, transparent 50%),
+              rgba(5, 5, 5, 0.7);
+  z-index: -1;
+  pointer-events: none;
+}
+
+.compact-glass {
+  background: rgba(20, 20, 22, 0.6);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  box-shadow: 0 4px 24px -2px rgba(0, 0, 0, 0.2);
+}
+
+.clean-input {
+  background: transparent;
+  border: none;
+  outline: none;
+  color: #F5F5F7;
+}
+.clean-input::placeholder {
+  color: rgba(235, 235, 245, 0.5);
+}
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.status-badge.success { color: #32D74B; background: rgba(50, 215, 75, 0.1); border: 1px solid rgba(50, 215, 75, 0.2); }
+.status-badge.danger { color: #FF453A; background: rgba(255, 69, 58, 0.1); border: 1px solid rgba(255, 69, 58, 0.2); }
+.status-badge.warning { color: #FF9F0A; background: rgba(255, 159, 10, 0.1); border: 1px solid rgba(255, 159, 10, 0.2); }
+.status-badge.neutral { color: rgba(235, 235, 245, 0.5); background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); }
+
+/* Select and Option elements dark theme dropdown background override */
+select option {
+  background-color: #111112 !important;
+  color: #ffffff !important;
+}
+
+.light select option,
+.corporate select option {
+  background-color: #ffffff !important;
+  color: #1e1b4b !important;
+}
+
+

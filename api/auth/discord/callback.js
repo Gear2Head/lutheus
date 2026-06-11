@@ -106,7 +106,7 @@ module.exports = async function handler(req, res) {
     const wantsJson = req.query.json === 'true' || !req.query.state;
 
     const fallbackCallbackUrl = `${appUrl}/api/auth/discord/callback`;
-    const defaultPostLoginUrl = `${appUrl}/dashboard/admin.html`;
+    const defaultPostLoginUrl = `${appUrl}/dashboard`;
 
     try {
         if (!wantsJson) {
@@ -204,10 +204,6 @@ module.exports = async function handler(req, res) {
             },
             updated_at: new Date().toISOString()
         };
-        // Only set access_requested_at for brand-new profiles
-        if (!existingProfile) {
-            userProfile.access_requested_at = new Date().toISOString();
-        }
 
         try {
             await supabase.from('staff_profiles').upsert([userProfile], { onConflict: 'discord_id' });

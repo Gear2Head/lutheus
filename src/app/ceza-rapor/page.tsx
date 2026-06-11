@@ -12,7 +12,7 @@ export default function CezaRaporRedirectPage() {
 
   useEffect(() => {
     // Redirect instantly to the copied static admin panel
-    window.location.href = "/dashboard/admin.html";
+    window.location.href = "/dashboard";
   }, []);
 
   return (

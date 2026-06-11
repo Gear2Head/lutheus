@@ -1,3 +1,5 @@
+"use client";
+
 import React, { createContext, useContext, useState, useEffect } from 'react';
 
 export type ThemeType = 'midnight' | 'deepspace' | 'sunset' | 'arctic';

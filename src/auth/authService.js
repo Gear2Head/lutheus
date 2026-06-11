@@ -358,10 +358,10 @@ export const AuthService = {
 
     getPostLoginUrl(session) {
         if (canAccessAdmin(session?.role)) {
-            if (typeof chrome === 'undefined' || !chrome.runtime?.getURL) return `${window.location.origin}/`;
+            if (typeof chrome === 'undefined' || !chrome.runtime?.getURL) return `${window.location.origin}/dashboard`;
             return getURL('src/dashboard-v2/dist/index.html');
         }
-        if (typeof chrome === 'undefined' || !chrome.runtime?.getURL) return `${window.location.origin}/src/dashboard-v2/dist/index.html`;
+        if (typeof chrome === 'undefined' || !chrome.runtime?.getURL) return `${window.location.origin}/dashboard`;
         return getURL('src/dashboard-v2/dist/index.html');
     }
 };

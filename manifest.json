@@ -42,10 +42,10 @@
     "web_accessible_resources": [
         {
             "resources": [
-                "src/dashboard-v2/dist-web/index.html",
-                "src/dashboard-v2/dist-web/assets/*",
-                "src/dashboard-v2/dist-web/favicon_shield.png",
-                "src/dashboard-v2/dist-web/background.png"
+                "src/dashboard-v2/dist/index.html",
+                "src/dashboard-v2/dist/assets/*",
+                "src/dashboard-v2/dist/favicon_shield.png",
+                "src/dashboard-v2/dist/background.png"
             ],
             "matches": ["<all_urls>"]
         }

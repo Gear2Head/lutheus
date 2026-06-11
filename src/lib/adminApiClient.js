@@ -267,6 +267,12 @@ export const AdminApiClient = {
         });
     },
 
+    async requestAccess() {
+        return request('/api/admin/request-access', {
+            method: 'POST'
+        });
+    },
+
     // SECTION: ANNOUNCEMENTS
     // PURPOSE: Create and publish admin announcements to Discord staff via bot DM.
     async listAnnouncements() {

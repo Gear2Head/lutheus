@@ -5,7 +5,8 @@
   "description": "Lutheus CezaRapor - Moderation Analysis System",
   "workspaces": [
     "apps/*",
-    "packages/*"
+    "packages/*",
+    "src/dashboard-v2"
   ],
   "scripts": {
     "dev": "next dev",

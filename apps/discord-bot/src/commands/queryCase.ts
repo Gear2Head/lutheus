@@ -4,7 +4,7 @@
 import { SlashCommandBuilder, ChatInputCommandInteraction, EmbedBuilder } from 'discord.js';
 import { supabase, guildId as envGuildId } from '../botConfig.js';
 import {
-    buildSapphireCaseUrl,
+    getValidSapphireUrl,
     formatAuthorField,
     formatCaseDuration,
     formatCaseIdField,
@@ -73,7 +73,7 @@ export const QueryCaseCommand = {
 
             const embed = new EmbedBuilder()
                 .setTitle(`🔨 Ceza Sorgu Raporu - #${caseId}`)
-                .setURL(row.case_url || buildSapphireCaseUrl(row.guild_id, caseId))
+                .setURL(getValidSapphireUrl(row))
                 .setColor(color)
                 .setDescription(`Sistem tarafından saptanan ceza detayları ve kural analizleri aşağıda listelenmiştir.`)
                 .addFields(

@@ -77,9 +77,24 @@ export function formatAuthorField(row: SapphireCaseRow, staffProfile?: StaffProf
     return `**${name}** (ID: \`${id}\`)`;
 }
 
+export function getValidSapphireUrl(row: SapphireCaseRow): string {
+    const rawUrl = row.case_url?.trim();
+    if (!rawUrl) {
+        return buildSapphireCaseUrl(row.guild_id, row.case_id);
+    }
+    const isInvalid = rawUrl.startsWith('ws://') || 
+                      rawUrl.startsWith('wss://') || 
+                      rawUrl.includes('socket.io') || 
+                      !rawUrl.startsWith('http');
+    if (isInvalid) {
+        return buildSapphireCaseUrl(row.guild_id, row.case_id);
+    }
+    return rawUrl;
+}
+
 export function formatCaseIdField(row: SapphireCaseRow): string {
     const caseId = row.case_id;
-    const sapphireUrl = row.case_url || buildSapphireCaseUrl(row.guild_id, caseId);
+    const sapphireUrl = getValidSapphireUrl(row);
     const lutheusUrl = buildLutheusCaseUrl(caseId);
     return `[#${caseId}](${sapphireUrl}) · [Lutheus'ta Görüntüle](${lutheusUrl})`;
 }
@@ -88,3 +103,4 @@ export function formatVerdictField(row: SapphireCaseRow): string {
     const message = row.cuk_analysis?.message || 'Sebep belirtilmemiş';
     return `❌ Hatalı\n${message}`;
 }
+

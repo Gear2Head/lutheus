@@ -14,6 +14,10 @@ const nextConfig = {
         destination: "/dashboard/index.html",
       },
       {
+        source: "/dashboard/:path*",
+        destination: "/dashboard/index.html",
+      },
+      {
         source: "/dashboard/admin",
         destination: "/dashboard/admin.html",
       },

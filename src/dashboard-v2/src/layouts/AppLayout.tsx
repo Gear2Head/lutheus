@@ -123,7 +123,7 @@ export default function AppLayout() {
 
   const isAuthorized = (path: string) => {
     const role = session?.role?.toLowerCase() || '';
-    const isMgmt = ['kurucu', 'admin', 'yonetici', 'genel_sorumlu', 'discord_yoneticisi'].includes(role);
+    const isMgmt = ['kurucu', 'admin', 'yonetici', 'genel_sorumlu', 'discord_yoneticisi', 'kidemli', 'kidemli_discord_moderatoru', 'senior_moderator'].includes(role);
     const isSenior = ['kidemli', 'kidemli_discord_moderatoru', 'senior_moderator'].includes(role);
 
     if (path === '/access' || path === '/rules' || path === '/announcements' || path === '/bot-setup') {
@@ -356,17 +356,11 @@ export default function AppLayout() {
         {/* Brand Area */}
         <div className={`h-[70px] ${isCollapsed ? 'px-3 justify-center' : 'px-5'} flex items-center justify-between border-b border-white/[0.02] relative overflow-hidden`}>
           {!isCollapsed && (
-            <div 
-              className="absolute inset-0 z-0 bg-cover bg-center"
-              style={{ backgroundImage: "url('banner.png')" }}
-            >
-              {/* Dark overlay to ensure contrast */}
-              <div className="absolute inset-0 bg-black/60 backdrop-blur-[1px]" />
-            </div>
+            <div className="absolute inset-0 z-0 bg-gradient-to-r from-purple-950/50 to-indigo-950/40 backdrop-blur-[1px]" />
           )}
           <div className="flex items-center gap-2 min-w-0 relative z-10">
-            <div className="w-[26px] h-[26px] flex items-center justify-center shrink-0">
-              <img src="icon128.png" className="w-full h-full object-contain" alt="Lutheus Logo" />
+            <div className="w-[26px] h-[26px] flex items-center justify-center shrink-0 text-[#5E5CE6]">
+              <Shield className="w-5 h-5" strokeWidth={2.5} />
             </div>
             {!isCollapsed && (
               <motion.div 

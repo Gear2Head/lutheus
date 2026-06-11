@@ -1,5 +1,5 @@
 const { supabase } = require('../_lib/supabaseClient');
-const { requirePermission, safeDocId } = require('../_lib/serverAuth');
+const { requirePermission, safeDocId, requireUser } = require('../_lib/serverAuth');
 const { PERMISSIONS, normalizeRole } = require('../_lib/roles');
 const { ok, badRequest, forbidden, serverError } = require('../_lib/apiResponse');
 const { validateCase } = require('../_lib/cukEngine');

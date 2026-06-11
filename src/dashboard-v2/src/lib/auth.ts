@@ -114,6 +114,7 @@ export function canAccessAdmin(role: string): boolean {
 
 export const MANAGEMENT_ROLES = new Set([
   'kurucu', 'admin', 'yonetici', 'genel_sorumlu', 'discord_yoneticisi',
+  'kidemli', 'kidemli_discord_moderatoru', 'senior_moderator'
 ]);
 
 /** Returns true if the given role is a management-level role with DB intervention rights. */

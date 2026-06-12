@@ -747,12 +747,12 @@ export default function BotSetup() {
                                     <Badge className="bg-[#FF9F0A]/10 border border-[#FF9F0A]/20 text-[#FF9F0A] text-[9px] px-1.5 py-0.5 rounded font-bold font-mono">Bekliyor</Badge>
                                   )}
                                 </div>
-                                {action.payload && Object.keys(action.payload).length > 0 && (
+                                {!!action.payload && Object.keys(action.payload as object).length > 0 && (
                                   <div className="text-[10.5px] text-white/40 font-mono truncate bg-black/10 p-1.5 rounded border border-white/[0.02] mt-2">
                                     Payload: {JSON.stringify(action.payload)}
                                   </div>
                                 )}
-                                {action.result && Object.keys(action.result).length > 0 && (
+                                {!!action.result && Object.keys(action.result as object).length > 0 && (
                                   <div className="text-[10.5px] text-[#30D158]/85 font-mono truncate bg-[#30D158]/5 p-1.5 rounded border border-[#30D158]/10 mt-1">
                                     Result: {JSON.stringify(action.result)}
                                   </div>

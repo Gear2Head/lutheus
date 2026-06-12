@@ -30,7 +30,7 @@ export default function Penalties() {
     if (!selectedCase) return;
     const success = await updateStatus(selectedCase.id, status);
     if (success) {
-      setSelectedCase(prev => prev ? { ...prev, status } : null);
+      setSelectedCase((prev: any) => prev ? { ...prev, status } : null);
     }
   };
 

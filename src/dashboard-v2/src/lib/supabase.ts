@@ -328,7 +328,7 @@ export function triggerManualSync(): Promise<{ synced: number; errors: number }>
           if (chrome.runtime.lastError) {
             reject(new Error(chrome.runtime.lastError.message));
           } else {
-            resolve(response || { synced: 0, errors: 0 });
+            resolve((response as { synced: number; errors: number }) || { synced: 0, errors: 0 });
           }
         },
       );

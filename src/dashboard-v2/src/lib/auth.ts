@@ -81,7 +81,7 @@ export async function getSession(): Promise<LutheusSession | null> {
   if (isExtension()) {
     return new Promise((resolve) => {
       chrome.storage.local.get([SESSION_KEY], (result) => {
-        resolve(result[SESSION_KEY] || null);
+        resolve((result[SESSION_KEY] as LutheusSession) || null);
       });
     });
   }

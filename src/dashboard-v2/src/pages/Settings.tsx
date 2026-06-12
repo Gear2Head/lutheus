@@ -24,7 +24,7 @@ function setLocal(key: string, val: string) {
 
 function getChromeLocal<T>(key: string): Promise<T | null> {
   if (typeof chrome !== 'undefined' && chrome.storage?.local) {
-    return new Promise((resolve) => chrome.storage.local.get([key], (r) => resolve(r[key] || null)));
+    return new Promise((resolve) => chrome.storage.local.get([key], (r) => resolve((r[key] as T) || null)));
   }
   try {
     const raw = localStorage.getItem(key);

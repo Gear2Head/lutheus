@@ -87,12 +87,12 @@ export default function ProofDrawer({
             video_url: data.video_url,
             thumbnail_url: data.thumbnail_url,
             raw_text: data.raw_text,
-            source_case_id: data.embedded_from_case_id || caseId
+            source_case_id: (data.embedded_from_case_id || caseId) ?? undefined
           });
         }
         
         if (data?.additional_proofs && data.additional_proofs.length > 0) {
-          proofs.push(...data.additional_proofs.map(p => ({ ...p, source_case_id: caseId })));
+          proofs.push(...data.additional_proofs.map(p => ({ ...p, source_case_id: caseId ?? undefined })));
         }
         
         // Fetch embedded proofs from other cases
@@ -130,7 +130,8 @@ export default function ProofDrawer({
     setAnalyzing(true);
     try {
       const token = session?.idToken;
-      const res = await fetch('/api/ai/analyze', {
+      const baseUrl = (typeof window !== 'undefined' && window.location.protocol === 'chrome-extension:') ? 'https://lutheus.vercel.app' : '';
+      const res = await fetch(`${baseUrl}/api/ai/analyze`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -328,7 +329,7 @@ export default function ProofDrawer({
                         )}
                         {/* Play button overlay */}
                         <button
-                          onClick={() => window.open(videoUrl, '_blank')}
+                          onClick={() => window.open(videoUrl ?? undefined, '_blank')}
                           className="absolute inset-0 flex items-center justify-center bg-black/40 hover:bg-black/50 transition-all cursor-pointer group"
                         >
                           <div className="w-16 h-16 rounded-full bg-white/20 backdrop-blur-sm border border-white/30 flex items-center justify-center group-hover:scale-110 transition-transform">
@@ -338,7 +339,7 @@ export default function ProofDrawer({
                       </div>
                       {/* Video link */}
                       <a
-                        href={videoUrl}
+                        href={videoUrl ?? undefined}
                         target="_blank"
                         rel="noreferrer"
                         className="absolute bottom-2 right-2 p-1.5 rounded-lg bg-black/60 border border-white/10 text-white/80 hover:text-white transition-all hover:bg-black/80 z-10"

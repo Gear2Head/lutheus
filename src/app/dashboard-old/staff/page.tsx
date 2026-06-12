@@ -14,7 +14,7 @@ import Tooltip from '@/components/ui/Tooltip';
 import { getStaffData, supabase } from '@/lib/supabase';
 import RoleBadge from '@/components/ui/RoleBadge';
 
-export function getRoleColorAndInfo(role: string) {
+function getRoleColorAndInfo(role: string) {
   const norm = (role || '').toUpperCase();
   if (norm === 'KURUCU' || norm.includes('YÖNETİCİSİ') || norm === 'YÖNETİCİ' || norm.includes('YAGI') || norm.includes('REI') || norm.includes('BARIS')) {
     if (norm.includes('DISCORD YÖNETİCİ') || norm === 'DISCORD YÖNETİCİSİ') {

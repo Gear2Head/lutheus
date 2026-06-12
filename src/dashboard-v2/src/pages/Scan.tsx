@@ -61,7 +61,7 @@ export default function Scan() {
 
     // Listen for scan progress events from service worker
     if (typeof chrome !== 'undefined' && chrome.runtime?.onMessage) {
-      const listener = (message: { action: string; payload?: { currentPage?: number; totalPages?: number; casesFound?: number } }) => {
+      const listener = (message: any) => {
         if (message.action === 'SCAN_PROGRESS_EVENT') {
           setProgress((prev) => ({
             ...prev,

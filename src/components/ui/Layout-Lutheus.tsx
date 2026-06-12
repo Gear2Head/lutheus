@@ -89,7 +89,7 @@ export default function LutheusLayout({ children }: { children: React.ReactNode 
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const theme = 'midnight';
+  const theme = 'midnight' as any;
 
   const getBrandGradient = () => {
     switch (theme) {
@@ -343,7 +343,7 @@ interface NavItemProps {
 }
 
 function NavItem({ href, icon: Icon, label, isCollapsed, isActive }: NavItemProps) {
-  const theme = 'midnight';
+  const theme = 'midnight' as any;
   
   const getActiveStyles = () => {
     switch (theme) {

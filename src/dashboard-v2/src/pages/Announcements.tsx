@@ -265,7 +265,8 @@ export default function Announcements() {
   const handleArchive = async (id: string) => {
     setSaving(true);
     try {
-      const res = await fetch('/api/admin/announcements', {
+      const baseUrl = (typeof window !== 'undefined' && window.location.protocol === 'chrome-extension:') ? 'https://lutheus.vercel.app' : '';
+      const res = await fetch(`${baseUrl}/api/admin/announcements`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.idToken}` },
         body: JSON.stringify({ id, action: 'archive' })

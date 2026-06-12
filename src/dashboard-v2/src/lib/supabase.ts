@@ -99,9 +99,8 @@ export async function supabaseFetch<T = unknown>(
 }
 
 export function enrichCaseWithCuk(c: SapphireCase): SapphireCase {
-  const analysis = validateCase(c.reason_raw, Math.round((c.duration_ms || 0) / 60000));
-  
-  if (!c.cuk_verdict || c.cuk_verdict === 'pending' || c.cuk_verdict === 'valid' || c.cuk_verdict === 'invalid') {
+  if (!c.cuk_verdict) {
+    const analysis = validateCase(c.reason_raw, Math.round((c.duration_ms || 0) / 60000));
     c.cuk_verdict = analysis.valid ? 'valid' : 'invalid';
     c.cuk_analysis = {
       message: analysis.message,

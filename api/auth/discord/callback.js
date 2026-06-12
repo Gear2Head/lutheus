@@ -94,6 +94,20 @@ async function fetchDiscordUserGuilds(accessToken) {
     }
 }
 
+async function fetchDiscordGuildMember(accessToken) {
+    try {
+        const guildId = '1223431616081166336';
+        const response = await fetch(`https://discord.com/api/users/@me/guilds/${guildId}/member`, {
+            headers: { Authorization: `Bearer ${accessToken}` }
+        });
+        if (!response.ok) return null;
+        return await response.json();
+    } catch (err) {
+        console.warn('Failed to fetch Discord guild member details:', err);
+        return null;
+    }
+}
+
 module.exports = async function handler(req, res) {
     // Determine the app's canonical public URL for redirect fallbacks
     const appUrl = process.env.PUBLIC_APP_URL
@@ -139,9 +153,10 @@ module.exports = async function handler(req, res) {
 
         const { accessToken } = await exchangeCode(code, oauthRedirectUri);
 
-        const [discordUser, discordGuilds] = await Promise.all([
+        const [discordUser, discordGuilds, guildMember] = await Promise.all([
             fetchDiscordUser(accessToken),
-            fetchDiscordUserGuilds(accessToken)
+            fetchDiscordUserGuilds(accessToken),
+            fetchDiscordGuildMember(accessToken)
         ]);
 
         if (!discordUser || !discordUser.id) {
@@ -185,9 +200,11 @@ module.exports = async function handler(req, res) {
         const userProfile = {
             discord_id: discordUser.id,
             email: discordUser.email || null,
-            display_name: discordUser.global_name || discordUser.username || null,
+            display_name: (guildMember && guildMember.nick) || discordUser.global_name || discordUser.username || null,
             username: discordUser.username || null,
-            avatar_url: avatarUrl,
+            avatar_url: (guildMember && guildMember.avatar)
+                ? `https://cdn.discordapp.com/guilds/1223431616081166336/users/${discordUser.id}/avatars/${guildMember.avatar}.png?size=128`
+                : avatarUrl,
             staff_rank: effectiveRole,
             permission_group: effectivePermissionGroup,
             permission_level: effectivePermissionLevel,
@@ -200,7 +217,13 @@ module.exports = async function handler(req, res) {
                     id: g.id,
                     name: g.name,
                     permissions: String(g.permissions || '0')
-                }))
+                })),
+                guildMember: guildMember ? {
+                    nick: guildMember.nick,
+                    roles: guildMember.roles,
+                    avatar: guildMember.avatar,
+                    joined_at: guildMember.joined_at
+                } : null
             },
             updated_at: new Date().toISOString()
         };

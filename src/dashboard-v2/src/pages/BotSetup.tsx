@@ -7,10 +7,13 @@ import { Badge } from '../components/ui/Badge';
 import { Skeleton } from '../components/ui/Skeleton';
 import { EmptyState } from '../components/ui/EmptyState';
 import { useToast } from '../contexts/ToastContext';
+import { motion, AnimatePresence } from 'motion/react';
+import { getGlassClass } from '../lib/theme';
 import {
   Bot, RefreshCw, AlertTriangle, Shield, Check, X,
   Terminal, Settings, Play, Radio, Users, MessageSquare,
-  Activity, Zap, Info, Clock, CheckCircle2, Sliders, Bell, Save
+  Activity, Zap, Info, Clock, CheckCircle2, Sliders, Bell, Save,
+  ChevronDown, ChevronRight
 } from 'lucide-react';
 import { formatDateTime } from '../lib/utils';
 
@@ -108,6 +111,42 @@ export default function BotSetup() {
   const [saving, setSaving] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
+  // Accordion open/close state
+  const [sections, setSections] = useState({
+    status: true,
+    channels: true,
+    welcome: true,
+    diagnostics: true,
+    history: true,
+    commands: false
+  });
+
+  const toggleSection = (key: keyof typeof sections) => {
+    setSections(prev => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const [intensity, setIntensity] = useState<string>(() => {
+    return localStorage.getItem('lutheus-intensity') || 'frosted';
+  });
+  const [theme, setTheme] = useState<string>(() => {
+    for (const cls of ['dark', 'light', 'lavender', 'corporate']) {
+      if (document.documentElement.classList.contains(cls)) return cls;
+    }
+    return 'dark';
+  });
+
+  useEffect(() => {
+    const handleIntensityChange = () => {
+      setIntensity(localStorage.getItem('lutheus-intensity') || 'frosted');
+    };
+    window.addEventListener('storage', handleIntensityChange);
+    window.addEventListener('lutheus-intensity-change', handleIntensityChange);
+    return () => {
+      window.removeEventListener('storage', handleIntensityChange);
+      window.removeEventListener('lutheus-intensity-change', handleIntensityChange);
+    };
+  }, []);
+
   const canManage = session ? hasPermission(session.role, 'discord_bot:update') : false;
 
   // Load user's bot-installed guilds
@@ -200,483 +239,580 @@ export default function BotSetup() {
   };
 
   // Channel helper to get text channels
-  const textChannels = channels.filter(c => c.type === 0 || c.type === 4 || c.type === 5); // 0: Text, 4: Category (just in case), 5: News
+  const textChannels = channels.filter(c => c.type === 0 || c.type === 4 || c.type === 5); // 0: Text, 4: Category, 5: News
 
   return (
-    <div className="space-y-5 animate-in pb-20">
+    <div className="p-6 md:p-8 w-full min-h-screen flex flex-col relative select-none bg-[#050506] text-white/90">
+      
       {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pt-2">
+      <div className="pb-6 mb-6 border-b border-white/[0.04] text-left max-w-[850px] w-full mx-auto flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">Discord Bot Yonetimi</h2>
-          <p className="text-sm text-muted-foreground mt-0.5">Sunucu log kanallari, acil durum kontrolleri ve bot tanilama</p>
+          <h2 className="text-[22px] font-black text-white tracking-tight">Discord Bot Yönetimi</h2>
+          <p className="text-[13px] text-[#8E8E93] mt-1 font-medium">Log kanalları, karşılama mesajları, acil durum kontrolleri ve bot tanılama</p>
         </div>
-        <div className="flex gap-2 shrink-0">
-          <button
-            onClick={() => selectedGuildId ? loadDashboardDetails(selectedGuildId) : loadGuilds()}
-            className="flex items-center gap-2 px-3 py-2 rounded-[12px] bg-secondary/50 border border-border/50 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
-          >
-            <RefreshCw className="w-3.5 h-3.5" /> Yenile
-          </button>
-        </div>
+        <button
+          onClick={() => selectedGuildId ? loadDashboardDetails(selectedGuildId) : loadGuilds()}
+          className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-white/[0.04] border border-white/[0.06] hover:bg-white/[0.08] text-[12px] font-bold text-white transition-all cursor-pointer"
+        >
+          <RefreshCw className="w-3.5 h-3.5" /> Yenile
+        </button>
       </div>
 
-      {/* Guild Selector */}
-      <Card className="p-4">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
-              <Bot className="w-5 h-5" />
+      <div className="max-w-[850px] w-full space-y-6 text-left mx-auto">
+        
+        {/* Guild Selector */}
+        <div className={`p-5 rounded-2xl ${getGlassClass(intensity, theme)} overflow-hidden`}>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-white/[0.04] border border-white/10 flex items-center justify-center text-[#B19CD9]">
+                <Bot className="w-5 h-5" />
+              </div>
+              <div>
+                <span className="text-[10px] font-mono font-bold uppercase tracking-widest text-white/40 block">AKTİF DISCORD SUNUCUSU</span>
+                <span className="text-[13.5px] font-bold text-white mt-1 block">Yapılandırmak istediğiniz Discord sunucusunu seçin</span>
+              </div>
             </div>
-            <div>
-              <div className="font-bold text-sm">Aktif Discord Sunucusu</div>
-              <div className="text-xs text-muted-foreground">Yapilandirmak istediginiz Discord sunucusunu secin.</div>
+            <div className="w-full sm:w-64">
+              {loadingGuilds ? (
+                <Skeleton className="h-10 w-full rounded-xl bg-white/5" />
+              ) : guilds.length === 0 ? (
+                <select disabled className="w-full h-10 px-3.5 rounded-xl bg-[#111112] border border-white/10 text-xs text-white/40">
+                  <option>Bot yüklü sunucu bulunamadı</option>
+                </select>
+              ) : (
+                <select
+                  value={selectedGuildId}
+                  onChange={e => setSelectedGuildId(e.target.value)}
+                  className="w-full h-10 px-3.5 rounded-xl bg-[#111112] border border-white/10 text-sm text-white/95 focus:outline-none focus:border-[#B19CD9]/40 cursor-pointer"
+                >
+                  {guilds.map(g => (
+                    <option key={g.id} value={g.id}>
+                      {g.name}
+                    </option>
+                  ))}
+                </select>
+              )}
             </div>
           </div>
-          <div className="w-full sm:w-64">
-            {loadingGuilds ? (
-              <Skeleton className="h-9 w-full rounded-xl" />
-            ) : guilds.length === 0 ? (
-              <select disabled className="w-full h-9 px-3 rounded-xl bg-secondary/50 border border-border/50 text-xs text-muted-foreground">
-                <option>Bot yuklu sunucu bulunamadi</option>
-              </select>
-            ) : (
-              <select
-                value={selectedGuildId}
-                onChange={e => setSelectedGuildId(e.target.value)}
-                className="w-full h-10 px-3 rounded-xl bg-secondary/50 border border-border/50 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-              >
-                {guilds.map(g => (
-                  <option key={g.id} value={g.id}>
-                    {g.name}
-                  </option>
-                ))}
-              </select>
-            )}
-          </div>
         </div>
-      </Card>
 
-      {/* Main dashboard content */}
-      {!selectedGuildId ? (
-        <EmptyState
-          icon={<Bot className="w-8 h-8" />}
-          title="Lutfen bir sunucu secin"
-        />
-      ) : loadingDetails ? (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-          <Card className="p-5 lg:col-span-2 space-y-4">
-            <Skeleton className="h-6 w-48" />
-            <Skeleton className="h-10 w-full" />
-            <Skeleton className="h-10 w-full" />
-            <Skeleton className="h-40 w-full" />
-          </Card>
-          <Card className="p-5 space-y-4">
-            <Skeleton className="h-6 w-32" />
-            <Skeleton className="h-24 w-full" />
-            <Skeleton className="h-24 w-full" />
-          </Card>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 items-start">
-          {/* Config & status panel */}
-          <div className="lg:col-span-2 space-y-5">
-            {/* Heartbeat Status */}
-            <Card className="p-5">
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-2">
-                  <Radio className="w-4 h-4 text-primary animate-pulse" />
-                  <h3 className="font-bold text-sm">Bot Calisme Durumu (Heartbeat)</h3>
-                </div>
-                {runtimeStatus?.is_alive !== false ? (
-                  <Badge variant="success">ONLINE</Badge>
-                ) : (
-                  <Badge variant="destructive">OFFLINE</Badge>
-                )}
-              </div>
-
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                <div className="p-3 rounded-xl bg-secondary/20 border border-border/40 text-center">
-                  <div className="text-[10px] font-bold text-muted-foreground uppercase">Gecikme (Ping)</div>
-                  <div className="text-lg font-bold mt-1 text-foreground">
-                    {runtimeStatus?.latency_ms ? `${runtimeStatus.latency_ms} ms` : 'N/A'}
-                  </div>
-                </div>
-                <div className="p-3 rounded-xl bg-secondary/20 border border-border/40 text-center">
-                  <div className="text-[10px] font-bold text-muted-foreground uppercase">Bellek Kullanim</div>
-                  <div className="text-lg font-bold mt-1 text-foreground">
-                    {runtimeStatus?.memory_usage_mb ? `${runtimeStatus.memory_usage_mb} MB` : 'N/A'}
-                  </div>
-                </div>
-                <div className="p-3 rounded-xl bg-secondary/20 border border-border/40 text-center">
-                  <div className="text-[10px] font-bold text-muted-foreground uppercase">Uptime</div>
-                  <div className="text-sm font-semibold mt-2 truncate text-foreground">
-                    {runtimeStatus?.uptime_seconds ? `${Math.floor(runtimeStatus.uptime_seconds / 3600)}s ${Math.floor((runtimeStatus.uptime_seconds % 3600) / 60)}d` : 'N/A'}
-                  </div>
-                </div>
-                <div className="p-3 rounded-xl bg-secondary/20 border border-border/40 text-center">
-                  <div className="text-[10px] font-bold text-muted-foreground uppercase">Son Sinyal (Heartbeat)</div>
-                  <div className="text-sm font-semibold mt-2 text-foreground">
-                    {runtimeStatus?.last_heartbeat_at ? formatDateTime(runtimeStatus.last_heartbeat_at) : 'N/A'}
-                  </div>
-                </div>
-              </div>
-            </Card>
-
-            {/* Main Config Form */}
-            {botConfig && (
-              <Card className="p-5">
-                <div className="flex items-center gap-2 mb-4">
-                  <Settings className="w-4 h-4 text-primary" />
-                  <h3 className="font-bold text-sm">Bot Kanallari & Ayarlari</h3>
-                </div>
-
-                <form onSubmit={handleSaveConfig} className="space-y-4">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    {/* Log Channel */}
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Log Kanali</label>
-                      <select
-                        value={botConfig.logChannelId}
-                        onChange={e => setBotConfig(prev => prev ? ({ ...prev, logChannelId: e.target.value }) : null)}
-                        disabled={!canManage}
-                        className="w-full h-10 px-3 rounded-xl bg-secondary/50 border border-border/50 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50"
-                      >
-                        <option value="">Secilmedi</option>
-                        {textChannels.map(c => <option key={c.id} value={c.id}>#{c.name}</option>)}
-                      </select>
-                    </div>
-
-                    {/* Alert Channel */}
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider font-semibold">CUK Hatalari / Uyarilar Kanali</label>
-                      <select
-                        value={botConfig.alertChannelId}
-                        onChange={e => setBotConfig(prev => prev ? ({ ...prev, alertChannelId: e.target.value }) : null)}
-                        disabled={!canManage}
-                        className="w-full h-10 px-3 rounded-xl bg-secondary/50 border border-border/50 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50"
-                      >
-                        <option value="">Secilmedi</option>
-                        {textChannels.map(c => <option key={c.id} value={c.id}>#{c.name}</option>)}
-                      </select>
-                    </div>
-
-                    {/* Stats Channel */}
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Haftalik Istatistik Kanali</label>
-                      <select
-                        value={botConfig.statsChannelId}
-                        onChange={e => setBotConfig(prev => prev ? ({ ...prev, statsChannelId: e.target.value }) : null)}
-                        disabled={!canManage}
-                        className="w-full h-10 px-3 rounded-xl bg-secondary/50 border border-border/50 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50"
-                      >
-                        <option value="">Secilmedi</option>
-                        {textChannels.map(c => <option key={c.id} value={c.id}>#{c.name}</option>)}
-                      </select>
-                    </div>
-
-                    {/* Bot Prefix */}
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Bot Komut Prefixi</label>
-                      <input
-                        value={botConfig.prefix || '!'}
-                        onChange={e => setBotConfig(prev => prev ? ({ ...prev, prefix: e.target.value }) : null)}
-                        disabled={!canManage}
-                        placeholder="!"
-                        required
-                        className="w-full h-10 px-3 rounded-xl bg-secondary/50 border border-border/50 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="border-t border-border/30 my-4 pt-4">
-                    <div className="flex items-center gap-2 mb-3">
-                      <MessageSquare className="w-4 h-4 text-primary" />
-                      <h4 className="font-bold text-xs">Yeni Gelen Karsilama Mesajlari</h4>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      {/* Welcome Channel */}
-                      <div className="space-y-1.5">
-                        <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Karsilama Kanali</label>
-                        <select
-                          value={botConfig.welcomeSettings?.channelId || ''}
-                          onChange={e => setBotConfig(prev => {
-                            if (!prev) return null;
-                            return {
-                              ...prev,
-                              welcomeSettings: {
-                                ...prev.welcomeSettings,
-                                channelId: e.target.value
-                              }
-                            };
-                          })}
-                          disabled={!canManage}
-                          className="w-full h-10 px-3 rounded-xl bg-secondary/50 border border-border/50 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50"
-                        >
-                          <option value="">Secilmedi</option>
-                          {textChannels.map(c => <option key={c.id} value={c.id}>#{c.name}</option>)}
-                        </select>
-                      </div>
-
-                      {/* Welcome Embed Checkbox */}
-                      <div className="flex items-center gap-2 pt-6">
-                        <input
-                          type="checkbox"
-                          id="welcome-embed"
-                          checked={botConfig.welcomeSettings?.embedEnabled || false}
-                          onChange={e => setBotConfig(prev => {
-                            if (!prev) return null;
-                            return {
-                              ...prev,
-                              welcomeSettings: {
-                                ...prev.welcomeSettings,
-                                embedEnabled: e.target.checked
-                              }
-                            };
-                          })}
-                          disabled={!canManage}
-                          className="rounded border-border/50 text-primary focus:ring-primary/40"
-                        />
-                        <label htmlFor="welcome-embed" className="text-xs font-semibold text-foreground">
-                          Mesaji Embed Tasarimiyla Gonder
-                        </label>
-                      </div>
-                    </div>
-
-                    {/* Welcome Message Text */}
-                    <div className="space-y-1.5 mt-3">
-                      <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Karsilama Metni</label>
-                      <textarea
-                        value={botConfig.welcomeSettings?.welcomeMessage || ''}
-                        onChange={e => setBotConfig(prev => {
-                          if (!prev) return null;
-                          return {
-                            ...prev,
-                            welcomeSettings: {
-                              ...prev.welcomeSettings,
-                              welcomeMessage: e.target.value
-                            }
-                          };
-                        })}
-                        disabled={!canManage}
-                        rows={2}
-                        placeholder="Hos geldin {user}!"
-                        className="w-full px-3 py-2 rounded-xl bg-secondary/50 border border-border/50 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50 resize-none"
-                      />
-                      <span className="text-[10px] text-muted-foreground">Desteklenen degiskenler: {"{user}"} (Etiket), {"{username}"} (Isim), {"{server}"} (Sunucu Ismi)</span>
-                    </div>
-                  </div>
-
-                  {canManage && (
-                    <div className="flex justify-end pt-2">
-                      <Button type="submit" size="sm" disabled={saving} className="bg-primary hover:bg-primary/95 text-primary-foreground font-bold">
-                        <Save className="w-4 h-4 mr-2" />
-                        {saving ? 'Kaydediliyor...' : 'Yapilandirmayi Kaydet'}
-                      </Button>
-                    </div>
-                  )}
-                </form>
+        {/* Main dashboard content */}
+        {!selectedGuildId ? (
+          <EmptyState
+            icon={<Bot className="w-8 h-8" />}
+            title="Lütfen bir sunucu seçin"
+          />
+        ) : loadingDetails ? (
+          <div className="space-y-4">
+            {[1, 2, 3].map((i) => (
+              <Card key={i} className="p-5 bg-white/5 border border-white/10 space-y-4">
+                <Skeleton className="h-6 w-48 bg-white/5" />
+                <Skeleton className="h-10 w-full bg-white/5" />
+                <Skeleton className="h-10 w-full bg-white/5" />
               </Card>
-            )}
+            ))}
+          </div>
+        ) : (
+          <div className="space-y-4">
+            
+            {/* Accordion 1: Bot Çalışma Durumu (Heartbeat) */}
+            <div className={`rounded-xl border border-white/[0.04] overflow-hidden ${getGlassClass(intensity, theme)}`}>
+              <button
+                onClick={() => toggleSection('status')}
+                className="w-full px-5 py-4 flex items-center justify-between bg-black/10 hover:bg-black/20 transition-all text-left border-none cursor-pointer"
+              >
+                <div className="flex items-center gap-2.5">
+                  <Radio size={15} className={`text-[#32D74B] ${runtimeStatus?.is_alive !== false ? 'animate-pulse' : ''}`} />
+                  <span className="text-[13.5px] font-bold text-white">Bot Çalışma Durumu (Heartbeat)</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  {runtimeStatus?.is_alive !== false ? (
+                    <Badge className="bg-[#30D158]/10 border border-[#30D158]/25 text-[#30D158] text-[9.5px] font-extrabold uppercase font-mono px-2 py-0.5 rounded">ONLINE</Badge>
+                  ) : (
+                    <Badge className="bg-[#FF453A]/10 border border-[#FF453A]/25 text-[#FF453A] text-[9.5px] font-extrabold uppercase font-mono px-2 py-0.5 rounded">OFFLINE</Badge>
+                  )}
+                  {sections.status ? <ChevronDown size={14} className="text-white/40" /> : <ChevronRight size={14} className="text-white/40" />}
+                </div>
+              </button>
 
-            {/* Audit Log / Action Queue */}
-            <Card className="p-5">
-              <div className="flex items-center gap-2 mb-4">
-                <Terminal className="w-4 h-4 text-primary" />
-                <h3 className="font-bold text-sm">Bot Aksiyon Gecmisi & Sirasi</h3>
-              </div>
+              <AnimatePresence initial={false}>
+                {sections.status && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.2 }}
+                    className="border-t border-white/[0.04] bg-[#0E0E10]/15"
+                  >
+                    <div className="p-5 grid grid-cols-2 sm:grid-cols-4 gap-4">
+                      <div className="p-4 rounded-xl bg-black/20 border border-white/5 text-center">
+                        <span className="text-[9px] font-mono font-bold text-white/35 uppercase tracking-wider block">Gecikme (Ping)</span>
+                        <span className="text-lg font-black mt-1.5 block text-white">
+                          {runtimeStatus?.latency_ms ? `${runtimeStatus.latency_ms} ms` : 'N/A'}
+                        </span>
+                      </div>
+                      <div className="p-4 rounded-xl bg-black/20 border border-white/5 text-center">
+                        <span className="text-[9px] font-mono font-bold text-white/35 uppercase tracking-wider block">Bellek Kullanımı</span>
+                        <span className="text-lg font-black mt-1.5 block text-white">
+                          {runtimeStatus?.memory_usage_mb ? `${runtimeStatus.memory_usage_mb} MB` : 'N/A'}
+                        </span>
+                      </div>
+                      <div className="p-4 rounded-xl bg-black/20 border border-white/5 text-center">
+                        <span className="text-[9px] font-mono font-bold text-white/35 uppercase tracking-wider block">Uptime</span>
+                        <span className="text-sm font-bold mt-2.5 truncate block text-white/90">
+                          {runtimeStatus?.uptime_seconds ? `${Math.floor(runtimeStatus.uptime_seconds / 3600)}s ${Math.floor((runtimeStatus.uptime_seconds % 3600) / 60)}d` : 'N/A'}
+                        </span>
+                      </div>
+                      <div className="p-4 rounded-xl bg-black/20 border border-white/5 text-center">
+                        <span className="text-[9px] font-mono font-bold text-white/35 uppercase tracking-wider block">Son Sinyal (Heartbeat)</span>
+                        <span className="text-[11.5px] font-semibold mt-3 block text-white/80">
+                          {runtimeStatus?.last_heartbeat_at ? formatDateTime(runtimeStatus.last_heartbeat_at) : 'N/A'}
+                        </span>
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
 
-              <div className="space-y-2 max-h-80 overflow-y-auto soft-scroll">
-                {recentActions.length === 0 ? (
-                  <p className="text-xs text-muted-foreground text-center py-6">Henuz aksiyon audit log kaydi bulunmuyor.</p>
-                ) : (
-                  recentActions.map(action => {
-                    const statusColors = {
-                      pending: 'warning' as const,
-                      completed: 'success' as const,
-                      failed: 'destructive' as const
-                    };
-                    const statusLabels = {
-                      pending: 'Bekliyor',
-                      completed: 'Basarili',
-                      failed: 'Hata'
-                    };
-                    return (
-                      <div key={action.id} className="flex items-start justify-between gap-3 p-3 rounded-xl bg-secondary/20 border border-border/40">
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-semibold text-xs text-foreground font-mono">{action.action}</span>
-                            <Badge variant={statusColors[action.status]} className="text-[9px] px-1.5 py-0">
-                              {statusLabels[action.status]}
-                            </Badge>
+            {/* Accordion 2: Bot Kanalları & Ayarları */}
+            {botConfig && (
+              <div className={`rounded-xl border border-white/[0.04] overflow-hidden ${getGlassClass(intensity, theme)}`}>
+                <button
+                  onClick={() => toggleSection('channels')}
+                  className="w-full px-5 py-4 flex items-center justify-between bg-black/10 hover:bg-black/20 transition-all text-left border-none cursor-pointer"
+                >
+                  <div className="flex items-center gap-2.5">
+                    <Settings size={15} className="text-[#0A84FF]" />
+                    <span className="text-[13.5px] font-bold text-white">Bot Kanalları & Ayarları</span>
+                  </div>
+                  {sections.channels ? <ChevronDown size={14} className="text-white/40" /> : <ChevronRight size={14} className="text-white/40" />}
+                </button>
+
+                <AnimatePresence initial={false}>
+                  {sections.channels && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: 'auto', opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      transition={{ duration: 0.2 }}
+                      className="border-t border-white/[0.04] bg-[#0E0E10]/15"
+                    >
+                      <form onSubmit={handleSaveConfig} className="p-5 space-y-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          
+                          {/* Log Channel */}
+                          <div className="space-y-1.5">
+                            <label className="text-[10px] font-mono font-bold text-white/40 uppercase tracking-widest block">Log Kanalı</label>
+                            <select
+                              value={botConfig.logChannelId}
+                              onChange={e => setBotConfig(prev => prev ? ({ ...prev, logChannelId: e.target.value }) : null)}
+                              disabled={!canManage}
+                              className="w-full h-10 px-3.5 rounded-xl bg-[#111112] border border-white/10 text-sm text-white/95 focus:outline-none focus:border-[#B19CD9]/40 cursor-pointer disabled:opacity-50"
+                            >
+                              <option value="">Seçilmedi</option>
+                              {textChannels.map(c => <option key={c.id} value={c.id}>#{c.name}</option>)}
+                            </select>
                           </div>
-                          {action.payload && Object.keys(action.payload).length > 0 && (
-                            <div className="text-[10px] text-muted-foreground/80 mt-1 font-mono truncate">
-                              Payload: {JSON.stringify(action.payload)}
-                            </div>
-                          )}
-                          {action.result && Object.keys(action.result).length > 0 && (
-                            <div className="text-[10px] text-emerald-500/90 mt-0.5 font-mono truncate">
-                              Result: {JSON.stringify(action.result)}
-                            </div>
-                          )}
-                          <div className="text-[9px] text-muted-foreground/60 mt-1">
-                            Tetikleyen: {action.requested_by_discord_id || 'Sistem'} • {formatDateTime(action.created_at)}
+
+                          {/* Alert Channel */}
+                          <div className="space-y-1.5">
+                            <label className="text-[10px] font-mono font-bold text-white/40 uppercase tracking-widest block">CUK Hataları / Uyarılar Kanalı</label>
+                            <select
+                              value={botConfig.alertChannelId}
+                              onChange={e => setBotConfig(prev => prev ? ({ ...prev, alertChannelId: e.target.value }) : null)}
+                              disabled={!canManage}
+                              className="w-full h-10 px-3.5 rounded-xl bg-[#111112] border border-white/10 text-sm text-white/95 focus:outline-none focus:border-[#B19CD9]/40 cursor-pointer disabled:opacity-50"
+                            >
+                              <option value="">Seçilmedi</option>
+                              {textChannels.map(c => <option key={c.id} value={c.id}>#{c.name}</option>)}
+                            </select>
+                          </div>
+
+                          {/* Stats Channel */}
+                          <div className="space-y-1.5">
+                            <label className="text-[10px] font-mono font-bold text-white/40 uppercase tracking-widest block">Haftalık İstatistik Kanalı</label>
+                            <select
+                              value={botConfig.statsChannelId}
+                              onChange={e => setBotConfig(prev => prev ? ({ ...prev, statsChannelId: e.target.value }) : null)}
+                              disabled={!canManage}
+                              className="w-full h-10 px-3.5 rounded-xl bg-[#111112] border border-white/10 text-sm text-white/95 focus:outline-none focus:border-[#B19CD9]/40 cursor-pointer disabled:opacity-50"
+                            >
+                              <option value="">Seçilmedi</option>
+                              {textChannels.map(c => <option key={c.id} value={c.id}>#{c.name}</option>)}
+                            </select>
+                          </div>
+
+                          {/* Bot Prefix */}
+                          <div className="space-y-1.5">
+                            <label className="text-[10px] font-mono font-bold text-white/40 uppercase tracking-widest block">Bot Komut Prefixi</label>
+                            <input
+                              value={botConfig.prefix || '!'}
+                              onChange={e => setBotConfig(prev => prev ? ({ ...prev, prefix: e.target.value }) : null)}
+                              disabled={!canManage}
+                              placeholder="!"
+                              required
+                              className="w-full h-10 px-3.5 rounded-xl bg-[#111112] border border-white/10 text-sm text-white/95 focus:outline-none focus:border-[#B19CD9]/40 disabled:opacity-50"
+                            />
                           </div>
                         </div>
+
+                        {canManage && (
+                          <div className="flex justify-end pt-2">
+                            <Button type="submit" size="sm" disabled={saving} className="bg-[#B19CD9] hover:bg-[#B19CD9]/90 text-black font-extrabold flex items-center gap-1.5 h-8.5 rounded-lg border-none shadow-sm cursor-pointer">
+                              <Save className="w-3.5 h-3.5" />
+                              {saving ? 'Kaydediliyor...' : 'Yapılandırmayı Kaydet'}
+                            </Button>
+                          </div>
+                        )}
+                      </form>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            )}
+
+            {/* Accordion 3: Yeni Gelen Karşılama Ayarları */}
+            {botConfig && (
+              <div className={`rounded-xl border border-white/[0.04] overflow-hidden ${getGlassClass(intensity, theme)}`}>
+                <button
+                  onClick={() => toggleSection('welcome')}
+                  className="w-full px-5 py-4 flex items-center justify-between bg-black/10 hover:bg-black/20 transition-all text-left border-none cursor-pointer"
+                >
+                  <div className="flex items-center gap-2.5">
+                    <MessageSquare size={15} className="text-[#BF5AF2]" />
+                    <span className="text-[13.5px] font-bold text-white">Yeni Gelen Karşılama Ayarları</span>
+                  </div>
+                  {sections.welcome ? <ChevronDown size={14} className="text-white/40" /> : <ChevronRight size={14} className="text-white/40" />}
+                </button>
+
+                <AnimatePresence initial={false}>
+                  {sections.welcome && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: 'auto', opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      transition={{ duration: 0.2 }}
+                      className="border-t border-white/[0.04] bg-[#0E0E10]/15"
+                    >
+                      <form onSubmit={handleSaveConfig} className="p-5 space-y-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          
+                          {/* Welcome Channel */}
+                          <div className="space-y-1.5">
+                            <label className="text-[10px] font-mono font-bold text-white/40 uppercase tracking-widest block">Karşılama Kanalı</label>
+                            <select
+                              value={botConfig.welcomeSettings?.channelId || ''}
+                              onChange={e => setBotConfig(prev => {
+                                if (!prev) return null;
+                                return {
+                                  ...prev,
+                                  welcomeSettings: {
+                                    ...prev.welcomeSettings,
+                                    channelId: e.target.value
+                                  }
+                                };
+                              })}
+                              disabled={!canManage}
+                              className="w-full h-10 px-3.5 rounded-xl bg-[#111112] border border-white/10 text-sm text-white/95 focus:outline-none focus:border-[#B19CD9]/40 cursor-pointer disabled:opacity-50"
+                            >
+                              <option value="">Seçilmedi</option>
+                              {textChannels.map(c => <option key={c.id} value={c.id}>#{c.name}</option>)}
+                            </select>
+                          </div>
+
+                          {/* Welcome Embed Checkbox */}
+                          <div className="flex items-center gap-2.5 pt-6">
+                            <input
+                              type="checkbox"
+                              id="welcome-embed"
+                              checked={botConfig.welcomeSettings?.embedEnabled || false}
+                              onChange={e => setBotConfig(prev => {
+                                if (!prev) return null;
+                                return {
+                                  ...prev,
+                                  welcomeSettings: {
+                                    ...prev.welcomeSettings,
+                                    embedEnabled: e.target.checked
+                                  }
+                                };
+                              })}
+                              disabled={!canManage}
+                              className="w-4.5 h-4.5 rounded border-white/10 bg-[#111112] text-[#B19CD9] focus:ring-transparent cursor-pointer"
+                            />
+                            <label htmlFor="welcome-embed" className="text-[12.5px] font-bold text-white/80 cursor-pointer select-none">
+                              Mesajı Embed Tasarımıyla Gönder
+                            </label>
+                          </div>
+                        </div>
+
+                        {/* Welcome Message Text */}
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] font-mono font-bold text-white/40 uppercase tracking-widest block">Karşılama Metni</label>
+                          <textarea
+                            value={botConfig.welcomeSettings?.welcomeMessage || ''}
+                            onChange={e => setBotConfig(prev => {
+                              if (!prev) return null;
+                              return {
+                                ...prev,
+                                welcomeSettings: {
+                                  ...prev.welcomeSettings,
+                                  welcomeMessage: e.target.value
+                                }
+                              };
+                            })}
+                            disabled={!canManage}
+                            rows={3}
+                            placeholder="Hos geldin {user}!"
+                            className="w-full px-3.5 py-3 rounded-xl bg-[#111112] border border-white/10 text-sm text-white/95 focus:outline-none focus:border-[#B19CD9]/40 disabled:opacity-50 resize-none font-medium"
+                          />
+                          <span className="text-[10px] text-white/35 font-medium block mt-1">Desteklenen değişkenler: {"{user}"} (Etiket), {"{username}"} (İsim), {"{server}"} (Sunucu İsmi)</span>
+                        </div>
+
+                        {canManage && (
+                          <div className="flex justify-end pt-2">
+                            <Button type="submit" size="sm" disabled={saving} className="bg-[#B19CD9] hover:bg-[#B19CD9]/90 text-black font-extrabold flex items-center gap-1.5 h-8.5 rounded-lg border-none shadow-sm cursor-pointer">
+                              <Save className="w-3.5 h-3.5" />
+                              {saving ? 'Kaydediliyor...' : 'Yapılandırmayı Kaydet'}
+                            </Button>
+                          </div>
+                        )}
+                      </form>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            )}
+
+            {/* Accordion 4: Bot Tanılama Araçları */}
+            <div className={`rounded-xl border border-white/[0.04] overflow-hidden ${getGlassClass(intensity, theme)}`}>
+              <button
+                onClick={() => toggleSection('diagnostics')}
+                className="w-full px-5 py-4 flex items-center justify-between bg-black/10 hover:bg-black/20 transition-all text-left border-none cursor-pointer"
+              >
+                <div className="flex items-center gap-2.5">
+                  <Zap size={15} className="text-[#FF9F0A]" />
+                  <span className="text-[13.5px] font-bold text-white">Bot Tanılama & Hızlı Araçlar</span>
+                </div>
+                {sections.diagnostics ? <ChevronDown size={14} className="text-white/40" /> : <ChevronRight size={14} className="text-white/40" />}
+              </button>
+
+              <AnimatePresence initial={false}>
+                {sections.diagnostics && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.2 }}
+                    className="border-t border-white/[0.04] bg-[#0E0E10]/15"
+                  >
+                    <div className="p-5 space-y-4">
+                      
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        
+                        {/* Test Alert */}
+                        <button
+                          onClick={() => handleTriggerAction('test_alert')}
+                          disabled={actionLoading !== null || !canManage}
+                          className="flex items-center justify-between p-4 rounded-xl bg-black/20 border border-white/5 hover:bg-white/[0.02] hover:border-white/10 transition-all disabled:opacity-50 text-left cursor-pointer"
+                        >
+                          <div className="space-y-0.5">
+                            <span className="text-[12.5px] font-bold text-white block">Test Alert Gönder</span>
+                            <span className="text-[10px] text-white/35 font-medium block">Alarm kanalına örnek CUK hatası iletir.</span>
+                          </div>
+                          <ChevronRight className="w-4 h-4 text-white/30" />
+                        </button>
+
+                        {/* Test Welcome */}
+                        <button
+                          onClick={() => handleTriggerAction('test_welcome')}
+                          disabled={actionLoading !== null || !canManage}
+                          className="flex items-center justify-between p-4 rounded-xl bg-black/20 border border-white/5 hover:bg-white/[0.02] hover:border-white/10 transition-all disabled:opacity-50 text-left cursor-pointer"
+                        >
+                          <div className="space-y-0.5">
+                            <span className="text-[12.5px] font-bold text-white block">Test Karşılama Gönder</span>
+                            <span className="text-[10px] text-white/35 font-medium block">Karşılama kanalına test mesajı iletir.</span>
+                          </div>
+                          <ChevronRight className="w-4 h-4 text-white/30" />
+                        </button>
+
+                        {/* Sync Commands */}
+                        <button
+                          onClick={() => handleTriggerAction('sync_commands')}
+                          disabled={actionLoading !== null || !canManage}
+                          className="flex items-center justify-between p-4 rounded-xl bg-black/20 border border-white/5 hover:bg-white/[0.02] hover:border-white/10 transition-all disabled:opacity-50 text-left cursor-pointer"
+                        >
+                          <div className="space-y-0.5">
+                            <span className="text-[12.5px] font-bold text-white block">Slash Komutlarını Eşitle</span>
+                            <span className="text-[10px] text-white/35 font-medium block">Slash komutlarını Discord API ile senkronize eder.</span>
+                          </div>
+                          <ChevronRight className="w-4 h-4 text-white/30" />
+                        </button>
+
+                        {/* Metadata force sync */}
+                        <button
+                          onClick={() => handleTriggerAction('force_sync')}
+                          disabled={actionLoading !== null || !canManage}
+                          className="flex items-center justify-between p-4 rounded-xl bg-black/20 border border-white/5 hover:bg-white/[0.02] hover:border-white/10 transition-all disabled:opacity-50 text-left cursor-pointer"
+                        >
+                          <div className="space-y-0.5">
+                            <span className="text-[12.5px] font-bold text-white block">Kanalları & Rolleri Eşitle</span>
+                            <span className="text-[10px] text-white/35 font-medium block">Discord sunucu verilerini zorla bota çeker.</span>
+                          </div>
+                          <ChevronRight className="w-4 h-4 text-white/30" />
+                        </button>
                       </div>
-                    );
-                  })
-                )}
-              </div>
-            </Card>
-          </div>
 
-          {/* Diagnostics sidebar */}
-          <div className="space-y-5">
-            {/* Quick Stats */}
-            <Card className="p-5">
-              <h3 className="font-bold text-sm mb-4">Sunucu Istatistikleri</h3>
-              <div className="space-y-3">
-                <div className="flex items-center justify-between p-3 rounded-xl bg-secondary/10 border border-border/50">
-                  <div className="flex items-center gap-2">
-                    <Activity className="w-4 h-4 text-emerald-400" />
-                    <span className="text-xs font-semibold text-muted-foreground">Aktif Sapphire Cezalari</span>
-                  </div>
-                  <span className="text-sm font-bold text-foreground">{caseCounts}</span>
-                </div>
+                      {/* Emergency Lockdown */}
+                      <div className="border-t border-white/[0.04] pt-4 mt-2">
+                        <span className="text-[11px] font-mono font-bold text-[#FF453A] uppercase tracking-wider block mb-2 flex items-center gap-1.5">
+                          <AlertTriangle className="w-4 h-4" /> Acil Durum Kanalları Kilitleme (Lockdown)
+                        </span>
+                        <p className="text-[11.5px] text-white/40 leading-relaxed mb-4">
+                          Acil bir durumda, sunucudaki tüm kritik operasyonları ve komutları askıya alarak kanalları kilitler veya kilidi açar.
+                        </p>
+                        <div className="flex gap-3">
+                          <button
+                            onClick={() => handleTriggerAction('lockdown')}
+                            disabled={actionLoading !== null || !canManage}
+                            className="flex-1 h-9 bg-[#FF453A]/10 hover:bg-[#FF453A]/20 border border-[#FF453A]/20 text-[#FF453A] text-[12px] font-bold rounded-lg cursor-pointer transition-all disabled:opacity-40"
+                          >
+                            ACİL KİLİT (LOCKDOWN)
+                          </button>
+                          <button
+                            onClick={() => handleTriggerAction('unlockdown')}
+                            disabled={actionLoading !== null || !canManage}
+                            className="flex-1 h-9 bg-white/5 hover:bg-white/10 border border-white/10 text-white/80 text-[12px] font-bold rounded-lg cursor-pointer transition-all disabled:opacity-40"
+                          >
+                            KİLİDİ AÇ (UNLOCK)
+                          </button>
+                        </div>
+                      </div>
 
-                <div className="flex items-center justify-between p-3 rounded-xl bg-secondary/10 border border-border/50">
-                  <div className="flex items-center gap-2">
-                    <AlertTriangle className="w-4 h-4 text-rose-400" />
-                    <span className="text-xs font-semibold text-muted-foreground">Hatalı / Sapma Cezaları</span>
-                  </div>
-                  <span className="text-sm font-bold text-foreground">{invalidCases}</span>
-                </div>
-              </div>
-            </Card>
-
-            {/* Diagnostic Actions */}
-            <Card className="p-5">
-              <div className="flex items-center gap-2 mb-4">
-                <Zap className="w-4 h-4 text-primary" />
-                <h3 className="font-bold text-sm">Bot Tanilama Araclari</h3>
-              </div>
-
-              <div className="space-y-2">
-                {/* Test Alert */}
-                <button
-                  onClick={() => handleTriggerAction('test_alert')}
-                  disabled={actionLoading !== null || !canManage}
-                  className="w-full flex items-center justify-between p-3 rounded-xl bg-secondary/20 border border-border/40 hover:bg-secondary/40 transition-colors disabled:opacity-50 text-left"
-                >
-                  <div>
-                    <div className="text-xs font-bold text-foreground">Test Alert</div>
-                    <div className="text-[10px] text-muted-foreground mt-0.5">Uyari kanalina ornek CUK hatasi gonderir.</div>
-                  </div>
-                  <ChevronRight className="w-4 h-4 text-muted-foreground" />
-                </button>
-
-                {/* Test Welcome */}
-                <button
-                  onClick={() => handleTriggerAction('test_welcome')}
-                  disabled={actionLoading !== null || !canManage}
-                  className="w-full flex items-center justify-between p-3 rounded-xl bg-secondary/20 border border-border/40 hover:bg-secondary/40 transition-colors disabled:opacity-50 text-left"
-                >
-                  <div>
-                    <div className="text-xs font-bold text-foreground">Test Welcome Message</div>
-                    <div className="text-[10px] text-muted-foreground mt-0.5">Karsilama kanalina test mesaji gonderir.</div>
-                  </div>
-                  <ChevronRight className="w-4 h-4 text-muted-foreground" />
-                </button>
-
-                {/* Sync Commands */}
-                <button
-                  onClick={() => handleTriggerAction('sync_commands')}
-                  disabled={actionLoading !== null || !canManage}
-                  className="w-full flex items-center justify-between p-3 rounded-xl bg-secondary/20 border border-border/40 hover:bg-secondary/40 transition-colors disabled:opacity-50 text-left"
-                >
-                  <div>
-                    <div className="text-xs font-bold text-foreground">Slash Komutlarini Eşitle</div>
-                    <div className="text-[10px] text-muted-foreground mt-0.5">Bot slash komutlarini Discord API ile senkronize eder.</div>
-                  </div>
-                  <ChevronRight className="w-4 h-4 text-muted-foreground" />
-                </button>
-
-                {/* Metadata force sync */}
-                <button
-                  onClick={() => handleTriggerAction('force_sync')}
-                  disabled={actionLoading !== null || !canManage}
-                  className="w-full flex items-center justify-between p-3 rounded-xl bg-secondary/20 border border-border/40 hover:bg-secondary/40 transition-colors disabled:opacity-50 text-left"
-                >
-                  <div>
-                    <div className="text-xs font-bold text-foreground">Kanallari & Rolleri Eşitle</div>
-                    <div className="text-[10px] text-muted-foreground mt-0.5">Discord sunucu verilerini bot bellegine cekmeye zorlar.</div>
-                  </div>
-                  <ChevronRight className="w-4 h-4 text-muted-foreground" />
-                </button>
-
-                {/* Emergency Lockdown */}
-                <div className="border-t border-border/30 pt-3 mt-3">
-                  <div className="text-xs font-bold text-destructive mb-2 flex items-center gap-1.5">
-                    <AlertTriangle className="w-3.5 h-3.5" /> Acil Durum Kanallari Kilitleme
-                  </div>
-                  <div className="flex gap-2">
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      onClick={() => handleTriggerAction('lockdown')}
-                      disabled={actionLoading !== null || !canManage}
-                      className="flex-1 text-[11px]"
-                    >
-                      LOCKDOWN
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleTriggerAction('unlockdown')}
-                      disabled={actionLoading !== null || !canManage}
-                      className="flex-1 text-[11px]"
-                    >
-                      KILIDI AC
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            </Card>
-
-            {/* Slash Commands */}
-            <Card className="p-5">
-              <div className="flex items-center gap-2 mb-4">
-                <Terminal className="w-4 h-4 text-primary" />
-                <h3 className="font-bold text-sm">Kayitli Slash Komutlari</h3>
-              </div>
-
-              <div className="space-y-2 max-h-60 overflow-y-auto soft-scroll">
-                {commands.length === 0 ? (
-                  <p className="text-xs text-muted-foreground text-center py-4">Komut bulunamadi.</p>
-                ) : (
-                  commands.map(cmd => (
-                    <div key={cmd.name} className="p-2.5 rounded-xl bg-secondary/15 border border-border/40">
-                      <div className="font-bold text-xs text-foreground font-mono">/{cmd.name}</div>
-                      <div className="text-[10px] text-muted-foreground mt-1">{cmd.description}</div>
                     </div>
-                  ))
+                  </motion.div>
                 )}
-              </div>
-            </Card>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
+              </AnimatePresence>
+            </div>
 
-// ChevronRight helper component inline replacement
-function ChevronRight({ className }: { className?: string }) {
-  return (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className={className}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
-    </svg>
+            {/* Accordion 5: Bot Aksiyon Geçmişi & Sırası */}
+            <div className={`rounded-xl border border-white/[0.04] overflow-hidden ${getGlassClass(intensity, theme)}`}>
+              <button
+                onClick={() => toggleSection('history')}
+                className="w-full px-5 py-4 flex items-center justify-between bg-black/10 hover:bg-black/20 transition-all text-left border-none cursor-pointer"
+              >
+                <div className="flex items-center gap-2.5">
+                  <Terminal size={15} className="text-[#FF3B30]" />
+                  <span className="text-[13.5px] font-bold text-white">Bot Aksiyon Geçmişi & Sırası</span>
+                </div>
+                {sections.history ? <ChevronDown size={14} className="text-white/40" /> : <ChevronRight size={14} className="text-white/40" />}
+              </button>
+
+              <AnimatePresence initial={false}>
+                {sections.history && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.2 }}
+                    className="border-t border-white/[0.04] bg-[#0E0E10]/15"
+                  >
+                    <div className="p-5 space-y-3.5 max-h-80 overflow-y-auto soft-scroll">
+                      {recentActions.length === 0 ? (
+                        <p className="text-[12px] text-white/30 text-center py-6 font-medium">Henüz aksiyon audit log kaydı bulunmuyor.</p>
+                      ) : (
+                        recentActions.map(action => {
+                          const statusColors = {
+                            pending: 'warning' as const,
+                            completed: 'success' as const,
+                            failed: 'destructive' as const
+                          };
+                          const statusLabels = {
+                            pending: 'Bekliyor',
+                            completed: 'Başarılı',
+                            failed: 'Hata'
+                          };
+                          return (
+                            <div key={action.id} className="flex items-start justify-between gap-3 p-4 rounded-xl bg-black/20 border border-white/5 hover:border-white/10 transition-all">
+                              <div className="min-w-0 flex-1 space-y-1">
+                                <div className="flex items-center gap-2.5 flex-wrap">
+                                  <span className="font-extrabold text-[12.5px] text-white font-mono">{action.action}</span>
+                                  {action.status === 'completed' && (
+                                    <Badge className="bg-[#30D158]/10 border border-[#30D158]/20 text-[#30D158] text-[9px] px-1.5 py-0.5 rounded font-bold font-mono">Başarılı</Badge>
+                                  )}
+                                  {action.status === 'failed' && (
+                                    <Badge className="bg-[#FF453A]/10 border border-[#FF453A]/20 text-[#FF453A] text-[9px] px-1.5 py-0.5 rounded font-bold font-mono">Hata</Badge>
+                                  )}
+                                  {action.status === 'pending' && (
+                                    <Badge className="bg-[#FF9F0A]/10 border border-[#FF9F0A]/20 text-[#FF9F0A] text-[9px] px-1.5 py-0.5 rounded font-bold font-mono">Bekliyor</Badge>
+                                  )}
+                                </div>
+                                {action.payload && Object.keys(action.payload).length > 0 && (
+                                  <div className="text-[10.5px] text-white/40 font-mono truncate bg-black/10 p-1.5 rounded border border-white/[0.02] mt-2">
+                                    Payload: {JSON.stringify(action.payload)}
+                                  </div>
+                                )}
+                                {action.result && Object.keys(action.result).length > 0 && (
+                                  <div className="text-[10.5px] text-[#30D158]/85 font-mono truncate bg-[#30D158]/5 p-1.5 rounded border border-[#30D158]/10 mt-1">
+                                    Result: {JSON.stringify(action.result)}
+                                  </div>
+                                )}
+                                <div className="text-[9.5px] text-white/25 pt-1">
+                                  Tetikleyen: {action.requested_by_discord_id ? `<@${action.requested_by_discord_id}>` : 'Sistem'} • {formatDateTime(action.created_at)}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+
+            {/* Accordion 6: Kayıtlı Slash Komutları */}
+            <div className={`rounded-xl border border-white/[0.04] overflow-hidden ${getGlassClass(intensity, theme)}`}>
+              <button
+                onClick={() => toggleSection('commands')}
+                className="w-full px-5 py-4 flex items-center justify-between bg-black/10 hover:bg-black/20 transition-all text-left border-none cursor-pointer"
+              >
+                <div className="flex items-center gap-2.5">
+                  <Sliders size={15} className="text-[#30D158]" />
+                  <span className="text-[13.5px] font-bold text-white">Kayıtlı Slash Komutları</span>
+                </div>
+                {sections.commands ? <ChevronDown size={14} className="text-white/40" /> : <ChevronRight size={14} className="text-white/40" />}
+              </button>
+
+              <AnimatePresence initial={false}>
+                {sections.commands && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.2 }}
+                    className="border-t border-white/[0.04] bg-[#0E0E10]/15"
+                  >
+                    <div className="p-5 grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-h-80 overflow-y-auto soft-scroll pr-1">
+                      {commands.length === 0 ? (
+                        <p className="text-[12px] text-white/30 text-center py-6 font-medium">Komut bulunamadı.</p>
+                      ) : (
+                        commands.map(cmd => (
+                          <div key={cmd.name} className="p-3.5 rounded-xl bg-black/20 border border-white/5 hover:border-white/10 transition-all">
+                            <span className="font-extrabold text-[12.5px] text-[#B19CD9] font-mono block">/{cmd.name}</span>
+                            <span className="text-[11.5px] text-white/45 block mt-1 leading-normal font-medium">{cmd.description}</span>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+
+          </div>
+        )}
+      </div>
+    </div>
   );
 }

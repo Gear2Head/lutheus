@@ -74,6 +74,15 @@ const DOM = {
     guildId: document.getElementById('guildId'),
     scanDelay: document.getElementById('scanDelay'),
     toggleAutoSave: document.getElementById('toggleAutoSave'),
+    toggleAutoOpen: document.getElementById('toggleAutoOpen'),
+    toggleAutoOpenWidget: document.getElementById('toggleAutoOpenWidget'),
+    btnTriggerAutoScanNow: document.getElementById('btnTriggerAutoScanNow'),
+    autoScanPulse: document.getElementById('autoScanPulse'),
+    valLastScanTime: document.getElementById('valLastScanTime'),
+    valLastScanStatus: document.getElementById('valLastScanStatus'),
+    valNextScanCountdown: document.getElementById('valNextScanCountdown'),
+    valNewCasesCount: document.getElementById('valNewCasesCount'),
+    autoScanLogs: document.getElementById('autoScanLogs'),
     btnClearCases: document.getElementById('btnClearCases'),
     btnResetAll: document.getElementById('btnResetAll'),
     logContent: document.getElementById('logContent'),
@@ -268,11 +277,20 @@ function switchSection(sectionId) {
 }
 
 function applyRoleVisibility() {
+    const isPrivileged = isPrivilegedRole(state.session?.role);
     const visible = new Set(getVisibleSections(state.session?.role));
+    
     DOM.navButtons.forEach((button) => {
-        button.classList.toggle('hidden', !visible.has(button.dataset.section));
+        const sect = button.dataset.section;
+        const shouldHide = !visible.has(sect) || (button.classList.contains('privileged-only') && !isPrivileged);
+        button.classList.toggle('hidden', shouldHide);
     });
-    if (!isPrivilegedRole(state.session?.role)) {
+
+    document.querySelectorAll('.privileged-only').forEach((element) => {
+        element.classList.toggle('hidden', !isPrivileged);
+    });
+
+    if (!isPrivileged) {
         DOM.btnOpenAdmin?.classList.add('hidden');
         DOM.chkOpenAdmin.checked = false;
         if (DOM.chkDetailScan) {
@@ -540,18 +558,137 @@ async function loadSettings() {
     DOM.guildId.value = settings.guildId || DEFAULT_GUILD_ID;
     DOM.scanDelay.value = settings.scanDelay || 2000;
     DOM.toggleAutoSave.checked = settings.autoSaveWeekly !== false;
+    DOM.toggleAutoOpen.checked = settings.autoOpenHourly === true;
+    if (DOM.toggleAutoOpenWidget) {
+        DOM.toggleAutoOpenWidget.checked = settings.autoOpenHourly === true;
+    }
+    updateAutoScanUIState();
 }
 
-async function saveSettings() {
+async function saveSettings(event) {
     const current = await Storage.getSettings();
+    
+    if (event && event.target) {
+        if (event.target.id === 'toggleAutoOpen' && DOM.toggleAutoOpenWidget) {
+            DOM.toggleAutoOpenWidget.checked = DOM.toggleAutoOpen.checked;
+        } else if (event.target.id === 'toggleAutoOpenWidget' && DOM.toggleAutoOpen) {
+            DOM.toggleAutoOpen.checked = DOM.toggleAutoOpenWidget.checked;
+        }
+    }
+
     const next = {
         ...current,
         guildId: DOM.guildId.value.trim() || DEFAULT_GUILD_ID,
         scanDelay: Number(DOM.scanDelay.value || 2000),
-        autoSaveWeekly: DOM.toggleAutoSave.checked
+        autoSaveWeekly: DOM.toggleAutoSave.checked,
+        autoOpenHourly: DOM.toggleAutoOpen.checked
     };
     await Storage.saveSettings(next);
+    updateAutoScanUIState();
     return next;
+}
+
+async function updateAutoScanUIState() {
+    const settings = await Storage.getSettings();
+    const isEnabled = settings.autoOpenHourly === true;
+
+    if (DOM.autoScanPulse) {
+        if (isEnabled) {
+            DOM.autoScanPulse.classList.remove('inactive');
+        } else {
+            DOM.autoScanPulse.classList.add('inactive');
+        }
+    }
+
+    if (!isEnabled) {
+        if (DOM.valNextScanCountdown) DOM.valNextScanCountdown.textContent = 'Pasif';
+    } else {
+        if (typeof chrome !== 'undefined' && chrome.alarms) {
+            chrome.alarms.get('lutheus-sapphire-auto-open', (alarm) => {
+                if (alarm) {
+                    const diffMs = alarm.scheduledTime - Date.now();
+                    if (diffMs > 0) {
+                        const diffMins = Math.floor(diffMs / 60000);
+                        const diffSecs = Math.floor((diffMs % 60000) / 1000);
+                        if (DOM.valNextScanCountdown) {
+                            DOM.valNextScanCountdown.textContent = `${diffMins}dk ${diffSecs}sn`;
+                        }
+                    } else {
+                        if (DOM.valNextScanCountdown) DOM.valNextScanCountdown.textContent = 'Taranıyor...';
+                    }
+                } else {
+                    if (DOM.valNextScanCountdown) DOM.valNextScanCountdown.textContent = 'Alarm Yok';
+                }
+            });
+        } else {
+            if (DOM.valNextScanCountdown) DOM.valNextScanCountdown.textContent = 'Beklemede';
+        }
+    }
+
+    if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+        chrome.storage.local.get(['autoScanStatus'], (result) => {
+            const status = result.autoScanStatus;
+            if (status) {
+                if (DOM.valLastScanTime) {
+                    if (status.lastRunTime && status.lastRunTime !== '-') {
+                        const date = new Date(status.lastRunTime);
+                        DOM.valLastScanTime.textContent = date.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+                        DOM.valLastScanTime.title = date.toLocaleString('tr-TR');
+                    } else {
+                        DOM.valLastScanTime.textContent = '-';
+                    }
+                }
+                
+                if (DOM.valLastScanStatus) {
+                    DOM.valLastScanStatus.textContent = 
+                        status.lastRunStatus === 'success' ? 'Başarılı' :
+                        status.lastRunStatus === 'failed' ? 'Başarısız' :
+                        status.lastRunStatus === 'running' ? 'Çalışıyor...' : '-';
+                    
+                    DOM.valLastScanStatus.className = 'auto-scan-stat-value ' + (
+                        status.lastRunStatus === 'success' ? 'success' :
+                        status.lastRunStatus === 'failed' ? 'failed' :
+                        status.lastRunStatus === 'running' ? 'pending' : ''
+                    );
+                }
+
+                if (DOM.valNewCasesCount) {
+                    DOM.valNewCasesCount.textContent = status.newCasesCount ?? 0;
+                }
+
+                if (DOM.autoScanLogs && status.logs && status.logs.length) {
+                    DOM.autoScanLogs.innerHTML = status.logs.map(log => `<div class="auto-scan-log-item">${DOM.autoScanPulse ? escapeHtml(log) : log}</div>`).join('');
+                }
+            }
+        });
+    }
+}
+
+async function triggerAutoScanNow() {
+    if (!isPrivilegedRole(state.session?.role)) {
+        Toast.warning('Yetki Gerekli', 'Yalnızca yöneticiler bu işlemi başlatabilir.');
+        return;
+    }
+    if (DOM.btnTriggerAutoScanNow) {
+        DOM.btnTriggerAutoScanNow.disabled = true;
+        DOM.btnTriggerAutoScanNow.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Çalışıyor...';
+    }
+    try {
+        const response = await sendRuntimeMessage({ action: 'RUN_SAPPHIRE_AUTO_OPEN_TASK' });
+        if (response && response.success) {
+            Toast.success('Başarılı', `Tarama tamamlandı. ${response.newCasesCount || 0} yeni kayıt alındı.`);
+        } else {
+            Toast.error('Hata', response?.error || 'Tarama başarısız oldu.');
+        }
+    } catch (e) {
+        Toast.error('Hata', e.message || 'İstek gönderilemedi.');
+    } finally {
+        if (DOM.btnTriggerAutoScanNow) {
+            DOM.btnTriggerAutoScanNow.disabled = false;
+            DOM.btnTriggerAutoScanNow.innerHTML = '<i class="fa-solid fa-arrow-rotate-right"></i> Şimdi Tetikle';
+        }
+        updateAutoScanUIState();
+    }
 }
 
 async function loadScanLogs() {
@@ -1181,6 +1318,9 @@ function bindEvents() {
     DOM.guildId?.addEventListener('change', saveSettings);
     DOM.scanDelay?.addEventListener('change', saveSettings);
     DOM.toggleAutoSave?.addEventListener('change', saveSettings);
+    DOM.toggleAutoOpen?.addEventListener('change', saveSettings);
+    DOM.toggleAutoOpenWidget?.addEventListener('change', saveSettings);
+    DOM.btnTriggerAutoScanNow?.addEventListener('click', triggerAutoScanNow);
     DOM.btnClearCases?.addEventListener('click', clearCases);
     DOM.btnResetAll?.addEventListener('click', resetAll);
     document.getElementById('btnScanInvalidStaff')?.addEventListener('click', scanInvalidStaff);
@@ -1246,6 +1386,9 @@ function bindEvents() {
             DOM.btnStartPointtrain.disabled = false;
             DOM.btnCancelPointtrain.disabled = true;
         }
+        if (message.action === 'AUTO_SCAN_STATUS_UPDATED') {
+            updateAutoScanUIState();
+        }
     });
 }
 
@@ -1303,6 +1446,7 @@ async function init() {
         updateStats(),
         loadPointtrainSettings()
     ]);
+    setInterval(updateAutoScanUIState, 1000);
     resetScanProgress();
     resetPointtrainProgress();
     switchSection(getVisibleSections(state.session?.role)[0] || 'home');

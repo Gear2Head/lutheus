@@ -48,6 +48,7 @@ const ACTIONS = {
 
 const INGEST_QUEUE_KEY = 'lutheusIngestQueue';
 const INGEST_FLUSH_ALARM = 'lutheus-ingest-flush';
+const SAPPHIRE_AUTO_OPEN_ALARM = 'lutheus-sapphire-auto-open';
 const MAX_INGEST_QUEUE_SIZE = 200;
 
 let pointtrainCancelled = false;
@@ -66,12 +67,51 @@ chrome.sidePanel
 
 if (chrome.alarms) {
     chrome.alarms.create(INGEST_FLUSH_ALARM, { periodInMinutes: 1 }).catch(() => undefined);
+    chrome.alarms.create(SAPPHIRE_AUTO_OPEN_ALARM, { periodInMinutes: 60 }).catch(() => undefined);
 }
 
 chrome.alarms?.onAlarm.addListener((alarm) => {
     if (alarm.name === INGEST_FLUSH_ALARM) {
         flushIngestQueue().catch((error) => {
             console.warn('[Lutheus SW] Ingest queue flush failed:', error.message || error);
+        });
+    } else if (alarm.name === SAPPHIRE_AUTO_OPEN_ALARM) {
+        getLocal('settings').then((settings) => {
+            if (settings?.autoOpenHourly) {
+                const guildId = settings.guildId || LUTHEUS_GUILD_ID;
+                console.log('[Lutheus SW] Auto-running hourly Sapphire Scan...');
+                updateAutoScanStatus({ lastRunStatus: 'running', logMessage: 'Otomatik tarama başlatıldı...' });
+                runAutonomousScan({
+                    guildId,
+                    pages: [1],
+                    scanMode: 'fast',
+                    enrichDetails: false
+                }).then((res) => {
+                    if (res && res.tabId) {
+                        chrome.tabs.remove(res.tabId).catch(() => undefined);
+                        console.log('[Lutheus SW] Hourly Sapphire Scan completed and tab closed.');
+                        updateAutoScanStatus({
+                            lastRunTime: new Date().toISOString(),
+                            lastRunStatus: 'success',
+                            newCasesCount: res.cases?.length || 0,
+                            logMessage: `Otomatik tarama tamamlandı. ${res.cases?.length || 0} yeni kayıt alındı.`
+                        });
+                    } else {
+                        updateAutoScanStatus({
+                            lastRunStatus: 'failed',
+                            logMessage: 'Tarayıcı sekmesi oluşturulamadı.'
+                        });
+                    }
+                }).catch((error) => {
+                    console.error('[Lutheus SW] Hourly Sapphire Scan failed:', error);
+                    updateAutoScanStatus({
+                        lastRunStatus: 'failed',
+                        logMessage: `Tarama hatası: ${error.message || error}`
+                    });
+                });
+            }
+        }).catch((error) => {
+            console.error('[Lutheus SW] Failed to check settings for auto-open:', error);
         });
     }
 });
@@ -84,7 +124,8 @@ chrome.runtime.onInstalled.addListener((details) => {
                 guildId: LUTHEUS_GUILD_ID,
                 autoSaveWeekly: true,
                 scanDelay: 2000,
-                theme: 'lutheus'
+                theme: 'lutheus',
+                autoOpenHourly: false
             },
             pointtrainSettings: {
                 guildId: LUTHEUS_GUILD_ID,
@@ -109,6 +150,36 @@ function getLocal(key) {
 
 function setLocal(key, value) {
     return new Promise((resolve) => chrome.storage.local.set({ [key]: value }, resolve));
+}
+
+async function updateAutoScanStatus(statusUpdates) {
+    try {
+        const current = await getLocal('autoScanStatus') || {
+            lastRunTime: '-',
+            lastRunStatus: '-',
+            newCasesCount: 0,
+            logs: []
+        };
+        
+        const nextLogs = [...(current.logs || [])];
+        if (statusUpdates.logMessage) {
+            const timeStr = new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            nextLogs.unshift(`[${timeStr}] ${statusUpdates.logMessage}`);
+            if (nextLogs.length > 15) nextLogs.pop();
+        }
+
+        const next = {
+            ...current,
+            ...statusUpdates,
+            logs: nextLogs
+        };
+        delete next.logMessage;
+        
+        await setLocal('autoScanStatus', next);
+        emitRuntimeEvent('AUTO_SCAN_STATUS_UPDATED', next);
+    } catch (e) {
+        console.error('[Lutheus SW] Failed to update auto scan status:', e);
+    }
 }
 
 function getSync(key) {
@@ -221,17 +292,16 @@ async function openDashboardTab(guildId = LUTHEUS_GUILD_ID) {
     let tab;
     if (tabs.length > 0) {
         tab = tabs[0];
-        if (!tab.url?.includes('/moderation/cases')) {
-            await chrome.tabs.update(tab.id, { url, active: true });
-        } else {
-            await chrome.tabs.update(tab.id, { active: true });
-        }
+        await chrome.tabs.update(tab.id, { url, active: true });
+        // Allow a small delay, then reload to fix idle/stuck React sessions
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        await chrome.tabs.reload(tab.id);
     } else {
         tab = await chrome.tabs.create({ url, active: true });
     }
 
-    await waitForTabLoad(tab.id, 20000);
-    await new Promise((resolve) => setTimeout(resolve, 3000));
+    await waitForTabLoad(tab.id, 25000);
+    await new Promise((resolve) => setTimeout(resolve, 4000));
     await injectContentScripts(tab.id);
     return tab;
 }
@@ -420,6 +490,20 @@ function isCaseIdLike(value) {
     if (!/^[A-Za-z0-9]{4,24}$/.test(text)) return false;
     if (/^\d{17,20}$/.test(text)) return false;
     if (/^(mute|ban|warn|kick|timeout|user|reason|author|duration|created|bilinmiyor|sunucu|discord|yetkili)$/i.test(text)) return false;
+    if (/[ğĞüÜşŞıİöÖçÇ]/.test(text)) return false;
+
+    if (/^[A-Za-z]+$/.test(text)) {
+        const uppercaseCount = (text.match(/[A-Z]/g) || []).length;
+        const lowercaseCount = (text.match(/[a-z]/g) || []).length;
+        if (uppercaseCount === 1 && text.charCodeAt(0) >= 65 && text.charCodeAt(0) <= 90) {
+            return false;
+        }
+        if (/^[A-Z]{2}[a-z]+$/.test(text)) {
+            return false;
+        }
+        return text.length >= 6 && uppercaseCount >= 1 && lowercaseCount >= 1;
+    }
+
     return /[A-Za-z]/.test(text) && /\d/.test(text);
 }
 
@@ -537,7 +621,11 @@ function getReasonText(reason) {
 }
 
 function validateCaseForStorage(entry = {}) {
-    if (!String(entry.id || entry.caseId || '').trim()) return { valid: false, reason: 'missing_case_id' };
+    const id = String(entry.id || entry.caseId || '').trim();
+    if (!id) return { valid: false, reason: 'missing_case_id' };
+    if (id === 'RRwean' || id === '#' || id === 'Bilinmeyen' || id === 'Yetkili' || id === 'undefined' || id === 'null') {
+        return { valid: false, reason: 'corrupted_case_id' };
+    }
     if (!entry.userId && !entry.user && !entry.authorId && !entry.authorName) return { valid: false, reason: 'missing_identity' };
     const reasonText = getReasonText(entry.reason);
     if (reasonText && !isReasonLike(reasonText)) return { valid: false, reason: 'shifted_reason' };
@@ -869,10 +957,16 @@ async function runAutonomousScan(options = {}) {
     await new Promise((resolve) => setTimeout(resolve, 1000));
 
     let pageInfo = null;
-    for (let attempt = 0; attempt < 3 && !pageInfo?.totalPages && !pageInfo?.total; attempt++) {
+    for (let attempt = 0; attempt < 4 && !pageInfo?.totalPages && !pageInfo?.total; attempt++) {
         if (attempt > 0) {
+            if (attempt === 2) {
+                console.log('[Lutheus SW] Page info unavailable. Reloading Sapphire tab to clear stuck state...');
+                await chrome.tabs.reload(tabId);
+                await waitForTabLoad(tabId, 25000);
+                await new Promise((resolve) => setTimeout(resolve, 4000));
+            }
             await injectContentScripts(tabId);
-            await new Promise((resolve) => setTimeout(resolve, 1500));
+            await new Promise((resolve) => setTimeout(resolve, 2000));
         }
         pageInfo = await sendToContentScript(tabId, { action: 'GET_PAGE_INFO' });
     }
@@ -1545,6 +1639,49 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
                     break;
                 }
 
+                case 'RUN_SAPPHIRE_AUTO_OPEN_TASK': {
+                    const settings = await getLocal('settings');
+                    const guildId = settings?.guildId || LUTHEUS_GUILD_ID;
+                    console.log('[Lutheus SW] Manually triggered Sapphire Auto Scan...');
+                    updateAutoScanStatus({ lastRunStatus: 'running', logMessage: 'Manuel tetikleme başlatıldı...' });
+                    
+                    runAutonomousScan({
+                        guildId,
+                        pages: [1],
+                        scanMode: 'fast',
+                        enrichDetails: false
+                    }).then((res) => {
+                        if (res && res.tabId) {
+                            chrome.tabs.remove(res.tabId).catch(() => undefined);
+                            console.log('[Lutheus SW] Manually triggered Sapphire Scan completed and tab closed.');
+                            const updated = {
+                                lastRunTime: new Date().toISOString(),
+                                lastRunStatus: 'success',
+                                newCasesCount: res.cases?.length || 0,
+                                logMessage: `Manuel tarama tamamlandı. ${res.cases?.length || 0} yeni kayıt alındı.`
+                            };
+                            updateAutoScanStatus(updated);
+                            sendResponse({ success: true, ...updated });
+                        } else {
+                            const updated = {
+                                lastRunStatus: 'failed',
+                                logMessage: 'Tarayıcı sekmesi oluşturulamadı.'
+                            };
+                            updateAutoScanStatus(updated);
+                            sendResponse({ success: false, error: 'Failed to create tab' });
+                        }
+                    }).catch((error) => {
+                        console.error('[Lutheus SW] Manually triggered Sapphire Scan failed:', error);
+                        const updated = {
+                            lastRunStatus: 'failed',
+                            logMessage: `Hata: ${error.message || error}`
+                        };
+                        updateAutoScanStatus(updated);
+                        sendResponse({ success: false, error: error.message || error });
+                    });
+                    return true; // async
+                }
+
                 case 'RUN_SAPPHIRE_SYNC': {
                     const jobId = request.jobId;
                     activeJobId = jobId;
@@ -1792,3 +1929,24 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
 });
 
 console.log('Lutheus CezaRapor: Service Worker v2.2 ready');
+
+async function cleanupLocalCases() {
+    try {
+        const cases = await new Promise((resolve) => chrome.storage.local.get(['cases'], (result) => resolve(result.cases || [])));
+        const cleanCases = cases.filter(c => {
+            const id = String(c.id || c.caseId || '').trim();
+            if (!id || id === 'RRwean' || id === '#' || id === 'Bilinmeyen' || id === 'Yetkili' || id === 'undefined' || id === 'null') {
+                return false;
+            }
+            return true;
+        });
+        if (cleanCases.length !== cases.length) {
+            await new Promise((resolve) => chrome.storage.local.set({ cases: cleanCases }, resolve));
+            console.log(`[Lutheus SW] Cleaned up ${cases.length - cleanCases.length} corrupted local cases.`);
+        }
+    } catch (e) {
+        console.error('[Lutheus SW] Failed to clean up local cases:', e);
+    }
+}
+
+cleanupLocalCases();

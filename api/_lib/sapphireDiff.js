@@ -99,6 +99,21 @@ function mergeWithoutDataLoss(existing, incoming) {
     if (incomingConf >= existingConf) {
         for (const key of IMPORTANT_FIELDS) {
             if (incoming[key] !== undefined && incoming[key] !== null) {
+                if (key === 'userName') {
+                    const existingName = String(result[key] || '').trim();
+                    const incomingName = String(incoming[key] || '').trim();
+                    if (existingName && (incomingName === 'Unknown' || incomingName === 'Bilinmiyor' || incomingName === '')) {
+                        continue;
+                    }
+                }
+                if (key === 'authorName') {
+                    const existingName = String(result[key] || '').trim();
+                    const incomingName = String(incoming[key] || '').trim();
+                    const isGeneric = /^(unknown|bilinmiyor|yetkili|bilinmeyen yetkili|unknown moderator)$/i.test(incomingName);
+                    if (existingName && (isGeneric || incomingName === '')) {
+                        continue;
+                    }
+                }
                 result[key] = incoming[key];
             }
         }

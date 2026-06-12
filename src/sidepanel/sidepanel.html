@@ -46,13 +46,13 @@
                 <button class="nav-btn active" data-section="home" title="Ana Sayfa">
                     <i class="fa-solid fa-house"></i>
                 </button>
-                <button class="nav-btn" data-section="scan" title="Tarama Merkezi">
+                <button class="nav-btn privileged-only" data-section="scan" title="Tarama Merkezi">
                     <i class="fa-solid fa-satellite-dish"></i>
                 </button>
-                <button class="nav-btn" id="btnOpenAdmin" title="Admin Paneli">
+                <button class="nav-btn privileged-only" id="btnOpenAdmin" title="Admin Paneli">
                     <i class="fa-solid fa-gauge-high"></i>
                 </button>
-                <button class="nav-btn" data-section="cleanup" title="Veri Temizliği">
+                <button class="nav-btn privileged-only" data-section="cleanup" title="Veri Temizliği">
                     <i class="fa-solid fa-broom"></i>
                 </button>
             </div>
@@ -122,7 +122,7 @@
                     </div>
                 </div>
 
-                <div class="card large-card">
+                <div class="card large-card privileged-only">
                     <div class="card-content">
                         <h2>Hızlı Başlat</h2>
                         <p>Son ayarlarla otomatik tarama başlat.</p>
@@ -132,6 +132,52 @@
                     </div>
                     <div class="card-image">
                         <i class="fa-solid fa-rocket"></i>
+                    </div>
+                </div>
+
+                <!-- Sapphire Auto Scan Management Widget (privileged-only) -->
+                <div class="card auto-scan-card privileged-only" style="margin-top: 12px;">
+                    <div class="auto-scan-header">
+                        <div class="auto-scan-title">
+                            <i class="fa-solid fa-clock-rotate-left" style="color: var(--accent-primary);"></i>
+                            <span>Sapphire Otomatik Tarama</span>
+                        </div>
+                        <span class="pulse-dot" id="autoScanPulse"></span>
+                    </div>
+
+                    <div class="switch-container">
+                        <span class="switch-label">Otomatik Eşitleme (1 Saat)</span>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="toggleAutoOpenWidget">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+
+                    <div class="auto-scan-grid">
+                        <div class="auto-scan-stat">
+                            <span class="auto-scan-stat-label">Son Tarama</span>
+                            <span class="auto-scan-stat-value" id="valLastScanTime">-</span>
+                        </div>
+                        <div class="auto-scan-stat">
+                            <span class="auto-scan-stat-label">Son Durum</span>
+                            <span class="auto-scan-stat-value success" id="valLastScanStatus">-</span>
+                        </div>
+                        <div class="auto-scan-stat">
+                            <span class="auto-scan-stat-label">Sonraki Tarama</span>
+                            <span class="auto-scan-stat-value pending" id="valNextScanCountdown">-</span>
+                        </div>
+                        <div class="auto-scan-stat">
+                            <span class="auto-scan-stat-label">Yeni Eklenen Ceza</span>
+                            <span class="auto-scan-stat-value" id="valNewCasesCount">0</span>
+                        </div>
+                    </div>
+
+                    <button class="btn primary-btn full" id="btnTriggerAutoScanNow" style="background: linear-gradient(135deg, var(--accent-primary), var(--accent-dark)); box-shadow: 0 4px 15px var(--accent-glow); height: 38px;">
+                        <i class="fa-solid fa-arrow-rotate-right"></i> Şimdi Tetikle
+                    </button>
+
+                    <div class="auto-scan-logs" id="autoScanLogs">
+                        <div class="auto-scan-log-item">Sistem hazır. Otomatik tarama bekleniyor...</div>
                     </div>
                 </div>
 
@@ -152,7 +198,7 @@
                     <div class="card-header">
                         <h3><i class="fa-solid fa-terminal" style="margin-right: 10px; opacity: 0.6;"></i>Sistem
                             Kayıtları</h3>
-                        <button class="btn-text" id="btnClearLogs"><i class="fa-solid fa-trash-can"></i>
+                        <button class="btn-text privileged-only" id="btnClearLogs"><i class="fa-solid fa-trash-can"></i>
                             Temizle</button>
                     </div>
                     <div class="log-list" id="logContent"></div>
@@ -450,6 +496,13 @@
                             <input type="checkbox" id="toggleAutoSave" checked>
                             <span class="checkmark"></span>
                             <span>Haftalık Otomatik Kayıt</span>
+                        </label>
+                    </div>
+                    <div class="form-group">
+                        <label class="custom-check">
+                            <input type="checkbox" id="toggleAutoOpen">
+                            <span class="checkmark"></span>
+                            <span>Otomatik Sapphire Açılışı (1 Saat)</span>
                         </label>
                     </div>
                 </div>

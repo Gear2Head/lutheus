@@ -920,9 +920,10 @@ async function fetchDashboardLiveData(guildId) {
     };
 }
 
-async function sendDiscordMessage(channelId, content, embed = null) {
+async function sendDiscordMessage(channelId, content, embed = null, components = null) {
     const body = { content };
     if (embed) body.embeds = [embed];
+    if (components) body.components = components;
 
     const res = await fetch(`${DISCORD_API}/channels/${channelId}/messages`, {
         method: 'POST',
@@ -1361,11 +1362,42 @@ async function handleRequestAccess(req, res) {
             if (alertChannelId) {
                 const embed = {
                     title: 'Yeni Erişim Talebi 🔐',
-                    description: `**Kullanıcı:** <@${actor.discordId}> (${displayName})\n**Discord ID:** \`${actor.discordId}\`\n\nKullanıcı panel erişimi talep etti. Erişim İstekleri sekmesinden onaylayabilir veya reddedebilirsiniz.`,
+                    description: `**Kullanıcı:** <@${actor.discordId}> (${displayName})\n**Discord ID:** \`${actor.discordId}\`\n\nKullanıcı panel erişimi talep etti. Erişim yetkisini onaylamak için aşağıdaki menüden rol seçebilir veya reddedebilirsiniz.`,
                     color: 0x5e5ce6,
                     timestamp: now
                 };
-                await sendDiscordMessage(alertChannelId, null, embed);
+                const components = [
+                    {
+                        type: 1, // ActionRow
+                        components: [
+                            {
+                                type: 3, // StringSelectMenu
+                                custom_id: `approve_role_select:${actor.discordId}`,
+                                placeholder: 'Rol Seç ve Onayla',
+                                options: [
+                                    { label: 'Viewer (İzleyici)', value: 'viewer', description: 'Görüntüleme yetkisi' },
+                                    { label: 'Discord Destek Ekibi', value: 'discord_destek_ekibi', description: 'Destek yetkisi' },
+                                    { label: 'Discord Moderatörü', value: 'discord_moderatoru', description: 'Moderatör yetkisi' },
+                                    { label: 'Kıdemli Moderatör', value: 'kidemli_discord_moderatoru', description: 'Kıdemli moderatör yetkisi' },
+                                    { label: 'Senior Moderatör', value: 'senior_moderator', description: 'Üst düzey moderatör yetkisi' },
+                                    { label: 'Discord Yöneticisi', value: 'discord_yoneticisi', description: 'Yönetici yetkisi' }
+                                ]
+                            }
+                        ]
+                    },
+                    {
+                        type: 1, // ActionRow
+                        components: [
+                            {
+                                type: 2, // Button
+                                style: 4, // Danger (Red)
+                                label: 'Talebi Reddet',
+                                custom_id: `reject_access:${actor.discordId}`
+                            }
+                        ]
+                    }
+                ];
+                await sendDiscordMessage(alertChannelId, null, embed, components);
             }
         } catch (discordErr) {
             console.warn('Failed to send access request discord alert:', discordErr.message || discordErr);

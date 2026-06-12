@@ -2076,4 +2076,205 @@ input[type="date"]:focus {
     padding: 12px;
 }
 
+/* ========================================
+   SAPPHIRE AUTO SCAN & GLOW MODERNIZATION
+   ======================================== */
+
+.card {
+    background: rgba(15, 15, 20, 0.7) !important;
+    backdrop-filter: blur(24px) !important;
+    border: 1px solid rgba(124, 90, 245, 0.15) !important;
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37) !important;
+    transition: border-color 0.3s ease, box-shadow 0.3s ease, transform 0.2s ease !important;
+}
+
+.card:hover {
+    border-color: rgba(124, 90, 245, 0.35) !important;
+    box-shadow: 0 8px 32px 0 rgba(124, 90, 245, 0.12) !important;
+    transform: translateY(-2px);
+}
+
+.auto-scan-card {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    margin-top: 15px;
+}
+
+.auto-scan-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.auto-scan-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.auto-scan-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+}
+
+.auto-scan-stat {
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: var(--radius-md);
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.auto-scan-stat-label {
+    font-size: 10px;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.auto-scan-stat-value {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.auto-scan-stat-value.success {
+    color: var(--status-valid);
+}
+
+.auto-scan-stat-value.pending {
+    color: var(--status-pending);
+}
+
+.auto-scan-stat-value.failed {
+    color: var(--status-invalid);
+}
+
+.switch-container {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px;
+    background: rgba(124, 90, 245, 0.06);
+    border: 1px solid rgba(124, 90, 245, 0.15);
+    border-radius: var(--radius-md);
+}
+
+.switch-label {
+    font-weight: 500;
+    font-size: 13px;
+    color: var(--text-primary);
+}
+
+.toggle-switch {
+    position: relative;
+    display: inline-block;
+    width: 44px;
+    height: 24px;
+}
+
+.toggle-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.toggle-slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(255, 255, 255, 0.1);
+    transition: .3s;
+    border-radius: 24px;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.toggle-slider:before {
+    position: absolute;
+    content: "";
+    height: 16px;
+    width: 16px;
+    left: 3px;
+    bottom: 3px;
+    background-color: var(--text-secondary);
+    transition: .3s;
+    border-radius: 50%;
+}
+
+.toggle-switch input:checked + .toggle-slider {
+    background-color: var(--accent-primary);
+    box-shadow: 0 0 10px rgba(124, 90, 245, 0.4);
+}
+
+.toggle-switch input:checked + .toggle-slider:before {
+    transform: translateX(20px);
+    background-color: #ffffff;
+}
+
+.pulse-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--status-valid);
+    box-shadow: 0 0 0 0 rgba(45, 213, 115, 0.7);
+    animation: pulse-green 2s infinite;
+    display: inline-block;
+}
+
+.pulse-dot.inactive {
+    background: var(--text-muted);
+    box-shadow: none;
+    animation: none;
+}
+
+.auto-scan-logs {
+    background: rgba(0, 0, 0, 0.25);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: var(--radius-md);
+    padding: 8px;
+    max-height: 100px;
+    overflow-y: auto;
+    font-family: monospace;
+    font-size: 11px;
+}
+
+.auto-scan-log-item {
+    padding: 3px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.02);
+    color: var(--text-secondary);
+}
+
+.auto-scan-log-item:last-child {
+    border-bottom: none;
+}
+
+@keyframes pulse-green {
+    0% {
+        transform: scale(0.95);
+        box-shadow: 0 0 0 0 rgba(45, 213, 115, 0.7);
+    }
+    70% {
+        transform: scale(1);
+        box-shadow: 0 0 0 8px rgba(45, 213, 115, 0);
+    }
+    100% {
+        transform: scale(0.95);
+        box-shadow: 0 0 0 0 rgba(45, 213, 115, 0);
+    }
+}
+
+
 

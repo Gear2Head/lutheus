@@ -698,7 +698,8 @@ export const Storage = {
             scanDelay: 1500,
             theme: 'lutheus',
             cukEnabled: true,
-            autoValidate: false
+            autoValidate: false,
+            autoOpenHourly: false
         };
     },
 

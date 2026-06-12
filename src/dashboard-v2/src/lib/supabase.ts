@@ -355,11 +355,20 @@ export async function getCases(limit = 100): Promise<SapphireCase[]> {
 
   // Merge and deduplicate by case_id
   const mergedMap = new Map<string, SapphireCase>();
+  const isInvalidId = (id: string) => {
+    const cleanId = String(id || '').trim();
+    return !cleanId || cleanId === 'RRwean' || cleanId === '#' || cleanId === 'Bilinmeyen' || cleanId === 'Yetkili' || cleanId === 'undefined' || cleanId === 'null';
+  };
+
   for (const c of dbCases) {
-    mergedMap.set(c.case_id, c);
+    if (c && c.case_id && !isInvalidId(c.case_id)) {
+      mergedMap.set(c.case_id, c);
+    }
   }
   for (const c of localCases) {
-    mergedMap.set(c.case_id, c);
+    if (c && c.case_id && !isInvalidId(c.case_id)) {
+      mergedMap.set(c.case_id, c);
+    }
   }
 
   // Convert to array and sort by created_at_sapphire desc

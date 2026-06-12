@@ -54,32 +54,51 @@ window.GearTech.Scraper = {
     },
 
     findCaseRows: function () {
-        const selectors = [
-            'a[href*="/moderation/cases/"]',
-            'a[href*="/cases/"]',
-            '[data-case-id]',
-            '[data-row-key]',
-            '[class*="case"]',
-            '[class*="table-row"]',
-            'tr[class*="row"]',
-            'div[role="row"]',
-            'tbody tr',
-            '.row'
-        ];
-        // Use a localized Set to prevent memory leaks across page navigations
         const rows = [];
         
-        selectors.forEach((selector) => {
-            document.querySelectorAll(selector).forEach((element) => {
-                const row = element.matches('a[href]')
-                    ? element.closest('tr, [role="row"], li, article, [class*="row"], [class*="item"], [class*="card"]') || element.parentElement || element
-                    : element;
-                const text = row.innerText || row.textContent || '';
-                const hasCaseLink = row.querySelector?.('a[href*="/cases/"], a[href*="/moderation/cases/"]') || row.matches?.('a[href*="/cases/"], a[href*="/moderation/cases/"]');
-                if ((hasCaseLink || this.extractCaseIdFromText(text)) && !rows.includes(row)) {
+        // Find elements that look like case links or carry row keys
+        const caseElements = Array.from(document.querySelectorAll('a[href*="/cases/"], a[href*="/moderation/cases/"], [data-case-id], [data-row-key]'));
+        
+        caseElements.forEach((el) => {
+            const href = el.getAttribute?.('href') || '';
+            if (href) {
+                const match = href.match(/\/cases\/([^/?#]+)/) || href.match(/\/moderation\/cases\/([^/?#]+)/);
+                const caseId = match ? decodeURIComponent(match[1]) : '';
+                if (caseId && !this.isLikelyCaseId(caseId)) {
+                    // Skip link targets that are not likely case IDs (e.g. moderator profiles)
+                    return;
+                }
+            }
+
+            const row = el.closest('tr, [role="row"], li, article, [class*="row"], [class*="item"], [class*="card"]') || el.parentElement || el;
+            if (row && !rows.includes(row)) {
+                // Confirm it has content and looks like a row
+                const text = (row.innerText || row.textContent || '').trim();
+                if (text) {
                     rows.push(row);
                 }
-            });
+            }
+        });
+
+        // Also query standard row elements directly
+        const containerRows = Array.from(document.querySelectorAll('tbody tr, tr, [role="row"]'));
+        containerRows.forEach((row) => {
+            if (!rows.includes(row)) {
+                const text = row.innerText || row.textContent || '';
+                const hasCaseLink = row.querySelector?.('a[href*="/cases/"], a[href*="/moderation/cases/"]');
+                let validLinkFound = false;
+                if (hasCaseLink) {
+                    const href = hasCaseLink.getAttribute?.('href') || '';
+                    const match = href.match(/\/cases\/([^/?#]+)/) || href.match(/\/moderation\/cases\/([^/?#]+)/);
+                    const caseId = match ? decodeURIComponent(match[1]) : '';
+                    if (caseId && this.isLikelyCaseId(caseId)) {
+                        validLinkFound = true;
+                    }
+                }
+                if (validLinkFound || this.extractCaseIdFromText(text)) {
+                    rows.push(row);
+                }
+            }
         });
 
         return rows;
@@ -246,7 +265,7 @@ window.GearTech.Scraper = {
             index,
             text: (col.innerText || col.textContent || '').trim(),
             id: this.extractDiscordId(col),
-            caseId: this.extractCaseIdFromElement(col) || this.extractTextFromColumn(col, 'id'),
+            caseId: index <= 2 ? (this.extractCaseIdFromElement(col) || this.extractTextFromColumn(col, 'id')) : '',
             hasAvatar: Boolean(col.querySelector('img'))
         }));
         const caseIdMeta = columnMeta.find(meta => meta.caseId) || {};
@@ -412,15 +431,22 @@ window.GearTech.Scraper = {
     isLikelyCaseId: function (value, options = {}) {
         const text = String(value || '').trim();
         if (text.includes('_') || text.includes('-')) return false;
-        if (!/^[A-Za-z0-9]{4,24}$/.test(text)) return false;
+        if (!/^[A-Za-z0-9]{6,12}$/.test(text)) return false;
         if (/^\d{17,20}$/.test(text)) return false;
         if (/^\d{5,24}$/.test(text)) return true;
         if (/^(mute|ban|warn|kick|timeout|user|reason|author|duration|created|bilinmiyor|sunucu|discord|yetkili)$/i.test(text)) return false;
         if (/[ğĞüÜşŞıİöÖçÇ]/.test(text)) return false;
         if (options.tagged) return true;
-        if (/^[A-Za-z]{4,24}$/.test(text)) {
+        if (/^[A-Za-z]+$/.test(text)) {
             const uppercaseCount = (text.match(/[A-Z]/g) || []).length;
-            return text.length >= 6 && uppercaseCount >= 2 && /[a-z]/.test(text);
+            const lowercaseCount = (text.match(/[a-z]/g) || []).length;
+            if (uppercaseCount === 1 && text.charCodeAt(0) >= 65 && text.charCodeAt(0) <= 90) {
+                return false;
+            }
+            if (/^[A-Z]{2}[a-z]+$/.test(text)) {
+                return false;
+            }
+            return text.length >= 6 && uppercaseCount >= 1 && lowercaseCount >= 1;
         }
         return /[A-Za-z]/.test(text) && /\d/.test(text);
     },
@@ -480,7 +506,8 @@ window.GearTech.Scraper = {
         const href = link?.getAttribute?.('href') || '';
         const match = href.match(/\/cases\/([^/?#]+)/) || href.match(/\/moderation\/cases\/([^/?#]+)/);
         const fromHref = match ? decodeURIComponent(match[1]) : '';
-        return this.isLikelyCaseId(fromHref, { tagged: true }) ? fromHref : '';
+        if (fromHref && this.isLikelyCaseId(fromHref)) return fromHref;
+        return '';
     },
 
     extractTextFromColumn: function (col, type = 'text') {
@@ -492,6 +519,13 @@ window.GearTech.Scraper = {
         const text = (col.innerText || col.textContent || '').trim();
         if (type === 'id') return this.extractCaseIdFromText(text);
         if (type === 'name') {
+            const titledEl = col.querySelector('[title], [alt], [aria-label], [data-username]');
+            if (titledEl) {
+                const titleVal = (titledEl.getAttribute('title') || titledEl.getAttribute('aria-label') || titledEl.getAttribute('data-username') || titledEl.getAttribute('alt') || '').trim();
+                if (titleVal && !/^\d{17,20}$/.test(titleVal) && !this.isLikelyCaseId(titleVal) && titleVal.length > 2 && titleVal.length < 32 && !titleVal.includes('Copy')) {
+                    return titleVal;
+                }
+            }
             return text.split('\n').map((line) => line.trim()).filter(Boolean)
                 .find((line) => !/^\d{17,20}$/.test(line) && !this.isLikelyCaseId(line)) || '';
         }
@@ -544,7 +578,13 @@ window.GearTech.Scraper = {
         if (!col) return null;
         const img = col.querySelector('img');
         if (!img) return null;
-        return img.currentSrc || img.src || img.getAttribute('src') || null;
+        const src = img.currentSrc || img.src || img.getAttribute('src') || '';
+        if (!src) return null;
+        const s = src.toLowerCase();
+        if (s.includes('embed/avatars') || s.includes('assets/') || s.startsWith('data:image/svg+xml') || s.includes('discordapp.com/assets') || s.includes('default')) {
+            return null;
+        }
+        return src;
     },
 
     extractDiscordId: function (col) {

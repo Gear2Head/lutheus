@@ -216,7 +216,7 @@ export async function callGroq(payload: {
     }
 
     const hasImage = Boolean(payload.imageUrl);
-    const model = hasImage ? 'llama-3.2-11b-vision-preview' : (process.env.GROQ_MODEL || 'llama-3.1-8b-instant');
+    const model = hasImage ? 'meta-llama/llama-4-scout-17b-16e-instruct' : (process.env.GROQ_MODEL || 'llama-3.1-8b-instant');
 
     const userContent: unknown[] = [];
 

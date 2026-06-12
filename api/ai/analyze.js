@@ -101,7 +101,7 @@ async function callGroq(payload) {
         };
     }
 
-    const model = payload.image ? 'llama-3.2-11b-vision-preview' : (process.env.GROQ_MODEL || 'llama-3.1-8b-instant');
+    const model = payload.image ? 'meta-llama/llama-4-scout-17b-16e-instruct' : (process.env.GROQ_MODEL || 'llama-3.1-8b-instant');
     const userContent = [];
 
     // Strip image from text payload to keep tokens low
@@ -209,7 +209,7 @@ async function callGroqForProof(payload) {
         };
     }
 
-    const model = payload.image ? 'llama-3.2-11b-vision-preview' : 'llama-3.1-8b-instant';
+    const model = payload.image ? 'meta-llama/llama-4-scout-17b-16e-instruct' : 'llama-3.1-8b-instant';
     const userContent = [];
 
     const textPayload = {

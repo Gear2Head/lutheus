@@ -9,6 +9,7 @@ import { getCaseProof, CaseProof, SapphireCase, getEmbeddedProofs } from '../lib
 import { useAuth } from '../contexts/AuthContext';
 import { getGlassClass } from '../lib/theme';
 import { useToast } from '../contexts/ToastContext';
+import { isManagementRole } from '../lib/auth';
 
 interface ProofDrawerProps {
   caseId: string | null;
@@ -56,6 +57,7 @@ export default function ProofDrawer({
 }: ProofDrawerProps) {
   const { session } = useAuth();
   const { showToast } = useToast();
+  const isManagement = session ? isManagementRole(session.role) : false;
   const [proof, setProof] = useState<CaseProof | null>(null);
   const [loading, setLoading] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
@@ -403,63 +405,65 @@ export default function ProofDrawer({
                 )}
 
                 {/* AI Verification Section */}
-                <div className="space-y-3.5 pt-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-bold text-white/30 uppercase tracking-wider">Yapay Zeka Denetimi</span>
-                    {proof.ai_verdict && (
-                      <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase font-mono tracking-wider ${
-                        proof.ai_verdict === 'valid'
-                          ? 'bg-[#30D158]/10 border border-[#30D158]/20 text-[#30D158]'
-                          : 'bg-[#FF453A]/10 border border-[#FF453A]/20 text-[#FF453A]'
-                      }`}>
-                        {proof.ai_verdict === 'valid' ? (
-                          <><CheckCircle2 size={10} /> GEÇERLİ KANIT</>
-                        ) : (
-                          <><AlertTriangle size={10} /> GEÇERSİZ KANIT</>
-                        )}
-                      </span>
-                    )}
-                  </div>
+                {isManagement && (
+                  <div className="space-y-3.5 pt-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold text-white/30 uppercase tracking-wider">Yapay Zeka Denetimi</span>
+                      {proof.ai_verdict && (
+                        <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase font-mono tracking-wider ${
+                          proof.ai_verdict === 'valid'
+                            ? 'bg-[#30D158]/10 border border-[#30D158]/20 text-[#30D158]'
+                            : 'bg-[#FF453A]/10 border border-[#FF453A]/20 text-[#FF453A]'
+                        }`}>
+                          {proof.ai_verdict === 'valid' ? (
+                            <><CheckCircle2 size={10} /> GEÇERLİ KANIT</>
+                          ) : (
+                            <><AlertTriangle size={10} /> GEÇERSİZ KANIT</>
+                          )}
+                        </span>
+                      )}
+                    </div>
 
-                  {proof.ai_analysis ? (
-                    <div className="p-4 rounded-xl border border-white/[0.06] bg-white/[0.02] space-y-2">
-                      <div className="flex items-center gap-1.5 text-white/80 font-bold text-[12px]">
-                        <Sparkles size={13} className="text-[#5E5CE6]" />
-                        <span>Groq AI Analiz Raporu</span>
+                    {proof.ai_analysis ? (
+                      <div className="p-4 rounded-xl border border-white/[0.06] bg-white/[0.02] space-y-2">
+                        <div className="flex items-center gap-1.5 text-white/80 font-bold text-[12px]">
+                          <Sparkles size={13} className="text-[#5E5CE6]" />
+                          <span>Groq AI Analiz Raporu</span>
+                        </div>
+                        <p className="text-[12px] text-white/70 leading-relaxed font-medium">
+                          {proof.ai_analysis}
+                        </p>
                       </div>
-                      <p className="text-[12px] text-white/70 leading-relaxed font-medium">
-                        {proof.ai_analysis}
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="p-4 rounded-xl border border-[#5E5CE6]/20 bg-[#5E5CE6]/[0.02] text-center space-y-3">
-                      <Sparkles className="w-6 h-6 text-[#5E5CE6] mx-auto animate-pulse" />
-                      <h5 className="text-[12.5px] font-bold text-white/80">AI Değerlendirmesi Yapılmamış</h5>
-                      <p className="text-[11.5px] text-[#8E8E93] max-w-xs mx-auto">
-                        Bu kanıt henüz Groq AI (Llama-3-Vision OCR) tarafından denetlenmedi. Hemen analiz başlatabilirsiniz.
-                      </p>
-                    </div>
-                  )}
-
-                  {/* Action buttons */}
-                  <button
-                    onClick={triggerAiAnalysis}
-                    disabled={analyzing}
-                    className="w-full h-10 rounded-xl bg-[#5E5CE6] hover:bg-[#5E5CE6]/90 disabled:bg-[#5E5CE6]/40 text-white font-extrabold text-[12px] transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md"
-                  >
-                    {analyzing ? (
-                      <>
-                        <Loader2 size={14} className="animate-spin" />
-                        OCR Analizi Yapılıyor...
-                      </>
                     ) : (
-                      <>
-                        <Sparkles size={14} />
-                        {proof.ai_analysis ? 'Yeniden Analiz Et (Groq AI)' : 'Groq AI Analizini Tetikle'}
-                      </>
+                      <div className="p-4 rounded-xl border border-[#5E5CE6]/20 bg-[#5E5CE6]/[0.02] text-center space-y-3">
+                        <Sparkles className="w-6 h-6 text-[#5E5CE6] mx-auto animate-pulse" />
+                        <h5 className="text-[12.5px] font-bold text-white/80">AI Değerlendirmesi Yapılmamış</h5>
+                        <p className="text-[11.5px] text-[#8E8E93] max-w-xs mx-auto">
+                          Bu kanıt henüz Groq AI (Llama-3-Vision OCR) tarafından denetlenmedi. Hemen analiz başlatabilirsiniz.
+                        </p>
+                      </div>
                     )}
-                  </button>
-                </div>
+
+                    {/* Action buttons */}
+                    <button
+                      onClick={triggerAiAnalysis}
+                      disabled={analyzing}
+                      className="w-full h-10 rounded-xl bg-[#5E5CE6] hover:bg-[#5E5CE6]/90 disabled:bg-[#5E5CE6]/40 text-white font-extrabold text-[12px] transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md"
+                    >
+                      {analyzing ? (
+                        <>
+                          <Loader2 size={14} className="animate-spin" />
+                          OCR Analizi Yapılıyor...
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles size={14} />
+                          {proof.ai_analysis ? 'Yeniden Analiz Et (Groq AI)' : 'Groq AI Analizini Tetikle'}
+                        </>
+                      )}
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </>

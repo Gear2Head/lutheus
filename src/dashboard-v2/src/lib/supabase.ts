@@ -360,12 +360,12 @@ export async function getCases(limit = 100): Promise<SapphireCase[]> {
     return !cleanId || cleanId === 'RRwean' || cleanId === '#' || cleanId === 'Bilinmeyen' || cleanId === 'Yetkili' || cleanId === 'undefined' || cleanId === 'null';
   };
 
-  for (const c of dbCases) {
+  for (const c of localCases) {
     if (c && c.case_id && !isInvalidId(c.case_id)) {
       mergedMap.set(c.case_id, c);
     }
   }
-  for (const c of localCases) {
+  for (const c of dbCases) {
     if (c && c.case_id && !isInvalidId(c.case_id)) {
       mergedMap.set(c.case_id, c);
     }

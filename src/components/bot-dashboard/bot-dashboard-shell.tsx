@@ -4,12 +4,13 @@
 // PURPOSE: Full-page layout manager that orchestrates the sidebar, topbar, active route display, and loading states.
 
 import { useEffect } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useBotDashboardStore } from "@/store/bot-dashboard-store";
 import { GuildSidebar } from "./guild-sidebar";
 import { GuildTopbar } from "./guild-topbar";
 import { DirtySaveBar } from "./dirty-save-bar";
 import { Loader2, AlertCircle } from "lucide-react";
+import { getStoredSession } from "@/lib/auth/session";
 
 interface ShellProps {
   children: React.ReactNode;
@@ -17,6 +18,22 @@ interface ShellProps {
 
 export function BotDashboardShell({ children }: ShellProps) {
   const params = useParams();
+  const router = useRouter();
+
+  useEffect(() => {
+    const session = getStoredSession();
+    if (!session?.idToken) {
+      router.push("/auth/login.html");
+      return;
+    }
+    const role = session.role?.toLowerCase() || '';
+    const isMgmt = ['kurucu', 'admin', 'yonetici', 'genel_sorumlu', 'discord_yoneticisi', 'kidemli', 'kidemli_discord_moderatoru', 'senior_moderator'].includes(role);
+    if (!isMgmt) {
+      router.push("/dashboard");
+      return;
+    }
+  }, [router]);
+
   const {
     fetchGuilds,
     selectGuild,

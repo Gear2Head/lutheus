@@ -19,10 +19,15 @@ export default function BotServerSelectionPage() {
   const router = useRouter();
 
   useEffect(() => {
-    // Auth check
     const session = getStoredSession();
     if (!session?.idToken) {
       router.push("/auth/login.html");
+      return;
+    }
+    const role = session.role?.toLowerCase() || '';
+    const isMgmt = ['kurucu', 'admin', 'yonetici', 'genel_sorumlu', 'discord_yoneticisi', 'kidemli', 'kidemli_discord_moderatoru', 'senior_moderator'].includes(role);
+    if (!isMgmt) {
+      router.push("/dashboard");
       return;
     }
 

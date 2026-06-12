@@ -7,6 +7,7 @@ export interface LutheusSession {
   refreshToken?: string;
   expiresAt?: number;
   savedAt?: number;
+  role?: string;
   user?: {
     uid: string;
     displayName: string;

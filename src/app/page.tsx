@@ -9,37 +9,52 @@ export default function RootWelcomePage() {
   const [session, setSession] = useState<LutheusSession | null>(null);
   const [userCount, setUserCount] = useState<number>(37);
   const [activeStaffCount, setActiveStaffCount] = useState<number>(16);
+  const [onlineMemberCount, setOnlineMemberCount] = useState<number | null>(null);
 
   useEffect(() => {
     setSession(getStoredSession());
 
-    // Fetch dynamic staff counts from Supabase
+    // Fetch dynamic staff counts from Supabase via RPC to bypass RLS
     async function fetchCounts() {
       try {
-        const headers = {
-          apikey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4aHpoYXFxdGx5bmJubnR3cHl1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk2NjMyMTcsImV4cCI6MjA5NTIzOTIxN30.BrmuT-QX_BkgV6SSlpNThfqSGmUDw0UffUW11agaBzI"
-        };
-        const [resUsers, resActive] = await Promise.all([
-          fetch("https://jxhzhaqqtlynbnntwpyu.supabase.co/rest/v1/staff_profiles?select=id", { headers }),
-          fetch("https://jxhzhaqqtlynbnntwpyu.supabase.co/rest/v1/staff_profiles?is_active_staff=eq.true&select=id", { headers })
-        ]);
-        if (resUsers.ok) {
-          const data = await resUsers.json();
-          if (Array.isArray(data)) {
-            setUserCount(data.length);
+        const res = await fetch("https://jxhzhaqqtlynbnntwpyu.supabase.co/rest/v1/rpc/get_staff_counts", {
+          method: "POST",
+          headers: {
+            apikey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4aHpoYXFxdGx5bmJubnR3cHl1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk2NjMyMTcsImV4cCI6MjA5NTIzOTIxN30.BrmuT-QX_BkgV6SSlpNThfqSGmUDw0UffUW11agaBzI",
+            "Content-Type": "application/json"
           }
-        }
-        if (resActive.ok) {
-          const data = await resActive.json();
-          if (Array.isArray(data)) {
-            setActiveStaffCount(data.length);
+        });
+        if (res.ok) {
+          const counts = await res.json();
+          if (counts && typeof counts.total === "number") {
+            setUserCount(counts.total);
+          }
+          if (counts && typeof counts.active === "number") {
+            setActiveStaffCount(counts.active);
           }
         }
       } catch (e) {
-        console.warn("Failed to fetch dynamic staff counts:", e);
+        console.warn("Failed to fetch dynamic staff counts via RPC:", e);
       }
     }
+
+    // Fetch online member count from Discord widget
+    async function fetchDiscordOnline() {
+      try {
+        const res = await fetch("https://discord.com/api/guilds/1223431616081166336/widget.json");
+        if (res.ok) {
+          const data = await res.json();
+          if (data && typeof data.presence_count === "number") {
+            setOnlineMemberCount(data.presence_count);
+          }
+        }
+      } catch (e) {
+        console.warn("Failed to fetch Discord online presence:", e);
+      }
+    }
+
     fetchCounts();
+    fetchDiscordOnline();
   }, []);
 
   const handleLogout = () => {
@@ -194,7 +209,7 @@ export default function RootWelcomePage() {
           </h1>
           
           <p className="text-xs md:text-sm text-white/50 max-w-md mx-auto font-semibold leading-relaxed">
-            Kullanıcılar ve yetkililer için kapsamlı moderasyon paneli. Devam etmek için giriş yapın.
+            Yetkililer için kapsamlı moderasyon paneli. Devam etmek için giriş yapın.
           </p>
         </div>
 
@@ -227,6 +242,11 @@ export default function RootWelcomePage() {
           <div className="text-[11.5px] font-semibold text-white/35 font-mono">
             <strong className="text-[#3B82F6] font-black font-sans">{activeStaffCount}</strong> aktif Discord yetkilisi
           </div>
+          {onlineMemberCount !== null && (
+            <div className="text-[11.5px] font-semibold text-white/35 font-mono">
+              <strong className="text-emerald-500 font-black font-sans">{onlineMemberCount}</strong> aktif sunucu üyesi
+            </div>
+          )}
         </div>
 
       </main>

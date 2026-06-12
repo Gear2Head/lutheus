@@ -33,7 +33,7 @@ module.exports = async function handler(req, res) {
         const loginUrl = new URL('/src/auth/login.html', authBaseUrl);
         loginUrl.searchParams.set('returnTo', returnTo);
         redirectUri = loginUrl.toString();
-        scope = 'identify guilds email';
+        scope = 'identify guilds email guilds.members.read';
     } else {
         const isAllowedRedirect = /^https:\/\/[a-z0-9]{32}\.chromiumapp\.org\/?$/i.test(redirectUri);
         if (!isAllowedRedirect) {
@@ -49,7 +49,19 @@ module.exports = async function handler(req, res) {
     });
 
     const url = new URL('https://discord.com/oauth2/authorize');
-    const allowedScopes = new Set(['identify', 'email', 'guilds', 'openid', 'messages.read']);
+    const allowedScopes = new Set([
+        'identify',
+        'email',
+        'guilds',
+        'guilds.members.read',
+        'guilds.join',
+        'dm_channels.read',
+        'messages.read',
+        'identify.premium',
+        'openid',
+        'activities.write',
+        'dm_channels.messages.read'
+    ]);
     const requestedScope = source === 'web' ? scope : String(req.query.scope || scope);
     scope = requestedScope
         .split(/\s+/)

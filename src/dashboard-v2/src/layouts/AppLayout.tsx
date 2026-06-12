@@ -370,15 +370,7 @@ export default function AppLayout() {
           )}
           <div className="flex items-center gap-2 min-w-0 relative z-10">
             <div className="w-[26px] h-[26px] flex items-center justify-center shrink-0">
-              <svg className="w-full h-full object-contain" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M48 15 H58 L38 65 H65 L61 75 H25 Z" fill="url(#blue-gradient-layout)" />
-                <defs>
-                  <linearGradient id="blue-gradient-layout" x1="25" y1="15" x2="65" y2="75" gradientUnits="userSpaceOnUse">
-                    <stop offset="0%" stopColor="#3B82F6" />
-                    <stop offset="100%" stopColor="#1D4ED8" />
-                  </linearGradient>
-                </defs>
-              </svg>
+              <img src={logoUrl} className="w-full h-full object-contain" alt="Lutheus Logo" />
             </div>
             {!isCollapsed && (
               <motion.div 

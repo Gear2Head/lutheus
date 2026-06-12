@@ -82,12 +82,10 @@ export default function BotServerSelectionPage() {
           <span>Geri Dön</span>
         </Link>
         <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-[#66fcf1] to-purple-600 p-[1px]">
-            <div className="bg-[#1f2833] w-full h-full rounded-[7px] flex items-center justify-center">
-              <Shield className="w-4 h-4 text-[#66fcf1]" />
-            </div>
+          <div className="w-8 h-8 flex items-center justify-center shrink-0">
+            <img src="/dashboard/icon128.png" className="w-full h-full object-contain" alt="Lutheus Logo" />
           </div>
-          <span className="text-sm font-bold tracking-wider">LUTHEUS DASHBOARD</span>
+          <span className="text-sm font-bold tracking-wider">LUTHEUS DISCORD MANAGE</span>
         </div>
       </header>
 

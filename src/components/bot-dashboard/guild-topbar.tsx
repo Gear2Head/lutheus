@@ -26,13 +26,11 @@ export function GuildTopbar() {
       <div className="flex items-center gap-6">
         {/* Logo */}
         <Link href="/" className="flex items-center gap-2.5">
-          <div className="p-1 rounded-lg bg-gradient-to-tr from-[#66fcf1] to-purple-600 p-[1px]">
-            <div className="bg-[#1f2833] p-1.5 rounded-[7px]">
-              <Shield className="w-5 h-5 text-[#66fcf1]" />
-            </div>
+          <div className="w-8 h-8 flex items-center justify-center shrink-0">
+            <img src="/dashboard/icon128.png" className="w-full h-full object-contain" alt="Lutheus Logo" />
           </div>
           <span className="text-base font-bold tracking-wider text-white hidden sm:block">
-            LUTHEUS
+            LUTHEUS DISCORD MANAGE
           </span>
         </Link>
 

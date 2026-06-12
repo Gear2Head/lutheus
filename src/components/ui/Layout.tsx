@@ -132,9 +132,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         {/* Brand Area */}
         <div className={`h-[70px] ${isCollapsed ? 'px-3 justify-center' : 'px-5'} flex items-center justify-between border-b border-white/[0.02]`}>
           <div className="flex items-center gap-2.5 min-w-0">
-            <div className={`w-8 h-8 rounded-lg bg-gradient-to-br ${getBrandGradient()} flex items-center justify-center text-[15px] font-black text-white italic shadow-lg relative group overflow-hidden shrink-0`}>
-              <span className="relative z-10">L</span>
-              <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300" />
+            <div className="w-8 h-8 flex items-center justify-center shrink-0">
+              <img src="/dashboard/icon128.png" className="w-full h-full object-contain" alt="Lutheus Logo" />
             </div>
             {!isCollapsed && (
               <motion.div 

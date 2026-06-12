@@ -143,7 +143,7 @@ function mergeWithoutDataLoss(existing, incoming) {
     }
 
     // Preserve optional or system fields from existing if not in incoming
-    const systemFields = ['firstSeenAt', 'note', 'reviewStatus', 'manualOverride', 'assignee', 'validationStatus', 'validationReason'];
+    const systemFields = ['firstSeenAt', 'note', 'reviewStatus', 'manualOverride', 'assignee', 'validationStatus', 'validationReason', 'cukVerdict', 'cukAnalysis'];
     for (const key of systemFields) {
         if (existing[key] !== undefined && incoming[key] === undefined) {
             result[key] = existing[key];

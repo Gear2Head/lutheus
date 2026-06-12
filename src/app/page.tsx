@@ -9,7 +9,7 @@ export default function RootWelcomePage() {
   const [session, setSession] = useState<LutheusSession | null>(null);
   const [userCount, setUserCount] = useState<number>(37);
   const [activeStaffCount, setActiveStaffCount] = useState<number>(16);
-  const [onlineMemberCount, setOnlineMemberCount] = useState<number | null>(null);
+  const [totalMemberCount, setTotalMemberCount] = useState<number | null>(null);
 
   useEffect(() => {
     setSession(getStoredSession());
@@ -38,23 +38,23 @@ export default function RootWelcomePage() {
       }
     }
 
-    // Fetch online member count from Discord widget
-    async function fetchDiscordOnline() {
+    // Fetch total member count from server-side Discord stats endpoint
+    async function fetchDiscordStats() {
       try {
-        const res = await fetch("https://discord.com/api/guilds/1223431616081166336/widget.json");
+        const res = await fetch("/api/discord-stats");
         if (res.ok) {
           const data = await res.json();
-          if (data && typeof data.presence_count === "number") {
-            setOnlineMemberCount(data.presence_count);
+          if (data && typeof data.total === "number") {
+            setTotalMemberCount(data.total);
           }
         }
       } catch (e) {
-        console.warn("Failed to fetch Discord online presence:", e);
+        console.warn("Failed to fetch Discord total members:", e);
       }
     }
 
     fetchCounts();
-    fetchDiscordOnline();
+    fetchDiscordStats();
   }, []);
 
   const handleLogout = () => {
@@ -73,7 +73,7 @@ export default function RootWelcomePage() {
 
     return (
       <div className="relative min-h-screen bg-[#050508] flex flex-col items-center justify-between p-6 overflow-hidden selection:bg-[#3B82F6]/30 selection:text-white">
-        
+
         {/* Premium Ambient Glows */}
         <div className="absolute top-[-30%] left-[-10%] w-[600px] h-[600px] rounded-full bg-[#3B82F6]/10 blur-[160px] pointer-events-none" />
         <div className="absolute bottom-[-30%] right-[-10%] w-[600px] h-[600px] rounded-full bg-[#1D4ED8]/8 blur-[160px] pointer-events-none" />
@@ -84,7 +84,7 @@ export default function RootWelcomePage() {
             <div className="w-8 h-8 flex items-center justify-center shrink-0">
               <img src="/dashboard/icon128.png" className="w-full h-full object-contain filter drop-shadow-[0_0_8px_rgba(59,130,246,0.4)]" alt="Lutheus Logo" />
             </div>
-            <span className="text-sm font-black tracking-widest text-white/90 uppercase font-mono">
+            <span className="text-sm font-black tracking-widest text-white/80 uppercase font-mono">
               LUTHEUS DISCORD MANAGE
             </span>
           </div>
@@ -109,11 +109,11 @@ export default function RootWelcomePage() {
               <span className="w-1.5 h-1.5 rounded-full bg-[#3B82F6] animate-pulse" />
               <span className="text-[10px] font-mono tracking-widest text-white/45 uppercase font-bold">YÖNETİM SİSTEMİ</span>
             </div>
-            
+
             <h1 className="text-4xl md:text-[48px] font-black tracking-tight text-white leading-tight">
               Lutheus Yönetim <span className="bg-gradient-to-r from-[#3B82F6] to-[#1D4ED8] bg-clip-text text-transparent">Merkezi</span>
             </h1>
-            
+
             <p className="text-xs md:text-sm text-white/50 max-w-md mx-auto font-semibold leading-relaxed">
               Yapay zeka destekli moderasyon asistanınızı yönetin, ceza raporlarını anlık izleyin ve sunucu ayarlarını tek panelden kişiselleştirin.
             </p>
@@ -121,13 +121,13 @@ export default function RootWelcomePage() {
 
           {/* Service Cards */}
           <div className={`grid gap-6 w-full max-w-3xl mx-auto ${isMgmt ? "md:grid-cols-2" : "grid-cols-1 max-w-md"}`}>
-            
+
             {/* Card 1: Bot Dashboard (Only for management) */}
             {isMgmt && (
               <Link href="/bot" className="group block no-underline">
-                <div className="h-full bg-black/30 hover:bg-black/45 backdrop-blur-2xl p-7.5 rounded-2xl border border-white/[0.06] hover:border-[#3B82F6]/40 transition-all duration-300 hover:shadow-[0_12px_40px_rgba(59,130,246,0.12)] flex flex-col text-left relative overflow-hidden group-hover:-translate-y-1">
+                <div className="h-full bg-black/30 hover:bg-black/45 backdrop-blur-2xl p-6 md:p-8 rounded-2xl border border-white/[0.06] hover:border-[#3B82F6]/40 transition-all duration-300 hover:shadow-[0_12px_40px_rgba(59,130,246,0.12)] flex flex-col text-left relative overflow-hidden group-hover:-translate-y-1">
                   <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-[#3B82F6]/5 to-transparent rounded-bl-full pointer-events-none" />
-                  
+
                   <div className="p-3 bg-white/[0.03] rounded-xl w-fit mb-5 border border-white/[0.06] group-hover:border-[#3B82F6]/25 transition-colors duration-300 text-[#3B82F6]">
                     <Bot className="w-6 h-6" />
                   </div>
@@ -136,7 +136,7 @@ export default function RootWelcomePage() {
                     <span>Lutheus Discord Manage</span>
                     <ArrowRight className="w-4 h-4 opacity-0 group-hover:opacity-100 group-hover:translate-x-1 transition-all duration-300" />
                   </h2>
-                  
+
                   <p className="text-xs text-white/50 leading-relaxed mb-6 font-medium">
                     Gelişmiş moderasyon araçları, otomatik mesajlaşma, karşılama şablonları ve Discord bot özelliklerini sunucu bazlı yönetin.
                   </p>
@@ -150,9 +150,9 @@ export default function RootWelcomePage() {
 
             {/* Card 2: Ceza Rapor Sistemi (Aktif Yetkili Sayfası) */}
             <Link href="/dashboard" className="group block no-underline">
-              <div className="h-full bg-black/30 hover:bg-black/45 backdrop-blur-2xl p-7.5 rounded-2xl border border-white/[0.06] hover:border-[#3B82F6]/40 transition-all duration-300 hover:shadow-[0_12px_40px_rgba(59,130,246,0.12)] flex flex-col text-left relative overflow-hidden group-hover:-translate-y-1">
+              <div className="h-full bg-black/30 hover:bg-black/45 backdrop-blur-2xl p-6 md:p-8 rounded-2xl border border-white/[0.06] hover:border-[#3B82F6]/40 transition-all duration-300 hover:shadow-[0_12px_40px_rgba(59,130,246,0.12)] flex flex-col text-left relative overflow-hidden group-hover:-translate-y-1">
                 <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-[#3B82F6]/5 to-transparent rounded-bl-full pointer-events-none" />
-                
+
                 <div className="p-3 bg-white/[0.03] rounded-xl w-fit mb-5 border border-white/[0.06] group-hover:border-[#3B82F6]/25 transition-colors duration-300 text-[#3B82F6]">
                   <ClipboardList className="w-6 h-6" />
                 </div>
@@ -161,7 +161,7 @@ export default function RootWelcomePage() {
                   <span>Aktif Yetkili Sayfası</span>
                   <ArrowRight className="w-4 h-4 opacity-0 group-hover:opacity-100 group-hover:translate-x-1 transition-all duration-300" />
                 </h2>
-                
+
                 <p className="text-xs text-white/50 leading-relaxed mb-6 font-medium">
                   Sunucunuzda gerçekleşen cezai işlemleri, kullanıcı raporlarını, itirazları ve detaylı istatistikleri canlı izleyin.
                 </p>
@@ -185,29 +185,29 @@ export default function RootWelcomePage() {
   // UNAUTHENTICATED SPLASH/LOGIN STATE VIEW
   return (
     <div className="relative min-h-screen bg-[#050508] flex flex-col items-center justify-center p-6 overflow-hidden selection:bg-[#3B82F6]/30 selection:text-white">
-      
+
       {/* Premium Ambient Glows */}
       <div className="absolute top-[-30%] left-[-10%] w-[600px] h-[600px] rounded-full bg-[#3B82F6]/10 blur-[160px] pointer-events-none" />
       <div className="absolute bottom-[-30%] right-[-10%] w-[600px] h-[600px] rounded-full bg-[#1D4ED8]/8 blur-[160px] pointer-events-none" />
 
       {/* Welcome Title and Hero Section */}
       <main className="w-full max-w-4xl text-center z-10 px-4 flex flex-col items-center justify-center space-y-6">
-        
+
         {/* Stylized Blue L Logo */}
         <div className="flex flex-col items-center space-y-2 mb-2">
           <img src="/dashboard/icon128.png" className="w-16 h-16 object-contain filter drop-shadow-[0_0_12px_rgba(59,130,246,0.5)]" alt="Lutheus Logo" />
-          
+
           <span className="text-[11.5px] font-black tracking-[0.25em] text-white/90 font-mono">
             LUTHEUS DISCORD MANAGE
           </span>
         </div>
-        
+
         {/* Hero Headings */}
         <div className="space-y-4 max-w-xl">
           <h1 className="text-4xl md:text-[46px] font-black tracking-tight text-white leading-tight">
             Lutheus'un omurgası.
           </h1>
-          
+
           <p className="text-xs md:text-sm text-white/50 max-w-md mx-auto font-semibold leading-relaxed">
             Yetkililer için kapsamlı moderasyon paneli. Devam etmek için giriş yapın.
           </p>
@@ -242,9 +242,9 @@ export default function RootWelcomePage() {
           <div className="text-[11.5px] font-semibold text-white/35 font-mono">
             <strong className="text-[#3B82F6] font-black font-sans">{activeStaffCount}</strong> aktif Discord yetkilisi
           </div>
-          {onlineMemberCount !== null && (
+          {totalMemberCount !== null && (
             <div className="text-[11.5px] font-semibold text-white/35 font-mono">
-              <strong className="text-emerald-500 font-black font-sans">{onlineMemberCount}</strong> aktif sunucu üyesi
+              <strong className="text-emerald-500 font-black font-sans">{totalMemberCount}</strong> toplam sunucu üyesi
             </div>
           )}
         </div>

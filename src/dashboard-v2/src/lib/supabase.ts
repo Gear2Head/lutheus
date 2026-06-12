@@ -136,19 +136,43 @@ export async function updateCaseVerdict(
   verdict: 'valid' | 'invalid' | 'pending',
   analysis?: { message: string; category: string; score: number },
 ): Promise<void> {
+  // 1. Update database
   await supabaseFetch(
     'sapphire_cases',
     'PATCH',
     `case_id=eq.${encodeURIComponent(caseId)}`,
     { cuk_verdict: verdict, ...(analysis ? { cuk_analysis: analysis } : {}) },
   );
+
+  // 2. Update local storage cache to prevent F5 reversion
+  try {
+    const raw = await getLocal<SapphireCase[]>(LOCAL_CASES_KEY);
+    if (raw) {
+      const updated = raw.map((c) => {
+        if (c.case_id === caseId) {
+          return {
+            ...c,
+            cuk_verdict: verdict,
+            ...(analysis ? { cuk_analysis: analysis } : {}),
+          };
+        }
+        return c;
+      });
+      await setLocal(LOCAL_CASES_KEY, updated);
+      try {
+        localStorage.setItem(LOCAL_CASES_KEY, JSON.stringify(updated));
+      } catch {}
+    }
+  } catch (err) {
+    console.warn('[Lutheus] Failed to update local cache for case verdict:', err);
+  }
 }
 
 export async function bulkUpdateVerdict(
   caseIds: string[],
   verdict: 'valid' | 'invalid',
 ): Promise<void> {
-  // Supabase REST bulk update: use IN filter
+  // 1. Update database
   const ids = caseIds.map((id) => `"${id}"`).join(',');
   await supabaseFetch(
     'sapphire_cases',
@@ -156,6 +180,25 @@ export async function bulkUpdateVerdict(
     `case_id=in.(${ids})`,
     { cuk_verdict: verdict },
   );
+
+  // 2. Update local storage cache to prevent F5 reversion
+  try {
+    const raw = await getLocal<SapphireCase[]>(LOCAL_CASES_KEY);
+    if (raw) {
+      const updated = raw.map((c) => {
+        if (c.case_id && caseIds.includes(c.case_id)) {
+          return { ...c, cuk_verdict: verdict };
+        }
+        return c;
+      });
+      await setLocal(LOCAL_CASES_KEY, updated);
+      try {
+        localStorage.setItem(LOCAL_CASES_KEY, JSON.stringify(updated));
+      } catch {}
+    }
+  } catch (err) {
+    console.warn('[Lutheus] Failed to update local cache for bulk verdict:', err);
+  }
 }
 
 // ---------- Staff ----------
@@ -303,6 +346,18 @@ function getLocal<T>(key: string): Promise<T | null> {
   } catch {
     return Promise.resolve(null);
   }
+}
+
+function setLocal<T>(key: string, value: T): Promise<void> {
+  if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+    return new Promise((resolve) =>
+      chrome.storage.local.set({ [key]: value }, () => resolve()),
+    );
+  }
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {}
+  return Promise.resolve();
 }
 
 /** Returns all cases that are locally cached by the extension scraper. */

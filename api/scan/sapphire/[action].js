@@ -112,6 +112,8 @@ function dbRowToDomain(row) {
         expiresAt: row.expires_at || null,
         source: row.source_sync || 'sapphire-dashboard',
         capturedVia: row.source_sync || 'dom_scraper',
+        cukVerdict: row.cuk_verdict || null,
+        cukAnalysis: row.cuk_analysis || null,
         dataCompleteness,
         contentHash: row.legacy_payload?.contentHash || null,
         firstSeenAt: row.scraped_at || new Date().toISOString(),
@@ -133,28 +135,31 @@ function flattenCaseForDb(data) {
     const capturedVia = data.capturedVia || data.source || 'unknown';
 
     // Run CUK validation (prefer duration_raw, then durationMs; unknown → pending)
-    const durationMins = resolveDurationMinutesForCuk(data);
-    let cukVerdict;
-    let analysis;
-    // durationMs=0: expiresAt=timestamp olan kalıcı banlar için (Sapphire pattern)
-    const effectiveDurationMins = (durationMins === null && data.isPermanent === true) ? 0 : durationMins;
-    if (effectiveDurationMins === null) {
-        cukVerdict = 'pending';
-        analysis = {
-            valid: false,
-            score: 0,
-            message: 'Süre belirlenemedi — manuel inceleme gerekir.',
-            categoryMatched: 'Beklemede',
-        };
-    } else {
-        analysis = validateCase(data.reason || '', effectiveDurationMins);
-        cukVerdict = analysis.valid ? 'valid' : 'invalid';
+    let cukVerdict = data.cukVerdict || null;
+    let cukAnalysis = data.cukAnalysis || null;
+
+    if (!cukVerdict) {
+        const durationMins = resolveDurationMinutesForCuk(data);
+        let analysis;
+        // durationMs=0: expiresAt=timestamp olan kalıcı banlar için (Sapphire pattern)
+        const effectiveDurationMins = (durationMins === null && data.isPermanent === true) ? 0 : durationMins;
+        if (effectiveDurationMins === null) {
+            cukVerdict = 'pending';
+            cukAnalysis = {
+                message: 'Süre belirlenemedi — manuel inceleme gerekir.',
+                category: 'Beklemede',
+                score: 0
+            };
+        } else {
+            analysis = validateCase(data.reason || '', effectiveDurationMins);
+            cukVerdict = analysis.valid ? 'valid' : 'invalid';
+            cukAnalysis = {
+                message: analysis.message,
+                category: analysis.categoryMatched || 'Diğer',
+                score: analysis.score
+            };
+        }
     }
-    const cukAnalysis = {
-        message: analysis.message,
-        category: analysis.categoryMatched || 'Diğer',
-        score: analysis.score
-    };
 
     return {
         case_id: data.caseId || data.id,

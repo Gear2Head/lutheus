@@ -20,7 +20,8 @@ import {
     getRemainingQuota,
     normalizeRole,
     writeAiQueryAudit,
-    fetchPointtrainStats
+    fetchPointtrainStats,
+    isUstYonetim
 } from './lib/groq.js';
 import { createServer } from 'node:http';
 import { supabase, botToken, logChannelId, guildId } from './botConfig.js';
@@ -51,6 +52,7 @@ import { diagnosticCommands } from './commands/diagnostics/DbDiagnosticsCommands
 import { runDbHealthCheck, setPollCursor, setLastPollError } from './lib/dbDiagnostics.js';
 import { RaporCommand } from './commands/rapor.js';
 import { CezalarCommand, buildCasesMessage } from './commands/cases.js';
+import { startNotificationBroker } from './services/NotificationBroker.js';
 
 // In-memory cache for dynamic guild configurations to power real-time welcome, automod, reaction roles etc.
 const guildConfigsCache: Record<string, any> = {};
@@ -848,7 +850,7 @@ async function sendTestCaseLog(data: any) {
     }
 }
 
-client.once('clientReady', async () => {
+client.once('ready', async () => {
     console.log(`Discord Bot: Logged in successfully as ${client.user?.tag}!`);
     readyAt = new Date().toISOString();
     lastError = '';
@@ -874,6 +876,7 @@ client.once('clientReady', async () => {
     await registerSlashCommands();
     startSupabasePolling();
     setupAuditLogListeners();
+    startNotificationBroker(client);
     startScheduledReporting();
 });
 
@@ -1435,10 +1438,102 @@ client.on('interactionCreate', async (interaction) => {
     } catch (_) { /* non-fatal */ }
 });
 
+// Helper to process staff profile approvals
+async function processApproval(targetDiscordId: string, assignedRole: string, interaction: any) {
+    const r = normalizeRole(assignedRole);
+    const getPermissionForRole = (role: string) => {
+        const nr = normalizeRole(role);
+        if (nr === 'kurucu') return { group: 'owner', level: 100 };
+        if (nr === 'admin') return { group: 'admin', level: 100 };
+        if (['yonetici', 'genel_sorumlu', 'discord_yoneticisi', 'senior_moderator', 'kidemli_discord_moderatoru'].includes(nr)) {
+            return { group: 'management', level: 100 };
+        }
+        if (nr === 'discord_moderatoru') return { group: 'moderation', level: 50 };
+        if (nr === 'discord_destek_ekibi') return { group: 'support', level: 25 };
+        if (nr === 'viewer') return { group: 'viewer', level: 10 };
+        return { group: 'pending', level: 0 };
+    };
+
+    const perms = getPermissionForRole(r);
+    const now = new Date().toISOString();
+    
+    const profileUpdate = {
+        access_status: 'approved',
+        access_approved_at: now,
+        access_approved_by_discord_id: interaction.user.id,
+        staff_rank: r,
+        permission_group: perms.group,
+        permission_level: perms.level,
+        is_active_staff: true,
+        updated_at: now
+    };
+    
+    const { error: updateError } = await supabase
+        .from('staff_profiles')
+        .update(profileUpdate)
+        .eq('discord_id', targetDiscordId);
+        
+    if (updateError) {
+        throw new Error(`Veritabanı güncellenirken hata oluştu: ${updateError.message}`);
+    }
+    
+    // role_cache kaydet
+    const roleCacheRow = {
+        discord_id: targetDiscordId,
+        staff_rank: r,
+        active: true,
+        source: 'bot_approved',
+        last_synced_at: now,
+        updated_at: now
+    };
+    await supabase.from('role_cache').upsert([roleCacheRow], { onConflict: 'discord_id' });
+    
+    // Audit log yaz
+    await supabase.from('audit_logs').insert([{
+        action: 'staff_access_approved',
+        actor_discord_id: interaction.user.id,
+        target_type: 'staff_profile',
+        metadata: { discordId: targetDiscordId, action: 'approve', role: r, source: 'bot_interaction' },
+        created_at: now
+    }]);
+    
+    const embed = interaction.message.embeds[0];
+    const approvedEmbed = EmbedBuilder.from(embed)
+        .setColor(0x2ed573)
+        .setTitle('Erişim Talebi Onaylandı ✅')
+        .setDescription(embed.description ? `${embed.description}\n\n**Durum:** <@${interaction.user.id}> tarafından **${r.toUpperCase()}** rolüyle onaylandı.` : `**Durum:** <@${interaction.user.id}> tarafından onaylandı.`);
+        
+    await interaction.editReply({ embeds: [approvedEmbed], components: [] });
+}
+
 // Erişim talebi ve Ceza listesi etkileşim handler'ı
 client.on('interactionCreate', async (interaction) => {
     if (interaction.isButton()) {
         const customId = interaction.customId;
+        const isAccessAction = customId.startsWith('reject_access:') || customId.startsWith('approve_quick:');
+
+        // Check authorization first for access requests
+        if (isAccessAction) {
+            try {
+                const { data: approverProfile } = await supabase
+                    .from('staff_profiles')
+                    .select('staff_rank, access_status')
+                    .eq('discord_id', interaction.user.id)
+                    .maybeSingle();
+                
+                const approverRank = approverProfile ? approverProfile.staff_rank : 'pending';
+                const isAuthorized = approverProfile && approverProfile.access_status === 'approved' && isUstYonetim(approverRank);
+                
+                if (!isAuthorized) {
+                    await interaction.reply({ content: '❌ Bu işlemi yapmaya yetkiniz yok!', ephemeral: true });
+                    return;
+                }
+            } catch (err: any) {
+                console.error('Error verifying approver authority:', err);
+                await interaction.reply({ content: `❌ Yetki kontrolü başarısız oldu: \`${err.message || err}\``, ephemeral: true });
+                return;
+            }
+        }
         
         // Erişim talebi reddetme
         if (customId.startsWith('reject_access:')) {
@@ -1446,25 +1541,6 @@ client.on('interactionCreate', async (interaction) => {
             await interaction.deferUpdate();
             
             try {
-                // Onaylayanın yetkisini kontrol et
-                const { data: approverProfile } = await supabase
-                    .from('staff_profiles')
-                    .select('staff_rank, access_status')
-                    .eq('discord_id', interaction.user.id)
-                    .maybeSingle();
-                
-                const ALLOWED_APPROVER_ROLES = [
-                    'kurucu', 'admin', 'yonetici', 'genel_sorumlu', 
-                    'discord_yoneticisi', 'senior_moderator', 'kidemli_discord_moderatoru'
-                ];
-                const approverRank = approverProfile ? normalizeRole(approverProfile.staff_rank) : 'pending';
-                const isAuthorized = approverProfile && approverProfile.access_status === 'approved' && ALLOWED_APPROVER_ROLES.includes(approverRank);
-                
-                if (!isAuthorized) {
-                    await interaction.followUp({ content: '❌ **Yetkisiz İşlem:** Bu talebi reddetme yetkiniz bulunmamaktadır.', ephemeral: true });
-                    return;
-                }
-                
                 const now = new Date().toISOString();
                 const profileUpdate = {
                     access_status: 'rejected',
@@ -1506,6 +1582,19 @@ client.on('interactionCreate', async (interaction) => {
             }
         }
         
+        // Hızlı Onay (Viewer)
+        else if (customId.startsWith('approve_quick:')) {
+            const targetDiscordId = customId.split(':')[1];
+            await interaction.deferUpdate();
+            
+            try {
+                await processApproval(targetDiscordId, 'viewer', interaction);
+            } catch (err: any) {
+                console.error('Error handling quick approval button interaction:', err);
+                await interaction.followUp({ content: `❌ Bir hata oluştu: \`${err.message || err}\``, ephemeral: true });
+            }
+        }
+        
         // Ceza listesi sayfa geçişleri
         else if (customId.startsWith('case_nav:')) {
             await interaction.deferUpdate();
@@ -1531,92 +1620,32 @@ client.on('interactionCreate', async (interaction) => {
         if (customId.startsWith('approve_role_select:')) {
             const targetDiscordId = customId.split(':')[1];
             const selectedRole = interaction.values[0];
-            await interaction.deferUpdate();
-            
+
+            // Check authorization
             try {
-                // Onaylayanın yetkisini kontrol et
                 const { data: approverProfile } = await supabase
                     .from('staff_profiles')
                     .select('staff_rank, access_status')
                     .eq('discord_id', interaction.user.id)
                     .maybeSingle();
                 
-                const ALLOWED_APPROVER_ROLES = [
-                    'kurucu', 'admin', 'yonetici', 'genel_sorumlu', 
-                    'discord_yoneticisi', 'senior_moderator', 'kidemli_discord_moderatoru'
-                ];
-                const approverRank = approverProfile ? normalizeRole(approverProfile.staff_rank) : 'pending';
-                const isAuthorized = approverProfile && approverProfile.access_status === 'approved' && ALLOWED_APPROVER_ROLES.includes(approverRank);
+                const approverRank = approverProfile ? approverProfile.staff_rank : 'pending';
+                const isAuthorized = approverProfile && approverProfile.access_status === 'approved' && isUstYonetim(approverRank);
                 
                 if (!isAuthorized) {
-                    await interaction.followUp({ content: '❌ **Yetkisiz İşlem:** Bu talebi onaylama yetkiniz bulunmamaktadır.', ephemeral: true });
+                    await interaction.reply({ content: '❌ Bu işlemi yapmaya yetkiniz yok!', ephemeral: true });
                     return;
                 }
-                
-                const assignedRole = normalizeRole(selectedRole);
-                function getPermissionForRole(role: string) {
-                    const r = normalizeRole(role);
-                    if (r === 'kurucu') return { group: 'owner', level: 100 };
-                    if (r === 'admin') return { group: 'admin', level: 100 };
-                    if (['yonetici', 'genel_sorumlu', 'discord_yoneticisi', 'senior_moderator', 'kidemli_discord_moderatoru'].includes(r)) {
-                        return { group: 'management', level: 100 };
-                    }
-                    if (r === 'discord_moderatoru') return { group: 'moderation', level: 50 };
-                    if (r === 'discord_destek_ekibi') return { group: 'support', level: 25 };
-                    if (r === 'viewer') return { group: 'viewer', level: 10 };
-                    return { group: 'pending', level: 0 };
-                }
-                const perms = getPermissionForRole(assignedRole);
-                const now = new Date().toISOString();
-                
-                const profileUpdate = {
-                    access_status: 'approved',
-                    access_approved_at: now,
-                    access_approved_by_discord_id: interaction.user.id,
-                    staff_rank: assignedRole,
-                    permission_group: perms.group,
-                    permission_level: perms.level,
-                    is_active_staff: true,
-                    updated_at: now
-                };
-                
-                const { error: updateError } = await supabase
-                    .from('staff_profiles')
-                    .update(profileUpdate)
-                    .eq('discord_id', targetDiscordId);
-                    
-                if (updateError) {
-                    await interaction.followUp({ content: `❌ **Hata:** Veritabanı güncellenirken hata oluştu: \`${updateError.message}\``, ephemeral: true });
-                    return;
-                }
-                
-                // role_cache kaydet
-                const roleCacheRow = {
-                    discord_id: targetDiscordId,
-                    staff_rank: assignedRole,
-                    active: true,
-                    source: 'bot_approved',
-                    last_synced_at: now,
-                    updated_at: now
-                };
-                await supabase.from('role_cache').upsert([roleCacheRow], { onConflict: 'discord_id' });
-                
-                // Audit log yaz
-                await supabase.from('audit_logs').insert([{
-                    action: 'staff_access_approved',
-                    actor_discord_id: interaction.user.id,
-                    target_type: 'staff_profile',
-                    metadata: { discordId: targetDiscordId, action: 'approve', role: assignedRole, source: 'bot_interaction' },
-                    created_at: now
-                }]);
-                
-                const embed = interaction.message.embeds[0];
-                const approvedEmbed = EmbedBuilder.from(embed)
-                    .setColor(0x2ed573)
-                    .setTitle('Erişim Talebi Onaylandı ✅')
-                    .setDescription(embed.description ? `${embed.description}\n\n**Durum:** <@${interaction.user.id}> tarafından **${assignedRole.toUpperCase()}** rolüyle onaylandı.` : `**Durum:** <@${interaction.user.id}> tarafından onaylandı.`);
-                    
-                await interaction.editReply({ embeds: [approvedEmbed], components: [] });
+            } catch (err: any) {
+                console.error('Error verifying approver authority:', err);
+                await interaction.reply({ content: `❌ Yetki kontrolü başarısız oldu: \`${err.message || err}\``, ephemeral: true });
+                return;
+            }
+            
+            await interaction.deferUpdate();
+            
+            try {
+                await processApproval(targetDiscordId, selectedRole, interaction);
             } catch (err: any) {
                 console.error('Error handling role approval select interaction:', err);
                 await interaction.followUp({ content: `❌ Bir hata oluştu: \`${err.message || err}\``, ephemeral: true });

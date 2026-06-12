@@ -177,12 +177,52 @@ function hasPermission(role, permission) {
     return permissions.includes('*') || permissions.includes(permission);
 }
 
+const UST_YONETIM_ROLLERI = Object.freeze([
+    ROLES.KURUCU,
+    ROLES.ADMIN,
+    ROLES.YONETICI,
+    ROLES.GENEL_SORUMLU,
+    ROLES.DISCORD_YONETICISI,
+    ROLES.KIDEMLI,
+    ROLES.KIDEMLI_DISCORD_MODERATORU,
+    ROLES.SENIOR_MODERATOR
+]);
+
+function isUstYonetim(role) {
+    const normalized = normalizeRole(role);
+    return UST_YONETIM_ROLLERI.includes(normalized);
+}
+
+function getPermissionForRole(role) {
+    const r = normalizeRole(role);
+    if (r === ROLES.KURUCU) return { group: 'owner', level: 100 };
+    if (r === ROLES.ADMIN) return { group: 'admin', level: 100 };
+    if ([
+        ROLES.YONETICI,
+        ROLES.GENEL_SORUMLU,
+        ROLES.DISCORD_YONETICISI,
+        ROLES.SENIOR_MODERATOR,
+        ROLES.KIDEMLI,
+        ROLES.KIDEMLI_DISCORD_MODERATORU
+    ].includes(r)) {
+        return { group: 'management', level: 100 };
+    }
+    if (r === ROLES.DISCORD_MODERATORU) return { group: 'moderation', level: 50 };
+    if (r === ROLES.DISCORD_DESTEK_EKIBI) return { group: 'support', level: 25 };
+    if (r === ROLES.VIEWER) return { group: 'viewer', level: 10 };
+    return { group: 'pending', level: 0 };
+}
+
 module.exports = {
     ROLES,
     PERMISSIONS,
     ROLE_PERMISSIONS,
     DEFAULT_GROQ_LIMITS,
+    UST_YONETIM_ROLLERI,
     normalizeRole,
     isOwnerIdentity,
-    hasPermission
+    hasPermission,
+    isUstYonetim,
+    getPermissionForRole
 };
+

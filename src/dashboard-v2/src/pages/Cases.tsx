@@ -4,9 +4,11 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   Search, RefreshCw, X, CheckCircle2, ShieldAlert, Copy, 
   ExternalLink, MessageSquare, AlertCircle, Info, 
-  User, ShieldCheck, Share2, Filter, Zap, ChevronLeft, ChevronRight
+  User, ShieldCheck, Share2, Filter, Zap, ChevronLeft, ChevronRight,
+  Eye
 } from 'lucide-react';
 import { getCases, getStaffProfiles, SapphireCase, StaffProfile, bulkUpdateVerdict, updateCaseVerdict } from '../lib/supabase';
+import ProofDrawer from '../components/ProofDrawer';
 import { validateCase } from '../lib/cukEngine';
 import { useAuth } from '../contexts/AuthContext';
 import { hasPermission } from '../lib/auth';
@@ -46,6 +48,8 @@ export default function Cases() {
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [selectedCase, setSelectedCase] = useState<SapphireCase | null>(null);
+  const [proofCaseId, setProofCaseId] = useState<string | null>(null);
+  const [selectedProofCase, setSelectedProofCase] = useState<SapphireCase | null>(null);
   const [confirmBulk, setConfirmBulk] = useState<'valid' | 'invalid' | null>(null);
   const [bulkLoading, setBulkLoading] = useState(false);
   const [caseUpdating, setCaseUpdating] = useState<string | null>(null);
@@ -63,6 +67,15 @@ export default function Cases() {
     return localStorage.getItem('lutheus-intensity') || 'frosted';
   });
 
+  // Panel layout: 'side' → sağ panel, 'center' → orta modal
+  const [panelStyle, setPanelStyle] = useState<string>(() => {
+    return localStorage.getItem('panelStyle') || 'side';
+  });
+
+  // Lightbox: görsel tam boyut önizleme (sağ panel açıkken üste binmesin)
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+
+
   useEffect(() => {
     const handleThemeChange = () => {
       const stored = localStorage.getItem('theme');
@@ -74,16 +87,22 @@ export default function Cases() {
     const handleIntensityChange = () => {
       setIntensity(localStorage.getItem('lutheus-intensity') || 'frosted');
     };
+    const handlePanelStyleChange = () => {
+      setPanelStyle(localStorage.getItem('panelStyle') || 'side');
+    };
     window.addEventListener('storage', handleThemeChange);
     window.addEventListener('storage', handleIntensityChange);
+    window.addEventListener('storage', handlePanelStyleChange);
     window.addEventListener('lutheus-theme-change', handleThemeChange);
     window.addEventListener('lutheus-intensity-change', handleIntensityChange);
     return () => {
       window.removeEventListener('storage', handleThemeChange);
       window.removeEventListener('storage', handleIntensityChange);
+      window.removeEventListener('storage', handlePanelStyleChange);
       window.removeEventListener('lutheus-theme-change', handleThemeChange);
       window.removeEventListener('lutheus-intensity-change', handleIntensityChange);
     };
+
   }, []);
 
   const loadData = async (refresh = false) => {
@@ -506,6 +525,7 @@ export default function Cases() {
                 <th className="py-4 px-4 text-[11px] font-bold text-white/40 tracking-wider uppercase text-center w-28">Süre</th>
                 <th className="py-4 px-4 text-[11px] font-bold text-white/40 tracking-wider uppercase text-center w-28">Tarih</th>
                 <th className="py-4 px-4 text-[11px] font-bold text-white/40 tracking-wider uppercase text-right w-28">Durum</th>
+                <th className="py-4 px-4 text-[11px] font-bold text-white/40 tracking-wider uppercase text-center w-20">Kanıt</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-white/[0.02]">
@@ -513,7 +533,7 @@ export default function Cases() {
                 <TableSkeleton />
               ) : paginated.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-20 px-4 text-center relative overflow-hidden">
+                  <td colSpan={8} className="py-20 px-4 text-center relative overflow-hidden">
                     <motion.div 
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
@@ -632,6 +652,20 @@ export default function Cases() {
                           <span className={`status-badge ${statusClass}`}>
                             {c.cuk_verdict === 'valid' ? 'DOĞRU' : c.cuk_verdict === 'invalid' ? 'HATALI' : 'BEKLEYEN'}
                           </span>
+                        </td>
+                        
+                        {/* Kanıt */}
+                        <td className="py-3.5 px-4 text-center" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            onClick={() => {
+                              setProofCaseId(c.case_id);
+                              setSelectedProofCase(c);
+                            }}
+                            className="p-1.5 rounded-lg bg-white/[0.02] border border-white/[0.08] hover:bg-white/[0.08] hover:border-white/[0.15] text-white/60 hover:text-white transition-all cursor-pointer inline-flex items-center justify-center animate-in fade-in zoom-in-95 duration-150"
+                            title="Kanıt ve AI Analizi"
+                          >
+                            <Eye size={13} />
+                          </button>
                         </td>
                       </motion.tr>
                     );
@@ -755,18 +789,34 @@ export default function Cases() {
                           className="w-10 h-10 rounded-full border border-white/10 object-cover" 
                         />
                         <div>
-                          <p className="text-[13px] font-bold text-white">{selectedCase.punished_user_display_name || 'Bilinmeyen Kullanıcı'}</p>
-                          <div className="flex items-center gap-1 text-white/40 mt-0.5">
-                            <span className="text-[11px] font-mono">{selectedCase.punished_user_discord_id || '—'}</span>
-                            {selectedCase.punished_user_discord_id && (
-                              <button 
-                                onClick={() => handleCopy(selectedCase.punished_user_discord_id)}
-                                className="p-1 rounded text-white/30 hover:text-white hover:bg-white/5 transition-all outline-none cursor-pointer"
-                              >
-                                <Copy size={11} className={copiedId === selectedCase.punished_user_discord_id ? 'text-[#32D74B]' : ''} />
-                              </button>
-                            )}
-                          </div>
+                          {!selectedCase.punished_user_display_name || /^(unknown user|bilinmeyen kullanıcı|bilinmeyen|unknown|bilinmeyen kullanici)$/i.test(selectedCase.punished_user_display_name.trim()) ? (
+                            <div className="flex items-center gap-1.5">
+                              <p className="text-[13px] font-bold text-white font-mono">{selectedCase.punished_user_discord_id || '—'}</p>
+                              {selectedCase.punished_user_discord_id && (
+                                <button 
+                                  onClick={() => handleCopy(selectedCase.punished_user_discord_id)}
+                                  className="p-1 rounded text-white/30 hover:text-white hover:bg-white/5 transition-all outline-none cursor-pointer flex items-center justify-center"
+                                >
+                                  <Copy size={11} className={copiedId === selectedCase.punished_user_discord_id ? 'text-[#32D74B]' : ''} />
+                                </button>
+                              )}
+                            </div>
+                          ) : (
+                            <>
+                              <p className="text-[13px] font-bold text-white">{selectedCase.punished_user_display_name}</p>
+                              <div className="flex items-center gap-1 text-white/40 mt-0.5">
+                                <span className="text-[11px] font-mono">{selectedCase.punished_user_discord_id || '—'}</span>
+                                {selectedCase.punished_user_discord_id && (
+                                  <button 
+                                    onClick={() => handleCopy(selectedCase.punished_user_discord_id)}
+                                    className="p-1 rounded text-white/30 hover:text-white hover:bg-white/5 transition-all outline-none cursor-pointer flex items-center justify-center"
+                                  >
+                                    <Copy size={11} className={copiedId === selectedCase.punished_user_discord_id ? 'text-[#32D74B]' : ''} />
+                                  </button>
+                                )}
+                              </div>
+                            </>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -860,6 +910,16 @@ export default function Cases() {
                   </div>
                   
                   <button 
+                    onClick={() => {
+                      setProofCaseId(selectedCase.case_id);
+                      setSelectedProofCase(selectedCase);
+                    }}
+                    className="w-full py-2.5 rounded-xl bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.1] flex items-center justify-center gap-2 text-[12px] text-white/95 font-bold transition-all cursor-pointer"
+                  >
+                    <Eye size={13} className="text-white/40" /> Kanıt Görseli & AI Analizi
+                  </button>
+
+                  <button 
                     onClick={() => openSapphireCase(selectedCase)}
                     className="w-full py-2.5 rounded-xl bg-[#5E5CE6]/10 hover:bg-[#5E5CE6]/20 border border-[#5E5CE6]/20 flex items-center justify-center gap-2 text-[12px] text-white/95 font-bold transition-all cursor-pointer"
                   >
@@ -889,6 +949,76 @@ export default function Cases() {
         danger={confirmBulk === 'invalid'}
         loading={bulkLoading}
       />
+
+      {/* Case Proof and AI Analysis Drawer */}
+      <ProofDrawer
+        caseId={proofCaseId}
+        onClose={() => {
+          setProofCaseId(null);
+          setSelectedProofCase(null);
+        }}
+        caseData={selectedProofCase}
+        intensity={intensity}
+        theme={theme}
+        panelStyle={panelStyle}
+        onOpenLightbox={(url) => setLightboxUrl(url)}
+      />
+
+      {/* ── Lightbox: Tam boyut görsel önizleme ──
+          Sağ panel açıkken lightbox ekranin SOL bölümünde
+          Center modda ise tam orta da gözüksün */}
+      <AnimatePresence>
+        {lightboxUrl && (
+          <>
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setLightboxUrl(null)}
+              className="fixed inset-0 bg-black/80 backdrop-blur-md z-[60] cursor-zoom-out"
+            />
+            {/* Image container — sağ panel varsa solda, yoksa orta */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.92 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.92 }}
+              transition={{ type: 'spring', damping: 24, stiffness: 260 }}
+              className={`fixed z-[70] flex flex-col items-center gap-3 ${
+                panelStyle === 'side' && proofCaseId
+                  ? 'top-1/2 left-[calc(50%-240px)] -translate-y-1/2 -translate-x-1/2 max-w-[calc(100vw-520px)]'
+                  : 'top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 max-w-[90vw]'
+              } w-full`}
+            >
+              <img
+                src={lightboxUrl}
+                alt="Kanıt Görseli"
+                className="max-h-[80vh] w-full object-contain rounded-2xl shadow-2xl border border-white/10"
+                onClick={e => e.stopPropagation()}
+              />
+              <div className="flex items-center gap-3">
+                <a
+                  href={lightboxUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 border border-white/15 text-white text-[12px] font-bold flex items-center gap-1.5 transition-all"
+                >
+                  <ExternalLink size={13} />
+                  Yeni Sekmede Aç
+                </a>
+                <button
+                  type="button"
+                  onClick={() => setLightboxUrl(null)}
+                  className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white/60 hover:text-white text-[12px] font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+                >
+                  <X size={13} />
+                  Kapat
+                </button>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

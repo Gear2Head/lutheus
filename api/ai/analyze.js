@@ -198,6 +198,94 @@ JSON ÇIKTI FORMATI:
     }
 }
 
+async function callGroqForProof(payload) {
+    const key = process.env.GROQ_API_KEY;
+    if (!key) {
+        return {
+            valid: true,
+            categoryMatched: "AI Disabled",
+            summary: "AI service unavailable. Defaulting to valid.",
+            degraded: true
+        };
+    }
+
+    const model = payload.image ? 'llama-3.2-11b-vision-preview' : 'llama-3.1-8b-instant';
+    const userContent = [];
+
+    const textPayload = {
+        reason_raw: payload.reason_raw,
+        duration_raw: payload.duration_raw,
+        type: payload.type,
+        raw_text: payload.raw_text
+    };
+
+    userContent.push({
+        type: 'text',
+        text: `Lütfen bu kanıt verisini denetle:\n${JSON.stringify(textPayload)}`
+    });
+
+    if (payload.image) {
+        userContent.push({
+            type: 'image_url',
+            image_url: {
+                url: payload.image
+            }
+        });
+    }
+
+    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+            Authorization: `Bearer ${key}`,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            model,
+            temperature: 0.05,
+            max_tokens: 600,
+            messages: [
+                {
+                    role: 'system',
+                    content: `Sen Lutheus CUK (Ceza Uygulama Kitapçığı) Kanıt Denetim Asistanısın.
+Görevlerin:
+1. Eğer kanıt resmi (ekran görüntüsü) varsa, üzerindeki sohbet loglarını OCR ile oku.
+2. Bu kanıtın, kesilen ceza sebebiyle ('${payload.reason_raw}') ve ceza süresiyle ('${payload.duration_raw}') uyumlu olup olmadığını CUK kurallarına göre analiz et.
+3. Örneğin: Ceza sebebi "Küfür" ise ve resimde küfür içeren bir sohbet logu varsa, bu kanıt geçerlidir (valid: true). Eğer resimde küfür yoksa veya başka bir kullanıcının konuşmasıysa veya ceza sebebiyle tamamen alakasızsa geçerli değildir (valid: false).
+4. Yanıtını SADECE aşağıdaki JSON formatında ver, başka açıklama ekleme.
+
+JSON ÇIKTI FORMATI:
+{
+  "valid": true/false,
+  "categoryMatched": "CUK kategorisi",
+  "summary": "Neden geçerli veya geçersiz olduğuna dair 1-2 cümlelik kısa Türkçe açıklama."
+}`
+                },
+                {
+                    role: 'user',
+                    content: userContent
+                }
+            ],
+            response_format: { type: 'json_object' }
+        })
+    });
+
+    const data = await response.json();
+    if (!response.ok) {
+        throw new Error(data?.error?.message || 'GROQ_REQUEST_FAILED');
+    }
+    const content = data?.choices?.[0]?.message?.content || '{}';
+    try {
+        return JSON.parse(content.trim());
+    } catch (err) {
+        console.error('GROQ_PROOF_PARSE_ERROR', content);
+        return {
+            valid: false,
+            categoryMatched: "Parse Failure",
+            summary: "AI response malformed."
+        };
+    }
+}
+
 module.exports = async function handler(req, res) {
     if (req.method !== 'POST') {
         res.status(405).json({ error: 'METHOD_NOT_ALLOWED' });
@@ -208,6 +296,97 @@ module.exports = async function handler(req, res) {
         const actor = await requirePermission(req, PERMISSIONS.DASHBOARD_VIEW);
         const quotaId = resolveQuotaId(actor);
         
+        const { case_id, force_reanalyze } = req.body || {};
+        
+        if (case_id) {
+            // Case-specific proof analysis
+            // 1. Fetch case proof
+            const { data: proof } = await supabase
+                .from('case_proofs')
+                .select('*')
+                .eq('case_id', case_id)
+                .maybeSingle();
+                
+            if (!proof) {
+                return res.status(404).json({ success: false, error: 'PROOF_NOT_FOUND' });
+            }
+            
+            // If already analyzed and not force_reanalyze, return existing
+            if (proof.ai_verdict && !force_reanalyze) {
+                return res.status(200).json({
+                    success: true,
+                    role: actor.role,
+                    analysis: {
+                        valid: proof.ai_verdict === 'valid',
+                        categoryMatched: proof.ai_verdict === 'valid' ? 'Valid' : 'Invalid',
+                        summary: proof.ai_analysis,
+                        ai_verdict: proof.ai_verdict,
+                        ai_analysis: proof.ai_analysis
+                    }
+                });
+            }
+            
+            // 2. Fetch case details
+            const { data: caseRow } = await supabase
+                .from('sapphire_cases')
+                .select('*')
+                .eq('case_id', case_id)
+                .maybeSingle();
+                
+            if (!caseRow) {
+                return res.status(404).json({ success: false, error: 'CASE_NOT_FOUND' });
+            }
+            
+            // Check quota
+            await checkQuota(quotaId, actor.role);
+            
+            // 3. Call Groq
+            const groqPayload = {
+                reason_raw: caseRow.reason_raw,
+                duration_raw: caseRow.duration_raw,
+                type: caseRow.type,
+                raw_text: proof.raw_text
+            };
+            if (proof.proof_url) {
+                groqPayload.image = proof.proof_url;
+            }
+            
+            const analysis = await callGroqForProof(groqPayload);
+            
+            // Consume quota
+            let quota = { remaining: 0, limit: 0, used: 0 };
+            if (!analysis.degraded) {
+                quota = await consumeQuota(quotaId, actor.role);
+            }
+            
+            // 4. Update case_proofs
+            const aiVerdict = analysis.valid ? 'valid' : 'invalid';
+            const aiAnalysis = analysis.summary || 'Analiz tamamlandı.';
+            
+            await supabase
+                .from('case_proofs')
+                .update({
+                    ai_verdict: aiVerdict,
+                    ai_analysis: aiAnalysis,
+                    updated_at: new Date().toISOString()
+                })
+                .eq('case_id', case_id);
+                
+            return res.status(200).json({
+                success: true,
+                role: actor.role,
+                analysis: {
+                    valid: analysis.valid,
+                    categoryMatched: analysis.categoryMatched,
+                    summary: aiAnalysis,
+                    ai_verdict: aiVerdict,
+                    ai_analysis: aiAnalysis
+                },
+                quota: { remaining: quota.remaining, limit: quota.limit, used: quota.used }
+            });
+        }
+
+        // Default behavior (general text/image analysis)
         // Check quota first without consuming
         await checkQuota(quotaId, actor.role);
 
@@ -230,7 +409,7 @@ module.exports = async function handler(req, res) {
             quota = { limit, used, remaining: Math.max(0, limit - used) };
         }
 
-        // Write audit log for dashboard queries (same format as bot DM queries)
+        // Write audit log for dashboard queries
         try {
             const body = req.body || {};
             await supabase.from('audit_logs').insert([{
@@ -270,3 +449,4 @@ module.exports = async function handler(req, res) {
         });
     }
 };
+

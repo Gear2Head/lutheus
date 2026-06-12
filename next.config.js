@@ -29,6 +29,10 @@ const nextConfig = {
         source: "/src/:path*",
         destination: "/:path*",
       },
+      {
+        source: "/api/:path*",
+        destination: "/api/:path*",
+      },
     ];
   },
   async redirects() {

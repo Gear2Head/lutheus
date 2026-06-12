@@ -1353,16 +1353,21 @@ async function handleRequestAccess(req, res) {
 
     if (error) return serverError(res, error);
 
-    // Send alert notification to the Discord server alerts/CUK logs channel
+    // Send alert notification to the Discord server alerts/CUK logs channel or specific panel-erişim-talepleri channel
     const guildId = process.env.DISCORD_GUILD_ID || '';
     if (guildId) {
         try {
-            const configs = await getBotGuildConfig(guildId);
-            const alertChannelId = configs?.alertChannelId;
+            const channels = await fetchGuildChannels(guildId);
+            const targetChannel = channels.find(c => c.name === 'panel-erisim-talepleri' || c.name === 'panel-erişim-talepleri');
+            let alertChannelId = targetChannel?.id;
+            if (!alertChannelId) {
+                const configs = await getBotGuildConfig(guildId);
+                alertChannelId = configs?.alertChannelId;
+            }
             if (alertChannelId) {
                 const embed = {
                     title: 'Yeni Erişim Talebi 🔐',
-                    description: `**Kullanıcı:** <@${actor.discordId}> (${displayName})\n**Discord ID:** \`${actor.discordId}\`\n\nKullanıcı panel erişimi talep etti. Erişim yetkisini onaylamak için aşağıdaki menüden rol seçebilir veya reddedebilirsiniz.`,
+                    description: `**Kullanıcı:** <@${actor.discordId}> (${displayName})\n**Discord ID:** \`${actor.discordId}\`\n\nKullanıcı panel erişimi talep etti. Hızlı "Onayla" butonu ile varsayılan olarak Viewer yetkisi verebilir, listeden rütbe seçerek onaylayabilir ya da talebi reddedebilirsiniz.`,
                     color: 0x5e5ce6,
                     timestamp: now
                 };
@@ -1373,7 +1378,7 @@ async function handleRequestAccess(req, res) {
                             {
                                 type: 3, // StringSelectMenu
                                 custom_id: `approve_role_select:${actor.discordId}`,
-                                placeholder: 'Rol Seç ve Onayla',
+                                placeholder: 'Rütbe Seçerek Onayla',
                                 options: [
                                     { label: 'Viewer (İzleyici)', value: 'viewer', description: 'Görüntüleme yetkisi' },
                                     { label: 'Discord Destek Ekibi', value: 'discord_destek_ekibi', description: 'Destek yetkisi' },
@@ -1388,6 +1393,12 @@ async function handleRequestAccess(req, res) {
                     {
                         type: 1, // ActionRow
                         components: [
+                            {
+                                type: 2, // Button
+                                style: 3, // Success (Green)
+                                label: 'Hızlı Onayla (Viewer)',
+                                custom_id: `approve_quick:${actor.discordId}`
+                            },
                             {
                                 type: 2, // Button
                                 style: 4, // Danger (Red)

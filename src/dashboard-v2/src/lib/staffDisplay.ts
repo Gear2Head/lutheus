@@ -1,6 +1,6 @@
 import { SapphireCase, StaffProfile } from './supabase';
 
-const GENERIC_NAME_RE = /^(unknown moderator|bilinmeyen yetkili|yetkili\s*\(\d{1,8}\)|moderator\s*\(\d{1,8}\))$/i;
+const GENERIC_NAME_RE = /^(unknown moderator|bilinmeyen yetkili|yetkili\s*\(\d{1,8}\)|moderator\s*\(\d{1,8}\)|bilinmeyen|unknown|unknown user|bilinmeyen kullanıcı|bilinmeyen kullanici)$/i;
 
 export function isGenericStaffName(name?: string | null, discordId?: string): boolean {
   const clean = (name || '').replace(/\(\)?/g, '').trim();

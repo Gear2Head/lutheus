@@ -1837,16 +1837,22 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
 
                 case ACTIONS.OPEN_ADMIN: {
                     const adminUrl = chrome.runtime.getURL('src/dashboard-v2/dist/index.html');
-                    const adminTabs = await chrome.tabs.query({ url: adminUrl });
-                    if (adminTabs.length > 0) {
-                        await chrome.tabs.update(adminTabs[0].id, { active: true });
-                        await chrome.tabs.reload(adminTabs[0].id);
+                    const allTabs = await chrome.tabs.query({});
+                    // URL hash farklı olabileceği için includes ile kontrol et
+                    const adminTab = allTabs.find(t => t.url && t.url.includes('dashboard-v2/dist/index.html'));
+                    if (adminTab) {
+                        // Reload etme — profiller kaybolmasın; sadece focus yap
+                        await chrome.tabs.update(adminTab.id, { active: true });
+                        if (adminTab.windowId) {
+                            await chrome.windows.update(adminTab.windowId, { focused: true });
+                        }
                     } else {
-                        await chrome.tabs.create({ url: adminUrl });
+                        await chrome.tabs.create({ url: adminUrl + '#/cases' });
                     }
                     sendResponse({ success: true });
                     break;
                 }
+
 
                 case ACTIONS.CLOSE_TAB: {
                     if (request.tabId) await chrome.tabs.remove(request.tabId);

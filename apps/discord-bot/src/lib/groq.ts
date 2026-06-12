@@ -52,6 +52,23 @@ export function normalizeRole(role: string): string {
     return aliases[normalized] || aliases[normalized.replace(/_/g, '')] || normalized;
 }
 
+export const UST_YONETIM_ROLLERI = [
+    'kurucu',
+    'admin',
+    'yonetici',
+    'genel_sorumlu',
+    'discord_yoneticisi',
+    'senior_moderator',
+    'kidemli',
+    'kidemli_discord_moderatoru'
+];
+
+export function isUstYonetim(role: string): boolean {
+    const normalized = normalizeRole(role);
+    return UST_YONETIM_ROLLERI.includes(normalized);
+}
+
+
 // ─── Günlük Kota Anahtar ──────────────────────────────────────────────────
 function todayKey(): string {
     return new Date().toISOString().slice(0, 10);

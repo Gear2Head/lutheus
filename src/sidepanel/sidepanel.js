@@ -57,6 +57,7 @@ const DOM = {
     detailLimit: document.getElementById('detailLimit'),
     btnStartScan: document.getElementById('btnStartScan'),
     btnStopScan: document.getElementById('btnStopScan'),
+    btnDiscordScan: document.getElementById('btnDiscordScan'),
     progressBox: document.getElementById('progressBox'),
     progressFill: document.getElementById('progressFill'),
     progressLabel: document.getElementById('progressLabel'),
@@ -1293,6 +1294,316 @@ async function resyncStaffFromDb() {
     }
 }
 
+async function handleDiscordScan() {
+    const targetUrl = 'https://discord.com/channels/1223431616081166336/1445462327141863657';
+    
+    // Check auth session
+    const session = await Storage.get('lutheusAuthSession');
+    const token = session?.idToken;
+    if (!token) {
+        Toast.error('Oturum', 'Giris gerekli — Kanit taramasi yapilamadi');
+        return;
+    }
+
+    Toast.info('Discord', 'Kanit kanali kontrol ediliyor...');
+
+    if (typeof chrome !== 'undefined' && chrome.tabs?.query) {
+        chrome.tabs.query({}, async (tabs) => {
+            const discordTab = tabs.find(t => t.url && t.url.includes('1445462327141863657'));
+            
+            if (discordTab) {
+                chrome.tabs.update(discordTab.id, { active: true }, async (tab) => {
+                    if (tab.windowId) {
+                        chrome.windows.update(tab.windowId, { focused: true });
+                    }
+                    
+                    Toast.info('Discord', 'Kanitlar taraniyor...');
+                    setTimeout(() => {
+                        executeScraping(discordTab.id, token);
+                    }, 500);
+                });
+            } else {
+                chrome.tabs.create({ url: targetUrl }, (newTab) => {
+                    Toast.success('Discord', 'Kanit kanali acildi. Sayfa yuklenince butona tekrar basarak taramayi tetikleyin.');
+                });
+            }
+        });
+    } else {
+        Toast.error('Eklenti', 'Chrome tabs API bulunamadi.');
+    }
+}
+
+function executeScraping(tabId, token) {
+    if (typeof chrome === 'undefined' || !chrome.scripting?.executeScript) {
+        Toast.error('Eklenti', 'chrome.scripting API bulunamadi.');
+        return;
+    }
+
+    chrome.scripting.executeScript({
+        target: { tabId: tabId },
+        func: () => {
+            console.log("Lutheus Scraper: executeScraping running inside Discord tab!");
+            
+            // Discord stable selectors: li elements with id starting with "chat-messages-"
+            let messageContainers = document.querySelectorAll('li[id^="chat-messages-"]');
+            console.log(`Lutheus Scraper: Found ${messageContainers.length} messages via id selector.`);
+            
+            if (messageContainers.length === 0) {
+                const msgList = document.querySelector('ol[data-list-id="chat-messages"], ol[class*="scrollerInner"]');
+                if (msgList) {
+                    messageContainers = msgList.querySelectorAll('li');
+                    console.log(`Lutheus Scraper: Fallback found ${messageContainers.length} li elements.`);
+                }
+            }
+            
+            if (messageContainers.length === 0) {
+                messageContainers = document.querySelectorAll('div[class*="message_"], div[class*="messageContent"]');
+                console.log(`Lutheus Scraper: Second fallback found ${messageContainers.length} elements.`);
+            }
+
+            const proofs = [];
+            const seenMessages = new Set();
+
+            messageContainers.forEach(container => {
+                const msgId = container.id || '';
+                if (msgId && seenMessages.has(msgId)) return;
+                if (msgId) seenMessages.add(msgId);
+
+                // Content: Discord puts message text in div[id^="message-content-"]
+                const contentEl = container.querySelector('div[id^="message-content-"]') 
+                    || container.querySelector('[class*="messageContent"]')
+                    || container.querySelector('[class*="markup"]');
+                const text = contentEl ? contentEl.textContent.trim() : '';
+                if (!text) return;
+
+                console.log(`Lutheus Scraper: Message text: "${text.slice(0, 80)}"`);
+
+                const words = text.split(/[\s,.:;/#_\-()[\]"'@]+/);
+                let caseId = null;
+                let userId = null;
+
+                for (const word of words) {
+                    if (!word) continue;
+                    
+                    // Discord user ID: 17-20 digit number
+                    if (/^\d{17,20}$/.test(word)) {
+                        if (!userId) {
+                            userId = word;
+                            console.log(`Lutheus Scraper: Found Discord userId: ${word}`);
+                        }
+                    // Numeric caseId: 5-9 digits, NOT a year (exclude 1900-2099 range)
+                    } else if (/^\d{5,9}$/.test(word) && !caseId) {
+                        const num = parseInt(word, 10);
+                        if (num < 1900 || num > 2099) { // yıl değil gerçek case ID
+                            caseId = word;
+                            console.log(`Lutheus Scraper: Found numeric caseId: ${word}`);
+                        } else {
+                            console.log(`Lutheus Scraper: Skipping year-like number: ${word}`);
+                        }
+                    // Alphanumeric case id like "gwm6yH8" — must have both letters and digits
+                    } else if (/^[A-Za-z0-9]{4,12}$/.test(word) && /[A-Za-z]/.test(word) && /\d/.test(word) && !caseId) {
+                        caseId = word;
+                        console.log(`Lutheus Scraper: Found alphanumeric caseId: ${word}`);
+                    }
+                }
+
+                if (!caseId && !userId) return;
+
+                // ── Görseller: YALNIZCA /attachments/ URL'li görseller ──────────────────
+                // Avatar görselleri (/avatars/ URL'li) kasıtlı olarak dışlanıyor
+                let proofUrl = '';
+
+                // Önce attachments alanını bul (mesajın medya bölümü)
+                const attachmentsWrapper = container.querySelector(
+                    '[class*="attachments"], [class*="imageWrapper"], [class*="mediaAttachment"]'
+                );
+                
+                if (attachmentsWrapper) {
+                    // Attachment wrapper içindeki img'yi al
+                    const attachImg = attachmentsWrapper.querySelector('img[src*="/attachments/"]');
+                    if (attachImg) {
+                        proofUrl = attachImg.src;
+                        console.log(`Lutheus Scraper: Found attachment img: ${proofUrl.slice(0, 80)}`);
+                    }
+                }
+                
+                // Attachment img bulunamazsa tüm container'da /attachments/ URL'li img ara
+                if (!proofUrl) {
+                    const allImgs = container.querySelectorAll('img');
+                    for (const img of allImgs) {
+                        const src = img.src || '';
+                        // /attachments/ varsa ve /avatars/ yoksa kanıt görseli
+                        if (src.includes('/attachments/') && !src.includes('/avatars/')) {
+                            proofUrl = src;
+                            console.log(`Lutheus Scraper: Found attachment img (fallback): ${proofUrl.slice(0, 80)}`);
+                            break;
+                        }
+                    }
+                }
+
+                // Direkt attachment linki
+                if (!proofUrl) {
+                    const linkEl = container.querySelector(
+                        'a[href*="cdn.discordapp.com/attachments/"], a[href*="media.discordapp.net/attachments/"]'
+                    );
+                    if (linkEl) {
+                        proofUrl = linkEl.href;
+                        console.log(`Lutheus Scraper: Found attachment link: ${proofUrl.slice(0, 80)}`);
+                    }
+                }
+
+                // Video/gif attachment
+                if (!proofUrl) {
+                    const videoEl = container.querySelector('video source[src*="/attachments/"]');
+                    if (videoEl) {
+                        proofUrl = videoEl.src;
+                        console.log(`Lutheus Scraper: Found video attachment: ${proofUrl.slice(0, 80)}`);
+                    }
+                }
+
+                proofs.push({
+                    case_id: caseId || null,
+                    user_id: userId || null,
+                    proof_url: proofUrl || null,
+                    raw_text: text || null
+                });
+            });
+
+            console.log(`Lutheus Scraper: Done. Returning ${proofs.length} extracted proofs.`);
+            return proofs;
+        }
+    }, async (results) => {
+
+        if (chrome.runtime.lastError) {
+            Toast.error('Tarama', `DOM Kazima Hatasi: ${chrome.runtime.lastError.message}`);
+            return;
+        }
+
+        if (!results || !results[0] || !results[0].result || results[0].result.length === 0) {
+            Toast.warning('Tarama', 'Kanalda taranacak gecerli kanit mesaji bulunamadi. Lutfen kanit kanalinda oldugunuzdan emin olun.');
+            return;
+        }
+
+        const scrapedResults = results[0].result;
+        Toast.info('Tarama', `${scrapedResults.length} mesaj inceleniyor, veritabani eslemesi yapiliyor...`);
+
+        const supabaseUrl = 'https://jxhzhaqqtlynbnntwpyu.supabase.co/rest/v1/case_proofs';
+        const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4aHpoYXFxdGx5bmJubnR3cHl1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk2NjMyMTcsImV4cCI6MjA5NTIzOTIxN30.BrmuT-QX_BkgV6SSlpNThfqSGmUDw0UffUW11agaBzI';
+        
+        // ── Çözümle: user_id → case_id ──────────────────────────────
+        const rawProofs = [];
+        for (const proof of scrapedResults) {
+            if (proof.case_id) {
+                rawProofs.push({
+                    case_id: proof.case_id,
+                    proof_url: proof.proof_url,
+                    raw_text: proof.raw_text
+                });
+            } else if (proof.user_id) {
+                try {
+                    const fetchUrl = `https://jxhzhaqqtlynbnntwpyu.supabase.co/rest/v1/sapphire_cases?punished_user_discord_id=eq.${proof.user_id}&order=created_at_sapphire.desc&limit=1`;
+                    const res = await fetch(fetchUrl, {
+                        headers: {
+                            apikey: supabaseKey,
+                            Authorization: `Bearer ${token}`
+                        }
+                    });
+                    if (res.ok) {
+                        const cases = await res.json();
+                        if (cases && cases.length > 0) {
+                            rawProofs.push({
+                                case_id: cases[0].case_id,
+                                proof_url: proof.proof_url,
+                                raw_text: proof.raw_text
+                            });
+                        }
+                    }
+                } catch (err) {
+                    console.error(`Error resolving user ID ${proof.user_id} to case ID:`, err);
+                }
+            }
+        }
+
+        // ── Dedup: aynı batch'te duplicate satır varsa PostgreSQL CONFLICT hatası verir ──
+        // case_id + raw_text kombinasyonuna göre benzersiz kayıtları tut
+        const seenKeys = new Set();
+        const finalProofs = rawProofs.filter(p => {
+            const key = `${p.case_id}||${p.raw_text || ''}||${p.proof_url || ''}`;
+            if (seenKeys.has(key)) return false;
+            seenKeys.add(key);
+            return true;
+        });
+        console.log(`[Lutheus] Dedup: ${rawProofs.length} → ${finalProofs.length} benzersiz kanit`);
+
+        if (finalProofs.length === 0) {
+            Toast.warning('Tarama', 'Taranan mesajlar veritabanindaki hicbir ceza kaydiyla eslesmedi.');
+            return;
+        }
+
+        Toast.info('Tarama', `${finalProofs.length} kanit eslestirildi, veritabanina kaydediliyor...`);
+
+        try {
+            // Her kaydı tek tek gönder — batch upsert'te aynı satırı iki kez güncelleyemez
+            let successCount = 0;
+            let errorCount = 0;
+            for (const proof of finalProofs) {
+                try {
+                    const response = await fetch(supabaseUrl, {
+                        method: 'POST',
+                        headers: {
+                            apikey: supabaseKey,
+                            Authorization: `Bearer ${token}`,
+                            'Content-Type': 'application/json',
+                            'Prefer': 'resolution=merge-duplicates'
+                        },
+                        body: JSON.stringify(proof)
+                    });
+                    if (response.ok) {
+                        successCount++;
+                    } else {
+                        const errText = await response.text();
+                        console.warn(`[Lutheus] Kanit kayit hatasi (case_id=${proof.case_id}):`, errText);
+                        errorCount++;
+                    }
+                } catch (innerErr) {
+                    console.error(`[Lutheus] Fetch hatasi:`, innerErr);
+                    errorCount++;
+                }
+            }
+
+            if (successCount > 0) {
+                Toast.success('Tarama', `${successCount} kanit basariyla kaydedildi! ${errorCount > 0 ? `(${errorCount} hata)` : '🎉'}`);
+            } else {
+                Toast.error('Tarama', `Hicbir kanit kaydedilemedi (${errorCount} hata)`);
+            }
+
+            // ── Dashboard: varsa focus et (reload etme — profiller sıfırlanıyor), yoksa aç ──
+            if (successCount > 0 && typeof chrome !== 'undefined' && chrome.tabs?.query) {
+                const adminUrl = chrome.runtime.getURL('src/dashboard-v2/dist/index.html');
+                chrome.tabs.query({}, (allTabs) => {
+                    // Dashboard URL'si ile eşleşen tab'ı bul (hash farklı olabilir)
+                    const dashTab = allTabs.find(t => t.url && t.url.includes('dashboard-v2/dist/index.html'));
+                    if (dashTab) {
+                        // Sadece focus et — reload etme, profiller kaybolmasın
+                        chrome.tabs.update(dashTab.id, { active: true });
+                        if (dashTab.windowId) {
+                            chrome.windows.update(dashTab.windowId, { focused: true });
+                        }
+                        console.log('[Lutheus] Dashboard bulundu, focus yapildi (reload yok)');
+                    } else {
+                        // Dashboard kapalıysa yeni tab aç
+                        chrome.tabs.create({ url: adminUrl + '#/cases' });
+                        console.log('[Lutheus] Dashboard acildi (yeni tab)');
+                    }
+                });
+            }
+        } catch (err) {
+            console.error('Error saving scraped proofs:', err);
+            Toast.error('Tarama', `Veritabani Kayit Hatasi: ${err.message}`);
+        }
+    });
+}
+
 function bindEvents() {
     DOM.navButtons.forEach((button) => {
         button.addEventListener('click', () => switchSection(button.dataset.section));
@@ -1302,6 +1613,7 @@ function bindEvents() {
     DOM.languageSelect?.addEventListener('change', (event) => saveLanguage(event.target.value));
     DOM.btnStartScan?.addEventListener('click', runScan);
     DOM.btnStopScan?.addEventListener('click', stopScan);
+    DOM.btnDiscordScan?.addEventListener('click', handleDiscordScan);
     DOM.btnToday?.addEventListener('click', () => applyScanPreset('today'));
     DOM.btnLastWeek?.addEventListener('click', () => applyScanPreset('week'));
     DOM.btnLastMonth?.addEventListener('click', () => applyScanPreset('month'));

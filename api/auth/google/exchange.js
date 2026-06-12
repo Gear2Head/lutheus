@@ -1,5 +1,5 @@
 const { supabase } = require('../../_lib/supabaseClient');
-const { isOwnerIdentity, normalizeRole } = require('../../_lib/roles');
+const { isOwnerIdentity, normalizeRole, getPermissionForRole } = require('../../_lib/roles');
 const jwt = require('jsonwebtoken');
 
 // SECTION: API_ROUTES
@@ -64,8 +64,8 @@ module.exports = async function handler(req, res) {
             username: null,
             avatar_url: googleUser.picture || null,
             staff_rank: role,
-            permission_group: role === 'admin' ? 'admin' : (role === 'yonetici' ? 'management' : 'moderator'),
-            permission_level: role === 'admin' ? 100 : (role === 'yonetici' ? 80 : 50),
+            permission_group: getPermissionForRole(role).group,
+            permission_level: getPermissionForRole(role).level,
             is_active_staff: true,
             last_seen_at: new Date().toISOString(),
             raw_payload: profile,

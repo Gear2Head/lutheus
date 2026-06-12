@@ -47,12 +47,23 @@ export const DEFAULT_POINT_WEIGHTS = {
 
 function storageGet(key) {
     return new Promise((resolve) => {
+        if (!key) {
+            resolve(undefined);
+            return;
+        }
         if (!hasChromeLocal()) {
             const raw = window.localStorage.getItem(`lutheus:${key}`);
             resolve(raw ? JSON.parse(raw) : undefined);
             return;
         }
-        chrome.storage.local.get([key], (result) => resolve(result[key]));
+        const queryKey = Array.isArray(key) ? key : [key];
+        chrome.storage.local.get(queryKey, (result) => {
+            if (Array.isArray(key)) {
+                resolve(result);
+            } else {
+                resolve(result[key]);
+            }
+        });
     });
 }
 

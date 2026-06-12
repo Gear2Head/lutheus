@@ -398,3 +398,57 @@ export async function clearAllCasesFromDbAndLocal(): Promise<void> {
   // 2. Clear from Supabase
   await supabaseFetch('sapphire_cases', 'DELETE', 'case_id=neq.0');
 }
+
+export interface CaseProof {
+  case_id: string;
+  proof_url: string | null;
+  raw_text: string | null;
+  ai_verdict: 'valid' | 'invalid' | null;
+  ai_analysis: string | null;
+  created_at?: string;
+  updated_at?: string;
+  video_url?: string | null;
+  thumbnail_url?: string | null;
+  additional_proofs?: Array<{
+    proof_url: string | null;
+    video_url?: string | null;
+    thumbnail_url?: string | null;
+    raw_text?: string | null;
+  }>;
+  embedded_from_case_id?: string | null;
+  embedded_to_case_ids?: string[];
+}
+
+export async function getCaseProof(caseId: string): Promise<CaseProof | null> {
+  const data = await supabaseFetch<CaseProof[]>(
+    'case_proofs',
+    'GET',
+    `case_id=eq.${caseId}&select=*`
+  );
+  return data && data.length > 0 ? data[0] : null;
+}
+
+export async function getEmbeddedProofs(caseId: string): Promise<CaseProof[]> {
+  // Get proofs that are embedded into this case from other cases
+  const data = await supabaseFetch<CaseProof[]>(
+    'case_proofs',
+    'GET',
+    `embedded_to_case_ids=cs.{${caseId}}&select=*`
+  );
+  return data || [];
+}
+
+export async function findRelatedCasesForEmbedding(
+  punishedUserId: string,
+  authorDiscordId: string,
+  afterTimestamp: string
+): Promise<SapphireCase[]> {
+  // Find cases where the same user was punished by the same moderator after a given timestamp
+  const data = await supabaseFetch<SapphireCase[]>(
+    'sapphire_cases',
+    'GET',
+    `punished_user_discord_id=eq.${punishedUserId}&author_discord_id=eq.${authorDiscordId}&created_at_sapphire=gte.${afterTimestamp}&order=created_at_sapphire.asc&limit=10`
+  );
+  return data || [];
+}
+

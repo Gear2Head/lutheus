@@ -283,6 +283,7 @@ function applyRoleVisibility() {
     
     DOM.navButtons.forEach((button) => {
         const sect = button.dataset.section;
+        if (!sect) return; // Skip buttons without data-section (like btnOpenAdmin)
         const shouldHide = !visible.has(sect) || (button.classList.contains('privileged-only') && !isPrivileged);
         button.classList.toggle('hidden', shouldHide);
     });
@@ -1606,7 +1607,11 @@ function executeScraping(tabId, token) {
 
 function bindEvents() {
     DOM.navButtons.forEach((button) => {
-        button.addEventListener('click', () => switchSection(button.dataset.section));
+        button.addEventListener('click', () => {
+            if (button.dataset.section) {
+                switchSection(button.dataset.section);
+            }
+        });
     });
 
     DOM.btnQuickScan?.addEventListener('click', () => switchSection('scan'));

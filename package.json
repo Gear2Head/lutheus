@@ -13,7 +13,7 @@
     "build": "npm run build:all --prefix src/dashboard-v2 && next build && npm run build:bot",
     "start": "next start",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint -c eslintrc.cjs \"src/**/*.{js,ts}\" \"apps/**/*.ts\" \"packages/**/*.ts\" \"tests/**/*.{js,ts}\"",
+    "lint": "eslint -c eslintrc.cjs --no-error-on-unmatched-pattern \"src/**/*.{js,ts}\" \"apps/**/*.ts\" \"packages/**/*.ts\" \"tests/**/*.{js,ts}\"",
     "check": "npm run lint && npm run test",
     "env:check": "node scripts/check-env.cjs",
     "test": "jest --runInBand --passWithNoTests",

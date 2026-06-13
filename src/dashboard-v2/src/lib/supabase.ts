@@ -161,7 +161,9 @@ export async function updateCaseVerdict(
       await setLocal(LOCAL_CASES_KEY, updated);
       try {
         localStorage.setItem(LOCAL_CASES_KEY, JSON.stringify(updated));
-      } catch {}
+      } catch (error) {
+        console.warn("Supabase silent fail:", error);
+      }
     }
   } catch (err) {
     console.warn('[Lutheus] Failed to update local cache for case verdict:', err);
@@ -194,7 +196,9 @@ export async function bulkUpdateVerdict(
       await setLocal(LOCAL_CASES_KEY, updated);
       try {
         localStorage.setItem(LOCAL_CASES_KEY, JSON.stringify(updated));
-      } catch {}
+      } catch (error) {
+        console.warn("Supabase silent fail:", error);
+      }
     }
   } catch (err) {
     console.warn('[Lutheus] Failed to update local cache for bulk verdict:', err);
@@ -356,7 +360,9 @@ function setLocal<T>(key: string, value: T): Promise<void> {
   }
   try {
     localStorage.setItem(key, JSON.stringify(value));
-  } catch {}
+  } catch (error) {
+    console.warn("Supabase silent fail:", error);
+  }
   return Promise.resolve();
 }
 

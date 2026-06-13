@@ -21,9 +21,6 @@
     "paths": {
       "@/*": [
         "src/*"
-      ],
-      "@lutheus/shared-core": [
-        "packages/shared-core/src/index.ts"
       ]
     },
     "allowJs": true,

@@ -1,4 +1,4 @@
-export const FIREBASE_CONFIG = Object.freeze({
+﻿export const FIREBASE_CONFIG = Object.freeze({
     apiKey: 'AIzaSyDWM0Jl3Fyyok9BIvLCQ1PjKzdl9074ZSs',
     authDomain: 'lutheus-project.firebaseapp.com',
     projectId: 'lutheus-project',
@@ -14,7 +14,12 @@ export const APP_CONFIG = Object.freeze({
     discordClientId: '1500551629768888542',
     discordOAuthScopes: ['identify', 'guilds'],
     discordRedirectPath: '',
-    defaultRole: 'moderator'
+    defaultRole: 'moderator',
+    // SECTION: HMAC_SECURITY
+    // Shared HMAC-SHA256 signing secret for X-Lutheus-Sig request integrity.
+    // Chrome Extension source is inspectable so this is a known trade-off;
+    // rotate by updating LUTHEUS_HMAC_SECRET on Vercel and this constant together.
+    hmacSecret: 'lutheus-hmac-2026-cezarapor-integrity-key'
 });
 
 export const FIRESTORE_DATABASE = '(default)';

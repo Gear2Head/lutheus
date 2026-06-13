@@ -1,5 +1,6 @@
-import { AuthService } from '../auth/authService.js';
+﻿import { AuthService } from '../auth/authService.js';
 import { APP_CONFIG } from '../config/appConfig.js';
+import { signPayload } from './hmac.js';
 
 // SECTION: API_CLIENT
 // PURPOSE: Handles secure administrative API requests with context-aware URL resolution,
@@ -108,6 +109,21 @@ async function request(path, options = {}) {
     const run = (async () => {
         const headers = await authHeaders();
         const url = resolveApiUrl(path);
+
+        // SECTION: HMAC_SECURITY
+        // Sign mutating requests with HMAC-SHA256 to protect data integrity.
+        const isMutating = method === 'POST' || method === 'PATCH' || method === 'DELETE';
+        if (isMutating && options.body && APP_CONFIG.hmacSecret) {
+            try {
+                const sig = await signPayload(
+                    typeof options.body === 'string' ? options.body : JSON.stringify(options.body),
+                    APP_CONFIG.hmacSecret
+                );
+                headers['X-Lutheus-Sig'] = sig;
+            } catch (sigErr) {
+                console.warn('[adminApiClient] HMAC signing failed; proceeding unsigned', sigErr);
+            }
+        }
 
         const response = await fetch(url, {
             ...options,

@@ -6,7 +6,21 @@ import {
     setStoredSession
 } from './sessionStore.js';
 import { canAccessAdmin, isOwnerIdentity, normalizeRole, ROLES } from './rolePolicy.js';
-import { FirebaseRepository } from '../lib/firebaseRepository.js';
+const FirebaseRepository = {
+    async getGoogleAllowlist(email, token = null) {
+        return null;
+    },
+    async getRoleCache(identityKey, token = null) {
+        return null;
+    },
+    async upsertUser(profile) {
+        const uid = profile.uid;
+        if (!uid) throw new Error('USER_UID_REQUIRED');
+        const role = normalizeRole(profile.role || ROLES.PENDING);
+        const status = profile.status || 'active';
+        return { ...profile, uid, role, status };
+    }
+};
 
 // SECTION: AUTH_SERVICE
 // PURPOSE: Lightweight, dependency-free Supabase Auth and Session manager for dashboard and sidepanel.

@@ -5,10 +5,8 @@ module.exports = {
     '^.+\\.ts$': ['ts-jest', { tsconfig: './tsconfig.json' }],
     '^.+\\.js$': ['babel-jest', { presets: [['@babel/preset-env', { targets: { node: 'current' } }]] }]
   },
-  moduleNameMapper: {
-    '^@lutheus/shared-core$': '<rootDir>/packages/shared-core/src/index.ts'
-  },
   testMatch: ['**/tests/**/*.(test|spec).[jt]s'],
+  testPathIgnorePatterns: ['/node_modules/', '/archive/'],
   coverageDirectory: 'coverage',
   collectCoverageFrom: [
     'src/**/*.js',

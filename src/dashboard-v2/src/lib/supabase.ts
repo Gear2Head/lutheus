@@ -46,6 +46,8 @@ export interface StaffProfile {
   status: 'ACTIVE' | 'INACTIVE';
   created_at: string;
   avatar_url?: string;
+  last_promoted_at?: string | null;
+  management_comments?: string | null;
 }
 
 export interface AuditLog {
@@ -215,6 +217,8 @@ interface DbStaffProfile {
   is_active_staff?: boolean;
   created_at?: string | null;
   avatar_url?: string | null;
+  last_promoted_at?: string | null;
+  management_comments?: string | null;
 }
 
 export async function getStaffProfiles(): Promise<StaffProfile[]> {
@@ -233,7 +237,9 @@ export async function getStaffProfiles(): Promise<StaffProfile[]> {
     in_game_name: p.display_name || p.username || p.discord_id,
     status: p.is_active_staff ? 'ACTIVE' : 'INACTIVE',
     created_at: p.created_at || new Date().toISOString(),
-    avatar_url: p.avatar_url || undefined
+    avatar_url: p.avatar_url || undefined,
+    last_promoted_at: p.last_promoted_at || null,
+    management_comments: p.management_comments || null,
   }));
 }
 
@@ -270,6 +276,12 @@ export async function updateStaffProfile(
   }
   if (updates.updated_at !== undefined) {
     dbUpdates.updated_at = updates.updated_at;
+  }
+  if (updates.last_promoted_at !== undefined) {
+    dbUpdates.last_promoted_at = updates.last_promoted_at;
+  }
+  if (updates.management_comments !== undefined) {
+    dbUpdates.management_comments = updates.management_comments;
   }
 
   // Update staff_profiles table
@@ -512,4 +524,92 @@ export async function findRelatedCasesForEmbedding(
   );
   return data || [];
 }
+
+export interface StaffWarning {
+  id: string;
+  staff_discord_id: string;
+  reason: string;
+  points: number;
+  created_at: string;
+  created_by: string;
+  management_notes?: string | null;
+}
+
+export async function getStaffWarnings(staffDiscordId: string): Promise<StaffWarning[]> {
+  const data = await supabaseFetch<StaffWarning[]>(
+    'staff_warnings',
+    'GET',
+    `staff_discord_id=eq.${encodeURIComponent(staffDiscordId)}&order=created_at.desc`,
+  );
+  return data || [];
+}
+
+export async function addStaffWarning(warning: Omit<StaffWarning, 'id' | 'created_at'>): Promise<void> {
+  await supabaseFetch(
+    'staff_warnings',
+    'POST',
+    undefined,
+    warning,
+  );
+}
+
+export async function deleteStaffWarning(id: string): Promise<void> {
+  await supabaseFetch(
+    'staff_warnings',
+    'DELETE',
+    `id=eq.${encodeURIComponent(id)}`,
+  );
+}
+
+export async function deleteCase(caseId: string): Promise<void> {
+  await supabaseFetch(
+    'sapphire_cases',
+    'DELETE',
+    `case_id=eq.${encodeURIComponent(caseId)}`,
+  );
+}
+
+export interface StaffMessage {
+  id: string;
+  staff_discord_id: string;
+  message: string;
+  created_at: string;
+  created_by: string;
+  response?: string | null;
+  responded_at?: string | null;
+  responded_by?: string | null;
+}
+
+export async function getStaffMessages(staffDiscordId: string): Promise<StaffMessage[]> {
+  const data = await supabaseFetch<StaffMessage[]>(
+    'staff_messages',
+    'GET',
+    `staff_discord_id=eq.${encodeURIComponent(staffDiscordId)}&order=created_at.desc`,
+  );
+  return data || [];
+}
+
+export async function sendStaffMessage(msg: Omit<StaffMessage, 'id' | 'created_at'>): Promise<void> {
+  await supabaseFetch(
+    'staff_messages',
+    'POST',
+    undefined,
+    msg,
+  );
+}
+
+export async function replyStaffMessage(id: string, response: string, respondedBy: string): Promise<void> {
+  await supabaseFetch(
+    'staff_messages',
+    'PATCH',
+    `id=eq.${encodeURIComponent(id)}`,
+    {
+      response,
+      responded_at: new Date().toISOString(),
+      responded_by: respondedBy
+    }
+  );
+}
+
+
 

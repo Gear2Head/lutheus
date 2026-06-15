@@ -4,5 +4,5 @@ export function buildSapphireCaseUrl(guildId: string | null | undefined, caseId:
   const gid = String(guildId || DEFAULT_GUILD_ID).trim();
   const cid = String(caseId || '').trim();
   if (!cid) return null;
-  return `https://dashboard.sapph.xyz/guilds/${gid}/moderation/cases/${encodeURIComponent(cid)}`;
+  return `https://dashboard.sapph.xyz/${gid}/moderation/cases/${encodeURIComponent(cid)}`;
 }

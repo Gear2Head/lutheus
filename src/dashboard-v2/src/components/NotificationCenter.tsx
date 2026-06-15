@@ -1,6 +1,7 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Bell, X, ShieldAlert, CheckCircle2, UserPlus, Info, Zap, Trash2 } from 'lucide-react';
+import { Bell, X, ShieldAlert, CheckCircle2, UserPlus, Info, Zap, Trash2, Loader2 } from 'lucide-react';
+import { getAuditLogs } from '../lib/supabase';
 
 interface NotificationCenterProps {
   isOpen: boolean;
@@ -16,60 +17,156 @@ interface NotificationItem {
   unread: boolean;
 }
 
+function formatRelativeTime(dateString: string): string {
+  try {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHrs = Math.floor(diffMins / 60);
+    const diffDays = Math.floor(diffHrs / 24);
+
+    if (diffMins < 1) return 'şimdi';
+    if (diffMins < 60) return `${diffMins}dk önce`;
+    if (diffHrs < 24) return `${diffHrs}sa önce`;
+    return `${diffDays}gün önce`;
+  } catch {
+    return 'bilinmiyor';
+  }
+}
+
+function mapAuditLogToNotification(log: any): NotificationItem {
+  let title = 'Sistem Güncellemesi';
+  let description = `Aksiyon: ${log.action}`;
+  let type: 'alert' | 'success' | 'staff' | 'info' | 'system' = 'info';
+
+  const details = log.details || {};
+
+  switch (log.action) {
+    case 'access_requested':
+      title = 'Yeni Erişim Talebi 🔐';
+      description = `Bir kullanıcı panel erişimi talep etti. Discord ID: ${log.target_id || '—'}`;
+      type = 'staff';
+      break;
+    case 'access_approved':
+      title = 'Erişim Onaylandı ✅';
+      description = `${log.target_id ? `Discord ID ${log.target_id}` : 'Kullanıcı'} erişim talebi onaylandı. Rütbe: ${details.role || 'Viewer'}`;
+      type = 'success';
+      break;
+    case 'access_rejected':
+      title = 'Erişim Reddedildi ❌';
+      description = `${log.target_id ? `Discord ID ${log.target_id}` : 'Kullanıcı'} erişim talebi reddedildi.`;
+      type = 'alert';
+      break;
+    case 'warning_added':
+    case 'warning_add':
+      title = 'Yetkili Uyarısı ⚠️';
+      description = `${log.target_id ? `Discord ID ${log.target_id}` : 'Yetkili'} yeni bir uyarı aldı. Puan: ${details.points || 1}`;
+      type = 'alert';
+      break;
+    case 'warning_deleted':
+    case 'warning_delete':
+      title = 'Yetkili Uyarısı Silindi 🗑️';
+      description = `${log.target_id ? `Discord ID ${log.target_id}` : 'Yetkili'} üzerindeki bir uyarı silindi.`;
+      type = 'info';
+      break;
+    case 'lockdown':
+      title = '🚨 ACİL DURUM KİLİDİ 🚨';
+      description = 'Sunucu acil durum koruması altına alındı ve kanallar kilitlendi!';
+      type = 'alert';
+      break;
+    case 'unlockdown':
+      title = '🔓 Acil Durum Kilidi Kaldırıldı';
+      description = 'Kanallar tekrar kullanıma açıldı.';
+      type = 'success';
+      break;
+    case 'sync':
+    case 'cases_upserted':
+      title = 'Veriler Senkronize Edildi 🔄';
+      description = `Supabase veritabanı ${details.count || 'bazı'} ceza kaydı ile senkronize edildi.`;
+      type = 'success';
+      break;
+    case 'dispute_replied':
+    case 'message_replied':
+      title = 'İtiraza Yanıt Verildi ✉️';
+      description = `${log.target_id ? `Discord ID ${log.target_id}` : 'Yetkili'} itirazına yönetim tarafından yanıt yazıldı.`;
+      type = 'system';
+      break;
+    default:
+      if (log.action.includes('delete')) {
+        title = 'Kayıt Silindi';
+        description = `${log.action} işlemi gerçekleştirildi.`;
+        type = 'alert';
+      } else if (log.action.includes('update') || log.action.includes('edit')) {
+        title = 'Güncelleme Yapıldı';
+        description = `${log.action} işlemi gerçekleştirildi.`;
+        type = 'info';
+      }
+  }
+
+  return {
+    id: log.id,
+    title,
+    description,
+    type,
+    time: formatRelativeTime(log.created_at),
+    unread: true
+  };
+}
+
 export default function NotificationCenter({ isOpen, onClose }: NotificationCenterProps) {
-  const [notifications, setNotifications] = React.useState<NotificationItem[]>([
-    {
-      id: '1',
-      title: 'Supabase Eşleşmesi Başarılı',
-      description: 'Lutheus veritabanı bağlantısı kuruldu ve veriler senkronize edildi.',
-      type: 'success',
-      time: '1dk önce',
-      unread: true,
-    },
-    {
-      id: '2',
-      title: 'Yeni Mute Kaydı Tespit Edildi',
-      description: 'Yetkili [Deneme] RRwean tarafından bir kullanıcya mute uygulandı (#acZf7HC).',
-      type: 'alert',
-      time: '12dk önce',
-      unread: true,
-    },
-    {
-      id: '3',
-      title: 'Yetkili Kadrosu Güncellemesi',
-      description: 'Nadoo adlı yeni yetkilinin CUK başarı puanı %100 doğruluk oranına ulaştı.',
-      type: 'staff',
-      time: '1sa önce',
-      unread: false,
-    },
-    {
-      id: '4',
-      title: 'Sapphire Bot API Entegrasyonu',
-      description: 'Discord sunucu logları gerçek zamanlı olarak arayüze aktarılıyor.',
-      type: 'system',
-      time: '3sa önce',
-      unread: false,
-    },
-    {
-      id: '5',
-      title: 'Hatalı İtiraz Oranı Düştü',
-      description: 'Son 24 saat içinde moderatör işlem oranı daha dengeli seyrediyor.',
-      type: 'info',
-      time: '1gün önce',
-      unread: false,
+  const [notifications, setNotifications] = React.useState<NotificationItem[]>([]);
+  const [loading, setLoading] = React.useState(false);
+
+  const fetchLogs = async () => {
+    try {
+      const logs = await getAuditLogs(20);
+      const clearedIds = JSON.parse(localStorage.getItem('lutheus_cleared_notification_ids') || '[]');
+      const readIds = JSON.parse(localStorage.getItem('lutheus_read_notification_ids') || '[]');
+      
+      const mapped = logs
+        .filter((log: any) => !clearedIds.includes(log.id))
+        .map((log: any) => {
+          const item = mapAuditLogToNotification(log);
+          item.unread = !readIds.includes(log.id);
+          return item;
+        });
+      setNotifications(mapped);
+    } catch (err) {
+      console.error('Failed to fetch notifications from audit logs:', err);
     }
-  ]);
+  };
+
+  React.useEffect(() => {
+    if (!isOpen) return;
+    setLoading(true);
+    fetchLogs().finally(() => setLoading(false));
+
+    // Poll every 15 seconds
+    const interval = setInterval(fetchLogs, 15000);
+    return () => clearInterval(interval);
+  }, [isOpen]);
 
   const markAllAsRead = () => {
+    const ids = notifications.map(n => n.id);
+    const existingReadIds = JSON.parse(localStorage.getItem('lutheus_read_notification_ids') || '[]');
+    const newReadIds = Array.from(new Set([...existingReadIds, ...ids]));
+    localStorage.setItem('lutheus_read_notification_ids', JSON.stringify(newReadIds));
     setNotifications(prev => prev.map(n => ({ ...n, unread: false })));
   };
 
   const clearAll = () => {
+    const ids = notifications.map(n => n.id);
+    const existingCleared = JSON.parse(localStorage.getItem('lutheus_cleared_notification_ids') || '[]');
+    const newCleared = Array.from(new Set([...existingCleared, ...ids]));
+    localStorage.setItem('lutheus_cleared_notification_ids', JSON.stringify(newCleared));
     setNotifications([]);
   };
 
   const removeNotification = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
+    const existingCleared = JSON.parse(localStorage.getItem('lutheus_cleared_notification_ids') || '[]');
+    localStorage.setItem('lutheus_cleared_notification_ids', JSON.stringify([...existingCleared, id]));
     setNotifications(prev => prev.filter(n => n.id !== id));
   };
 
@@ -129,7 +226,7 @@ export default function NotificationCenter({ isOpen, onClose }: NotificationCent
             </div>
 
             {/* Quick Action controls */}
-            {notifications.length > 0 && (
+            {notifications.length > 0 && !loading && (
               <div className="px-5 py-2.5 bg-white/[0.01] border-b border-white/[0.03] flex items-center justify-between text-[11px] font-semibold text-white/50">
                 <button
                   onClick={markAllAsRead}
@@ -148,7 +245,12 @@ export default function NotificationCenter({ isOpen, onClose }: NotificationCent
 
             {/* Scrollable list of micro toasts */}
             <div className="flex-1 overflow-y-auto p-5 space-y-3 pretty-scrollbar">
-              {notifications.length === 0 ? (
+              {loading ? (
+                <div className="h-full flex flex-col items-center justify-center text-center p-8">
+                  <Loader2 className="w-8 h-8 text-primary animate-spin mb-3" />
+                  <span className="text-xs text-white/40 font-semibold">Bildirimler yükleniyor...</span>
+                </div>
+              ) : notifications.length === 0 ? (
                 <div className="h-full flex flex-col items-center justify-center text-center p-8 relative">
                   <div className="absolute inset-0 bg-radial-gradient from-[#5e5ce6]/3 via-transparent to-transparent opacity-60 pointer-events-none" />
                   <div className="w-12 h-12 rounded-full bg-white/[0.02] border border-white/5 flex items-center justify-center mb-4 text-white/20">

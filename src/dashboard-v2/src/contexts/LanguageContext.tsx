@@ -14,6 +14,8 @@ const translations: Record<Language, Record<string, string>> = {
   en: {
     // Navigation / AppLayout
     'nav.home': 'Home',
+    'nav.profile': 'Profile',
+    'nav.staffProfiles': 'Staff Profiles',
     'nav.cases': 'Cases',
     'nav.staff': 'Staff',
     'nav.scan': 'Scan',
@@ -25,7 +27,7 @@ const translations: Record<Language, Record<string, string>> = {
     'nav.botSetup': 'Bot Setup',
     'nav.settings': 'Settings',
     'nav.logout': 'Logout',
-    'nav.profile': 'Profile Details',
+    'nav.profileDetails': 'Profile Details',
     'nav.synced': 'Synced',
     'nav.pending': 'pending',
     'nav.syncing': 'Syncing...',
@@ -238,6 +240,8 @@ const translations: Record<Language, Record<string, string>> = {
   tr: {
     // Navigation / AppLayout
     'nav.home': 'Ana Sayfa',
+    'nav.profile': 'Profilim',
+    'nav.staffProfiles': 'Yetkili Profilleri',
     'nav.cases': 'Cezalar',
     'nav.staff': 'Yetkililer',
     'nav.scan': 'Tarama',
@@ -249,7 +253,7 @@ const translations: Record<Language, Record<string, string>> = {
     'nav.botSetup': 'Bot Ayarları',
     'nav.settings': 'Ayarlar',
     'nav.logout': 'Çıkış Yap',
-    'nav.profile': 'Profil Detayları',
+    'nav.profileDetails': 'Profil Detayları',
     'nav.synced': 'Senkronize',
     'nav.pending': 'bekleyen',
     'nav.syncing': 'Senkronize ediliyor...',

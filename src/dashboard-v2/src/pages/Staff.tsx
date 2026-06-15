@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { Search, RefreshCw, User, ShieldCheck, Plus, X, ArrowUpRight, ArrowDownRight, UserMinus, UserCheck, AlertTriangle } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
 import { Card } from '../components/ui/Card';
@@ -9,7 +10,7 @@ import { CopyButton } from '../components/ui/CopyButton';
 import { EmptyState } from '../components/ui/EmptyState';
 import { Input } from '../components/ui/Input';
 import { Button } from '../components/ui/Button';
-import { getCases, getStaffProfiles, SapphireCase, StaffProfile, updateStaffProfile } from '../lib/supabase';
+import { getCases, getStaffProfiles, SapphireCase, StaffProfile, updateStaffProfile, getStaffWarnings, addStaffWarning, deleteStaffWarning, StaffWarning } from '../lib/supabase';
 import { validateCase, getReliabilityStatus, calculatePerformanceScore } from '../lib/cukEngine';
 import { getRoleLabel, getRoleColor, hasPermission, isManagementRole, isManagementKadrosu } from '../lib/auth';
 import { formatDate } from '../lib/utils';
@@ -60,6 +61,34 @@ export default function Staff() {
   const canManageStaff = session ? hasPermission(session.role, 'staff:update') : false;
   const isSelfManagement = session ? isManagementKadrosu(session.role) : false;
   const isDirty = Object.keys(bufferedChanges).length > 0;
+
+  const [warnings, setWarnings] = useState<StaffWarning[]>([]);
+  const [warningsLoading, setWarningsLoading] = useState(false);
+  const [newWarningReason, setNewWarningReason] = useState('');
+  const [newWarningPoints, setNewWarningPoints] = useState(1);
+  const [newWarningMgmtNotes, setNewWarningMgmtNotes] = useState('');
+  const [submittingWarning, setSubmittingWarning] = useState(false);
+  const [showAddWarning, setShowAddWarning] = useState(false);
+
+  useEffect(() => {
+    setShowAddWarning(false);
+    if (!selected) {
+      setWarnings([]);
+      return;
+    }
+    async function loadWarnings() {
+      setWarningsLoading(true);
+      try {
+        const data = await getStaffWarnings(selected.discordId);
+        setWarnings(data);
+      } catch (err) {
+        console.error('Failed to load staff warnings:', err);
+      } finally {
+        setWarningsLoading(false);
+      }
+    }
+    loadWarnings();
+  }, [selected]);
 
   useEffect(() => {
     window.__lutheus_is_dirty = isDirty;
@@ -275,6 +304,43 @@ export default function Staff() {
 
   const handleCloseDrawer = () => {
     setSelected(null);
+  };
+
+  const handleAddWarning = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selected || !session) return;
+    if (!newWarningReason.trim()) return;
+
+    setSubmittingWarning(true);
+    try {
+      await addStaffWarning({
+        staff_discord_id: selected.discordId,
+        reason: newWarningReason,
+        points: newWarningPoints,
+        created_by: session.profile.displayName || session.profile.username || 'Yönetim',
+        management_notes: newWarningMgmtNotes.trim() || null,
+      });
+      setNewWarningReason('');
+      setNewWarningPoints(1);
+      setNewWarningMgmtNotes('');
+      // Reload warnings list
+      const data = await getStaffWarnings(selected.discordId);
+      setWarnings(data);
+    } catch (err: any) {
+      alert(`Uyarı eklenirken hata: ${err.message || err}`);
+    } finally {
+      setSubmittingWarning(false);
+    }
+  };
+
+  const handleDeleteWarning = async (id: string) => {
+    if (!selected || !window.confirm('Bu uyarıyı silmek istediğinize emin misiniz?')) return;
+    try {
+      await deleteStaffWarning(id);
+      setWarnings(prev => prev.filter(w => w.id !== id));
+    } catch (err: any) {
+      alert(`Uyarı silinirken hata: ${err.message || err}`);
+    }
   };
 
   const handleToggleActiveStatus = () => {
@@ -660,6 +726,54 @@ export default function Staff() {
                     <option value="kurucu">Kurucu</option>
                   </select>
                 </div>
+
+                {/* Last Promoted At input */}
+                <div className="space-y-1.5 pt-1.5">
+                  <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block">Son Terfi Tarihi</label>
+                  <input
+                    type="date"
+                    value={selected.profile?.last_promoted_at ? selected.profile.last_promoted_at.slice(0, 10) : ''}
+                    onChange={(e) => {
+                      const dateVal = e.target.value ? new Date(e.target.value).toISOString() : null;
+                      setBufferedChanges(prev => ({
+                        ...prev,
+                        [selected.discordId]: {
+                          ...prev[selected.discordId],
+                          last_promoted_at: dateVal
+                        }
+                      }));
+                      setSelected(prev => prev ? {
+                        ...prev,
+                        profile: prev.profile ? { ...prev.profile, last_promoted_at: dateVal } : null
+                      } : null);
+                    }}
+                    className="w-full h-9 px-2.5 rounded-xl bg-secondary/50 border border-border/50 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer"
+                  />
+                </div>
+
+                {/* Management Comments text area */}
+                <div className="space-y-1.5 pt-1.5">
+                  <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block">Yönetim Görüşleri / Notları</label>
+                  <textarea
+                    value={selected.profile?.management_comments || ''}
+                    placeholder="Yetkili hakkında görüşlerinizi yazın..."
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setBufferedChanges(prev => ({
+                        ...prev,
+                        [selected.discordId]: {
+                          ...prev[selected.discordId],
+                          management_comments: val
+                        }
+                      }));
+                      setSelected(prev => prev ? {
+                        ...prev,
+                        profile: prev.profile ? { ...prev.profile, management_comments: val } : null
+                      } : null);
+                    }}
+                    className="w-full h-20 p-2.5 rounded-xl bg-secondary/50 border border-border/50 text-xs text-[#E4E4E6] focus:outline-none focus:ring-1 focus:ring-primary resize-none"
+                  />
+                </div>
               </div>
             )}
 
@@ -682,6 +796,27 @@ export default function Staff() {
                   ))}
                 </div>
 
+                {/* Genel Yetkili Bilgileri */}
+                {(selected.profile?.last_promoted_at || selected.profile?.management_comments) && (
+                  <div className="p-4 rounded-2xl bg-secondary/15 border border-border/40 space-y-3 mt-4 animate-in fade-in slide-in-from-bottom-2 duration-200">
+                    <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Yetkili Bilgileri</div>
+                    {selected.profile?.last_promoted_at && (
+                      <div>
+                        <div className="text-[10px] text-muted-foreground uppercase">Son Terfi Tarihi</div>
+                        <div className="text-xs font-semibold text-foreground">{formatDate(selected.profile.last_promoted_at)}</div>
+                      </div>
+                    )}
+                    {selected.profile?.management_comments && (
+                      <div>
+                        <div className="text-[10px] text-muted-foreground uppercase">Yönetim Görüşleri</div>
+                        <div className="text-xs text-foreground italic mt-1 bg-background/30 p-2.5 rounded-lg border border-border/20 leading-relaxed">
+                          "{selected.profile.management_comments}"
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {/* Recent cases */}
                 {selected.recentCases.length > 0 && (
                   <div className="mt-4">
@@ -703,6 +838,127 @@ export default function Staff() {
                     </div>
                   </div>
                 )}
+
+                {/* Staff Warnings Section */}
+                <div className="pt-4 border-t border-border/40">
+                  <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3 flex items-center justify-between">
+                    <span>Resmi Uyarılar</span>
+                    <span className="text-xs font-mono font-bold text-amber-500 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-full">
+                      {warnings.reduce((sum, w) => sum + (w.points || 1), 0)} Puan
+                    </span>
+                  </div>
+
+                  {warningsLoading ? (
+                    <div className="text-xs text-muted-foreground italic py-2">Uyarılar yükleniyor...</div>
+                  ) : warnings.length === 0 ? (
+                    <div className="text-xs text-muted-foreground italic py-4 bg-secondary/10 border border-dashed border-border/50 rounded-xl text-center">
+                      Temiz! Bu yetkilinin henüz hiçbir uyarısı bulunmuyor.
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {warnings.map((w) => (
+                        <div key={w.id} className="p-3 rounded-xl bg-amber-500/5 border border-amber-500/15 flex flex-col gap-1.5 relative group/warn">
+                          <div className="flex items-start justify-between">
+                            <div>
+                              <div className="text-xs font-bold text-foreground">{w.reason}</div>
+                              <div className="text-[10px] text-muted-foreground mt-0.5">
+                                {formatDate(w.created_at)} • Yetkili: {w.created_by}
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-[10px] font-bold text-amber-400 bg-amber-400/10 border border-amber-400/20 px-1.5 py-0.5 rounded">
+                                {w.points} Puan
+                              </span>
+                              {session && isManagementRole(session.role) && (
+                                <button
+                                  onClick={() => handleDeleteWarning(w.id)}
+                                  className="text-[10px] font-bold text-destructive hover:underline opacity-0 group-hover/warn:opacity-100 transition-opacity"
+                                >
+                                  Sil
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                          {/* Management Notes (Visible ONLY to Management) */}
+                          {session && isManagementRole(session.role) && w.management_notes && (
+                            <div className="mt-1 p-2 rounded bg-destructive/10 border border-destructive/20 text-[11px] text-destructive-foreground">
+                              <span className="font-bold block text-[10px] uppercase tracking-wider mb-0.5">Yönetim Özel Notu:</span>
+                              {w.management_notes}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Add Warning Form (Collapsible, Visible ONLY to Management) */}
+                  {session && isManagementRole(session.role) && (
+                    <div className="mt-3">
+                      <button
+                        type="button"
+                        onClick={() => setShowAddWarning(!showAddWarning)}
+                        className="w-full py-2 px-3 rounded-xl bg-amber-500/10 hover:bg-amber-500/15 border border-amber-500/20 text-amber-400 text-xs font-bold transition-all flex items-center justify-between cursor-pointer"
+                      >
+                        <span>{showAddWarning ? '✕ Kapat' : '⚠️ Yeni Uyarı Ekle'}</span>
+                        <span className="text-[10px] opacity-60">{showAddWarning ? '▲' : '▼'}</span>
+                      </button>
+
+                      <AnimatePresence>
+                        {showAddWarning && (
+                          <motion.form 
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: 'auto' }}
+                            exit={{ opacity: 0, height: 0 }}
+                            transition={{ duration: 0.2, ease: 'easeOut' }}
+                            onSubmit={handleAddWarning} 
+                            className="mt-2.5 p-3 rounded-xl bg-secondary/20 border border-border/50 space-y-3 overflow-hidden"
+                          >
+                            <div className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Yeni Uyarı Ekle</div>
+                            <div className="grid grid-cols-3 gap-2">
+                              <div className="col-span-2">
+                                <input
+                                  type="text"
+                                  value={newWarningReason}
+                                  onChange={(e) => setNewWarningReason(e.target.value)}
+                                  placeholder="Uyarı sebebi..."
+                                  required
+                                  className="w-full h-8 px-2.5 rounded-lg bg-background/50 border border-border/50 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                                />
+                              </div>
+                              <div>
+                                <select
+                                  value={newWarningPoints}
+                                  onChange={(e) => setNewWarningPoints(Number(e.target.value))}
+                                  className="w-full h-8 px-2 rounded-lg bg-background/50 border border-border/50 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer"
+                                >
+                                  <option value="1">1 Puan</option>
+                                  <option value="2">2 Puan</option>
+                                  <option value="3">3 Puan</option>
+                                </select>
+                              </div>
+                            </div>
+                            <div>
+                              <input
+                                type="text"
+                                value={newWarningMgmtNotes}
+                                onChange={(e) => setNewWarningMgmtNotes(e.target.value)}
+                                placeholder="Yönetim özel notu (opsiyonel)..."
+                                className="w-full h-8 px-2.5 rounded-lg bg-background/50 border border-border/50 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                              />
+                            </div>
+                            <button
+                              type="submit"
+                              disabled={submittingWarning}
+                              className="w-full py-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 text-amber-400 text-xs font-bold transition-all disabled:opacity-50 cursor-pointer"
+                            >
+                              {submittingWarning ? 'Ekleniyor...' : 'Uyarıyı Uygula'}
+                            </button>
+                          </motion.form>
+                        )}
+                      </AnimatePresence>
+                    </div>
+                  )}
+                </div>
               </>
             ) : (
               <div className="p-4 rounded-xl bg-[#111112]/30 border border-white/[0.03] text-xs text-white/40 text-center italic">

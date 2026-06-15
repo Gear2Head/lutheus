@@ -25,7 +25,7 @@ export interface StaffProfileRow {
 
 export function buildSapphireCaseUrl(guildId: string | null | undefined, caseId: string): string {
     const gid = String(guildId || DEFAULT_GUILD_ID).trim();
-    return `https://dashboard.sapph.xyz/guilds/${gid}/moderation/cases/${encodeURIComponent(caseId)}`;
+    return `https://dashboard.sapph.xyz/${gid}/moderation/cases/${encodeURIComponent(caseId)}`;
 }
 
 export function buildLutheusCaseUrl(caseId: string): string {

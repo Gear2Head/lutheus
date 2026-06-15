@@ -1,4 +1,4 @@
-﻿import { AuthService } from '../auth/authService.js';
+import { AuthService } from '../auth/authService.js';
 import { APP_CONFIG } from '../config/appConfig.js';
 import { signPayload } from './hmac.js';
 
@@ -283,9 +283,10 @@ export const AdminApiClient = {
         });
     },
 
-    async requestAccess() {
+    async requestAccess(profileData = {}) {
         return request('/api/admin/request-access', {
-            method: 'POST'
+            method: 'POST',
+            body: JSON.stringify(profileData)
         });
     },
 
@@ -333,6 +334,12 @@ export const AdminApiClient = {
         return request('/api/admin/discord-bot-action', {
             method: 'POST',
             body: JSON.stringify({ guildId, action, payload })
+        });
+    },
+
+    async refreshExpiredUrls() {
+        return request('/api/admin/refresh-urls', {
+            method: 'POST'
         });
     }
 };

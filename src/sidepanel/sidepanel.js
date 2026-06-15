@@ -1358,6 +1358,53 @@ async function convertDiscordUrlToBase64(url) {
     }
 }
 
+async function uploadDiscordUrlToStorage(url, caseId) {
+    if (!url) return null;
+    const lowerUrl = url.toLowerCase();
+    if (!lowerUrl.includes('cdn.discordapp.com/attachments/') && !lowerUrl.includes('media.discordapp.net/attachments/')) {
+        return url;
+    }
+    try {
+        console.log(`[Lutheus] Fetching Discord attachment for Storage upload: ${url}`);
+        const response = await fetch(url);
+        if (!response.ok) {
+            throw new Error(`HTTP error ${response.status}`);
+        }
+        const blob = await response.blob();
+        const extension = url.split('.').pop().split('?')[0] || 'png';
+        const filename = `proofs/${caseId || 'unlinked'}_${Date.now()}.${extension}`;
+        
+        // Supabase upload URL
+        const uploadUrl = `https://jxhzhaqqtlynbnntwpyu.supabase.co/storage/v1/object/case-proofs/${filename}`;
+        const stored = await chrome.storage.local.get(['lutheusAuthSession']);
+        const token = stored.lutheusAuthSession?.idToken;
+        const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4aHpoYXFxdGx5bmJubnR3cHl1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk2NjMyMTcsImV4cCI6MjA5NTIzOTIxN30.BrmuT-QX_BkgV6SSlpNThfqSGmUDw0UffUW11agaBzI';
+
+        console.log(`[Lutheus] Uploading attachment to Supabase Storage: ${filename}`);
+        const uploadRes = await fetch(uploadUrl, {
+            method: 'POST',
+            headers: {
+                apikey: supabaseKey,
+                Authorization: `Bearer ${token}`,
+                'Content-Type': blob.type || 'image/png'
+            },
+            body: blob
+        });
+
+        if (!uploadRes.ok) {
+            throw new Error(`Upload failed: HTTP ${uploadRes.status} - ${await uploadRes.text()}`);
+        }
+
+        // Return the public URL
+        const publicUrl = `https://jxhzhaqqtlynbnntwpyu.supabase.co/storage/v1/object/public/case-proofs/${filename}`;
+        console.log(`[Lutheus] Upload successful. Public URL: ${publicUrl}`);
+        return publicUrl;
+    } catch (err) {
+        console.warn('[Lutheus] Storage upload failed, falling back to base64 conversion:', err);
+        return await convertDiscordUrlToBase64(url);
+    }
+}
+
 function executeScraping(tabId, token) {
     if (typeof chrome === 'undefined' || !chrome.scripting?.executeScript) {
         Toast.error('Eklenti', 'chrome.scripting API bulunamadi.');
@@ -1515,17 +1562,12 @@ function executeScraping(tabId, token) {
         const supabaseUrl = 'https://jxhzhaqqtlynbnntwpyu.supabase.co/rest/v1/case_proofs';
         const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4aHpoYXFxdGx5bmJubnR3cHl1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk2NjMyMTcsImV4cCI6MjA5NTIzOTIxN30.BrmuT-QX_BkgV6SSlpNThfqSGmUDw0UffUW11agaBzI';
         
-        // ── Çözümle: user_id → case_id ──────────────────────────────
+        // ── Çözümle: user_id → case_id ve Kalıcı Görsel Yükleme ──
         const rawProofs = [];
         for (const proof of scrapedResults) {
-            const base64Url = await convertDiscordUrlToBase64(proof.proof_url);
-            if (proof.case_id) {
-                rawProofs.push({
-                    case_id: proof.case_id,
-                    proof_url: base64Url,
-                    raw_text: proof.raw_text
-                });
-            } else if (proof.user_id) {
+            let targetCaseId = proof.case_id;
+            
+            if (!targetCaseId && proof.user_id) {
                 try {
                     const fetchUrl = `https://jxhzhaqqtlynbnntwpyu.supabase.co/rest/v1/sapphire_cases?punished_user_discord_id=eq.${proof.user_id}&order=created_at_sapphire.desc&limit=1`;
                     const res = await fetch(fetchUrl, {
@@ -1537,17 +1579,79 @@ function executeScraping(tabId, token) {
                     if (res.ok) {
                         const cases = await res.json();
                         if (cases && cases.length > 0) {
-                            rawProofs.push({
-                                case_id: cases[0].case_id,
-                                proof_url: base64Url,
-                                raw_text: proof.raw_text
-                            });
+                            targetCaseId = cases[0].case_id;
                         }
                     }
                 } catch (err) {
                     console.error(`Error resolving user ID ${proof.user_id} to case ID:`, err);
                 }
             }
+
+            if (!targetCaseId) {
+                console.warn(`[Lutheus] Kanit mesaji icin vaka ID'si cozumlenemedi, atlaniyor.`);
+                continue;
+            }
+
+            // Önce vaka varlığını doğrula ve yoksa minimal stub oluştur (Sıralı Kayıt Güvencesi)
+            try {
+                const checkUrl = `https://jxhzhaqqtlynbnntwpyu.supabase.co/rest/v1/sapphire_cases?case_id=eq.${targetCaseId}&select=case_id`;
+                const res = await fetch(checkUrl, {
+                    headers: {
+                        apikey: supabaseKey,
+                        Authorization: `Bearer ${token}`
+                    }
+                });
+                if (res.ok) {
+                    const existingCases = await res.json();
+                    if (existingCases.length === 0) {
+                        console.log(`[Lutheus] Vaka #${targetCaseId} bulunamadi, minimal stub olusturuluyor...`);
+                        const stubCase = {
+                            case_id: targetCaseId,
+                            guild_id: '1223431616081166336',
+                            case_url: `https://discord.com/channels/1223431616081166336/1445462327141863657`,
+                            reason_raw: 'Eklenti Taraması (Senkronizasyon Bekliyor)',
+                            reason_normalized: 'Diğer / Yönetim Kararı',
+                            reason_parse_status: 'parsed',
+                            is_permanent: true,
+                            duration_parse_status: 'parsed',
+                            created_parse_status: 'parsed',
+                            conflict_detected: false,
+                            cuk_flags: {},
+                            is_stale: false,
+                            raw_payload: {},
+                            scraped_at: new Date().toISOString(),
+                            updated_at: new Date().toISOString(),
+                            punished_user_discord_id: proof.user_id || null
+                        };
+                        const upsertRes = await fetch('https://jxhzhaqqtlynbnntwpyu.supabase.co/rest/v1/sapphire_cases', {
+                            method: 'POST',
+                            headers: {
+                                apikey: supabaseKey,
+                                Authorization: `Bearer ${token}`,
+                                'Content-Type': 'application/json',
+                                'Prefer': 'resolution=merge-duplicates'
+                            },
+                            body: JSON.stringify(stubCase)
+                        });
+                        if (!upsertRes.ok) {
+                            console.warn(`[Lutheus] Stub case upsert failed for ${targetCaseId}:`, await upsertRes.text());
+                        } else {
+                            console.log(`[Lutheus] Stub case upserted successfully for #${targetCaseId}.`);
+                        }
+                    }
+                }
+            } catch (err) {
+                console.error(`Error checking/upserting case ID ${targetCaseId} existence:`, err);
+            }
+
+            // Discord CDN URL'sini Supabase Storage'a kalıcı olarak yükle
+            const permanentUrl = await uploadDiscordUrlToStorage(proof.proof_url, targetCaseId);
+
+            rawProofs.push({
+                case_id: targetCaseId,
+                proof_url: permanentUrl,
+                raw_text: proof.raw_text
+            });
         }
 
         // ── Dedup: aynı batch'te duplicate satır varsa PostgreSQL CONFLICT hatası verir ──

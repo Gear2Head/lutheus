@@ -12,7 +12,10 @@ import {
     ActionRowBuilder,
     ButtonBuilder,
     ButtonStyle,
-    ChannelType as DCChannelType
+    ChannelType as DCChannelType,
+    ModalBuilder,
+    TextInputBuilder,
+    TextInputStyle
 } from 'discord.js';
 import {
     callGroq,
@@ -538,7 +541,7 @@ async function pollInvalidCasesAlerts() {
         if (authorIds.length > 0) {
             const { data: authorProfiles } = await supabase
                 .from('staff_profiles')
-                .select('discord_id, username, in_game_name, display_name')
+                .select('discord_id, username, display_name')
                 .in('discord_id', authorIds);
             for (const profile of authorProfiles || []) {
                 staffById.set(profile.discord_id, profile);
@@ -603,6 +606,96 @@ async function pollInvalidCasesAlerts() {
     }
 }
 
+async function pollStaffMessages() {
+    try {
+        const { data: messages, error } = await supabase
+            .from('staff_messages')
+            .select('*')
+            .eq('alert_sent', false)
+            .eq('created_by', 'staff');
+
+        if (error || !messages || messages.length === 0) return;
+
+        // Fetch active senior staff members to send DMs
+        const { data: staffList } = await supabase
+            .from('staff_profiles')
+            .select('discord_id, staff_rank, is_active_staff')
+            .eq('is_active_staff', true);
+
+        const seniorRanks = ['kurucu', 'admin', 'yonetici', 'genel_sorumlu', 'discord_yoneticisi', 'kidemli_discord_moderatoru', 'senior_moderator'];
+        const activeSeniors = (staffList || []).filter(s => {
+            const rank = String(s.staff_rank || '').toLowerCase();
+            return s.is_active_staff === true && seniorRanks.includes(rank);
+        });
+
+        // Also fetch profile of the sender to get their display name
+        const authorIds = [...new Set(messages.map(m => m.staff_discord_id).filter(Boolean))];
+        const staffById = new Map<string, any>();
+        if (authorIds.length > 0) {
+            const { data: authorProfiles } = await supabase
+                .from('staff_profiles')
+                .select('discord_id, username, display_name')
+                .in('discord_id', authorIds);
+            for (const profile of authorProfiles || []) {
+                staffById.set(profile.discord_id, profile);
+            }
+        }
+
+        for (const msg of messages) {
+            const staffProfile = staffById.get(msg.staff_discord_id);
+            const authorName = staffProfile ? (staffProfile.display_name || staffProfile.username) : msg.staff_discord_id;
+
+            const embed = new EmbedBuilder()
+                .setTitle('📬 Yönetime Yeni Mesaj (Dispute / Destek)')
+                .setColor(0x3b82f6)
+                .addFields(
+                    { name: 'Gönderen Yetkili', value: `<@${msg.staff_discord_id}> (${authorName})`, inline: true },
+                    { name: 'Gönderilme Tarihi', value: new Date(msg.created_at).toLocaleString('tr-TR'), inline: true },
+                    { name: 'Mesaj', value: msg.message }
+                )
+                .setTimestamp();
+
+            const row = new ActionRowBuilder<ButtonBuilder>()
+                .addComponents(
+                    new ButtonBuilder()
+                        .setCustomId(`dispute_reply:${msg.id}`)
+                        .setLabel('Yanıtla (Reply)')
+                        .setStyle(ButtonStyle.Primary)
+                );
+
+            // Send to log channel
+            const targetChannelId = logChannelId;
+            if (targetChannelId) {
+                const channel = await client.channels.fetch(targetChannelId).catch(() => null);
+                if (channel && channel.isTextBased()) {
+                    await (channel as any).send({ embeds: [embed], components: [row] }).catch(() => null);
+                }
+            }
+
+            // Send DM to active senior staff
+            for (const senior of activeSeniors) {
+                if (!senior.discord_id || senior.discord_id === msg.staff_discord_id) continue;
+                try {
+                    const user = await client.users.fetch(senior.discord_id).catch(() => null);
+                    if (user) {
+                        await user.send({ embeds: [embed] }).catch(() => null);
+                    }
+                } catch (dmErr) {
+                    // Ignore DM errors
+                }
+            }
+
+            // Mark as alert sent
+            await supabase
+                .from('staff_messages')
+                .update({ alert_sent: true })
+                .eq('id', msg.id);
+        }
+    } catch (err: any) {
+        console.error('Discord Bot: pollStaffMessages failed:', err.message);
+    }
+}
+
 let lastProcessedTime = new Date().toISOString();
 let lastTriggerTimestamp = 0;
 
@@ -612,6 +705,10 @@ function startSupabasePolling() {
     // Poll invalid cases alerts every 15 seconds
     pollInvalidCasesAlerts();
     setInterval(pollInvalidCasesAlerts, 15000);
+
+    // Poll staff messages every 15 seconds
+    pollStaffMessages();
+    setInterval(pollStaffMessages, 15000);
 
     // Sapphire case polling has been removed as requested.
 
@@ -1969,16 +2066,18 @@ async function refreshExpiredProofUrls() {
         console.log(`Discord Bot: Found ${allUrls.length} Discord CDN URLs to refresh.`);
 
         const batchSize = 50;
-        const refreshedMap: Map<string, string> = new Map();
+        let successCount = 0;
 
         for (let i = 0; i < allUrls.length; i += batchSize) {
             if (i > 0) {
-                // Throttling: Delay for 1.5s between API batches to avoid Discord rate limit (429)
-                console.log('Discord Bot: Pacing requests, waiting 1.5 seconds...');
-                await new Promise(resolve => setTimeout(resolve, 1500));
+                // Throttling: Delay for 3.0s between API batches to avoid Discord rate limit (429)
+                console.log('Discord Bot: Pacing requests, waiting 3.0 seconds...');
+                await new Promise(resolve => setTimeout(resolve, 3000));
             }
 
             const batch = allUrls.slice(i, i + batchSize);
+            const batchRefreshedMap: Map<string, string> = new Map();
+
             try {
                 const response = await fetch('https://discord.com/api/v10/attachments/refresh-urls', {
                     method: 'POST',
@@ -1998,75 +2097,87 @@ async function refreshExpiredProofUrls() {
                 const result = await response.json() as { refreshed_urls: { original: string; refreshed: string }[] };
                 if (result && Array.isArray(result.refreshed_urls)) {
                     for (const item of result.refreshed_urls) {
-                        refreshedMap.set(item.original, item.refreshed);
+                        batchRefreshedMap.set(item.original, item.refreshed);
                     }
                 }
             } catch (err: any) {
                 console.error(`Discord Bot: Network error during URL refresh batch:`, err.message);
+                continue;
             }
-        }
 
-        const caseUpdates: Map<string, any> = new Map();
+            if (batchRefreshedMap.size === 0) continue;
 
-        for (const [originalUrl, refreshedUrl] of refreshedMap.entries()) {
-            const mappings = urlToProofsMap.get(originalUrl);
-            if (!mappings) continue;
+            const caseUpdates: Map<string, any> = new Map();
 
-            for (const mapping of mappings) {
-                if (!caseUpdates.has(mapping.caseId)) {
-                    const originalProof = proofs.find(p => p.case_id === mapping.caseId);
+            for (const [originalUrl, refreshedUrl] of batchRefreshedMap.entries()) {
+                const mappings = urlToProofsMap.get(originalUrl);
+                if (!mappings) continue;
+
+                for (const mapping of mappings) {
+                    if (!caseUpdates.has(mapping.caseId)) {
+                        const originalProof = proofs.find(p => p.case_id === mapping.caseId);
+                        if (originalProof) {
+                            caseUpdates.set(mapping.caseId, {
+                                proof_url: originalProof.proof_url,
+                                video_url: originalProof.video_url,
+                                thumbnail_url: originalProof.thumbnail_url,
+                                additional_proofs: originalProof.additional_proofs ? JSON.parse(JSON.stringify(originalProof.additional_proofs)) : null
+                            });
+                        }
+                    }
+
+                    const updateObj = caseUpdates.get(mapping.caseId);
+                    if (updateObj) {
+                        if (mapping.field === 'proof_url') {
+                            updateObj.proof_url = refreshedUrl;
+                        } else if (mapping.field === 'video_url') {
+                            updateObj.video_url = refreshedUrl;
+                        } else if (mapping.field === 'thumbnail_url') {
+                            updateObj.thumbnail_url = refreshedUrl;
+                        } else if (mapping.field === 'additional_proofs' && typeof mapping.index === 'number') {
+                            if (updateObj.additional_proofs && updateObj.additional_proofs[mapping.index]) {
+                                updateObj.additional_proofs[mapping.index].proof_url = refreshedUrl;
+                            }
+                        } else if (mapping.field === 'additional_proofs_video' && typeof mapping.index === 'number') {
+                            if (updateObj.additional_proofs && updateObj.additional_proofs[mapping.index]) {
+                                updateObj.additional_proofs[mapping.index].video_url = refreshedUrl;
+                            }
+                        } else if (mapping.field === 'additional_proofs_thumbnail' && typeof mapping.index === 'number') {
+                            if (updateObj.additional_proofs && updateObj.additional_proofs[mapping.index]) {
+                                updateObj.additional_proofs[mapping.index].thumbnail_url = refreshedUrl;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Immediately write this batch's updates to Supabase
+            for (const [caseId, updateData] of caseUpdates.entries()) {
+                const { error: updateError } = await supabase
+                    .from('case_proofs')
+                    .update({
+                        proof_url: updateData.proof_url,
+                        video_url: updateData.video_url,
+                        thumbnail_url: updateData.thumbnail_url,
+                        additional_proofs: updateData.additional_proofs,
+                        updated_at: new Date().toISOString()
+                    })
+                    .eq('case_id', caseId);
+
+                if (updateError) {
+                    console.error(`Discord Bot: Failed to update proof for case #${caseId} in batch:`, updateError.message);
+                } else {
+                    successCount++;
+                    // Update our in-memory cache of proofs, so if another URL is in the same case in a later batch, it has the updated fields.
+                    const originalProof = proofs.find(p => p.case_id === caseId);
                     if (originalProof) {
-                        caseUpdates.set(mapping.caseId, {
-                            proof_url: originalProof.proof_url,
-                            video_url: originalProof.video_url,
-                            thumbnail_url: originalProof.thumbnail_url,
-                            additional_proofs: originalProof.additional_proofs ? JSON.parse(JSON.stringify(originalProof.additional_proofs)) : null
-                        });
+                        originalProof.proof_url = updateData.proof_url;
+                        originalProof.video_url = updateData.video_url;
+                        originalProof.thumbnail_url = updateData.thumbnail_url;
+                        originalProof.additional_proofs = updateData.additional_proofs;
+                        (originalProof as any).updated_at = new Date().toISOString();
                     }
                 }
-
-                const updateObj = caseUpdates.get(mapping.caseId);
-                if (updateObj) {
-                    if (mapping.field === 'proof_url') {
-                        updateObj.proof_url = refreshedUrl;
-                    } else if (mapping.field === 'video_url') {
-                        updateObj.video_url = refreshedUrl;
-                    } else if (mapping.field === 'thumbnail_url') {
-                        updateObj.thumbnail_url = refreshedUrl;
-                    } else if (mapping.field === 'additional_proofs' && typeof mapping.index === 'number') {
-                        if (updateObj.additional_proofs && updateObj.additional_proofs[mapping.index]) {
-                            updateObj.additional_proofs[mapping.index].proof_url = refreshedUrl;
-                        }
-                    } else if (mapping.field === 'additional_proofs_video' && typeof mapping.index === 'number') {
-                        if (updateObj.additional_proofs && updateObj.additional_proofs[mapping.index]) {
-                            updateObj.additional_proofs[mapping.index].video_url = refreshedUrl;
-                        }
-                    } else if (mapping.field === 'additional_proofs_thumbnail' && typeof mapping.index === 'number') {
-                        if (updateObj.additional_proofs && updateObj.additional_proofs[mapping.index]) {
-                            updateObj.additional_proofs[mapping.index].thumbnail_url = refreshedUrl;
-                        }
-                    }
-                }
-            }
-        }
-
-        let successCount = 0;
-        for (const [caseId, updateData] of caseUpdates.entries()) {
-            const { error: updateError } = await supabase
-                .from('case_proofs')
-                .update({
-                    proof_url: updateData.proof_url,
-                    video_url: updateData.video_url,
-                    thumbnail_url: updateData.thumbnail_url,
-                    additional_proofs: updateData.additional_proofs,
-                    updated_at: new Date().toISOString()
-                })
-                .eq('case_id', caseId);
-
-            if (updateError) {
-                console.error(`Discord Bot: Failed to update proof for case #${caseId}:`, updateError.message);
-            } else {
-                successCount++;
             }
         }
 
@@ -2095,6 +2206,123 @@ if (botToken) {
     startHealthServer();
     console.error('Discord Bot: MISSING_DISCORD_BOT_TOKEN');
 }
+
+client.on('interactionCreate', async (interaction) => {
+    if (interaction.isButton()) {
+        const customId = interaction.customId;
+        if (customId.startsWith('dispute_reply:')) {
+            const messageId = customId.split(':')[1];
+            
+            // Check if user is active staff and management role
+            try {
+                const { data: approverProfile } = await supabase
+                    .from('staff_profiles')
+                    .select('staff_rank, access_status')
+                    .eq('discord_id', interaction.user.id)
+                    .maybeSingle();
+                
+                const approverRank = approverProfile ? approverProfile.staff_rank : 'pending';
+                const isAuthorized = approverProfile && approverProfile.access_status === 'approved' && isUstYonetim(approverRank);
+                
+                if (!isAuthorized) {
+                    await interaction.reply({ content: '❌ Bu işlemi yapmaya yetkiniz yok!', ephemeral: true });
+                    return;
+                }
+            } catch (err: any) {
+                console.error('Error verifying reply authority:', err);
+                await interaction.reply({ content: `❌ Yetki kontrolü başarısız oldu: \`${err.message || err}\``, ephemeral: true });
+                return;
+            }
+
+            const modal = new ModalBuilder()
+                .setCustomId(`dispute_reply_modal:${messageId}`)
+                .setTitle('Yönetim Yanıtı');
+
+            const responseInput = new TextInputBuilder()
+                .setCustomId('dispute_response_input')
+                .setLabel('Yanıtınız')
+                .setStyle(TextInputStyle.Paragraph)
+                .setRequired(true)
+                .setMaxLength(1000);
+
+            const firstActionRow = new ActionRowBuilder<TextInputBuilder>().addComponents(responseInput);
+            modal.addComponents(firstActionRow);
+
+            await interaction.showModal(modal);
+        }
+    } else if (interaction.isModalSubmit()) {
+        const customId = interaction.customId;
+        if (customId.startsWith('dispute_reply_modal:')) {
+            const messageId = customId.split(':')[1];
+            const responseText = interaction.fields.getTextInputValue('dispute_response_input');
+
+            await interaction.deferReply({ ephemeral: true });
+
+            try {
+                // Fetch the original message to get sender's discord id and content
+                const { data: originalMsg, error: fetchErr } = await supabase
+                    .from('staff_messages')
+                    .select('*')
+                    .eq('id', messageId)
+                    .maybeSingle();
+
+                if (fetchErr || !originalMsg) {
+                    await interaction.editReply({ content: '❌ Orijinal mesaj bulunamadı veya bir veri tabanı hatası oluştu.' });
+                    return;
+                }
+
+                // Update row in DB
+                const { error: updateErr } = await supabase
+                    .from('staff_messages')
+                    .update({
+                        response: responseText,
+                        responded_at: new Date().toISOString(),
+                        responded_by: interaction.user.tag
+                    })
+                    .eq('id', messageId);
+
+                if (updateErr) {
+                    throw updateErr;
+                }
+
+                // Notify target staff member via DM
+                const staffUser = await client.users.fetch(originalMsg.staff_discord_id).catch(() => null);
+                if (staffUser) {
+                    const replyEmbed = new EmbedBuilder()
+                        .setTitle('✉️ Yönetimden Mesajınıza Yanıt Geldi')
+                        .setColor(0x2ed573)
+                        .addFields(
+                            { name: 'Orijinal Mesajınız', value: originalMsg.message },
+                            { name: 'Yönetim Yanıtı', value: responseText },
+                            { name: 'Yanıtlayan', value: `<@${interaction.user.id}>` }
+                        )
+                        .setTimestamp();
+                    await staffUser.send({ embeds: [replyEmbed] }).catch(() => null);
+                }
+
+                // Update the original message log in the channel (remove buttons and show reply status)
+                if (interaction.message) {
+                    const originalEmbed = interaction.message.embeds[0];
+                    if (originalEmbed) {
+                        const updatedEmbed = EmbedBuilder.from(originalEmbed)
+                            .setColor(0x2ed573)
+                            .setTitle('📬 Yönetime Mesaj (Yanıtlandı ✅)')
+                            .addFields(
+                                { name: 'Yanıt', value: responseText },
+                                { name: 'Yanıtlayan', value: `<@${interaction.user.id}>` }
+                            );
+                        await interaction.message.edit({ embeds: [updatedEmbed], components: [] }).catch(() => null);
+                    }
+                }
+
+                await interaction.editReply({ content: '✅ Yanıtınız kaydedildi ve yetkiliye DM olarak gönderildi!' });
+            } catch (err: any) {
+                console.error('Error handling dispute modal reply:', err);
+                await interaction.editReply({ content: `❌ Yanıt gönderilirken bir hata oluşlu: \`${err.message || err}\`` });
+            }
+        }
+    }
+});
 
 process.on('unhandledRejection', (reason: any) => {
     lastError = classifyDiscordError(reason);

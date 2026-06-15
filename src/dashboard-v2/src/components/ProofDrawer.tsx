@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   X, Image as ImageIcon, FileText, Sparkles, Loader2, 
@@ -472,7 +473,9 @@ export default function ProofDrawer({
     </>
   );
 
-  return (
+  if (typeof document === 'undefined') return null;
+
+  return createPortal(
     <AnimatePresence>
       {caseId && (
         <>
@@ -490,7 +493,7 @@ export default function ProofDrawer({
                 initial={{ opacity: 0, scale: 0.96, y: 16 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.96, y: 16 }}
-                transition={{ type: 'spring', damping: 26, stiffness: 260 }}
+                transition={{ type: 'spring', stiffness: 300, damping: 30 }}
                 className={`fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-lg z-50 shadow-2xl flex flex-col rounded-2xl max-h-[88vh] ${getGlassClass(intensity, theme)}`}
               >
                 {drawerContent}
@@ -510,7 +513,7 @@ export default function ProofDrawer({
                 initial={{ x: '100%' }}
                 animate={{ x: 0 }}
                 exit={{ x: '100%' }}
-                transition={{ type: 'spring', damping: 26, stiffness: 220 }}
+                transition={{ type: 'spring', stiffness: 300, damping: 30 }}
                 className={`fixed top-0 right-0 h-full w-full sm:w-[480px] z-50 shadow-2xl flex flex-col ${getGlassClass(intensity, theme)}`}
               >
                 {drawerContent}
@@ -519,6 +522,7 @@ export default function ProofDrawer({
           )}
         </>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body
   );
 }

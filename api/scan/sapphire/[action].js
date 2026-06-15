@@ -9,6 +9,12 @@ const SESSION_LOCKOUT_MS = 15 * 60 * 1000;
 const ACTIVE_SESSION_STATUSES = ['pending', 'running'];
 const INGEST_CHUNK_SIZE = 100;
 
+const UNKNOWN_NAME_RE = /^(unknown\s*user|unknown|bilinmeyen\s*kullan[iı]c[iı]|bilinmeyen\s*kullanici|bilinmeyen|unknown\s*moderator|bilinmeyen\s*yetkili)$/i;
+function isUnknownName(name) {
+    if (!name || name.trim() === '') return true;
+    return UNKNOWN_NAME_RE.test(name.trim());
+}
+
 function canForceStartScan(role) {
     const normalized = normalizeRole(role);
     return normalized === ROLES.KURUCU || normalized === ROLES.ADMIN;
@@ -93,7 +99,7 @@ function dbRowToDomain(row) {
         guildId: row.guild_id,
         caseId: row.case_id,
         userId: row.punished_user_discord_id || '',
-        userName: row.punished_user_display_name || null,
+        userName: isUnknownName(row.punished_user_display_name) ? null : (row.punished_user_display_name || null),
         userAvatar: row.punished_user_avatar_url || null,
         authorId: row.author_discord_id || '',
         authorName: row.author_display_name || null,

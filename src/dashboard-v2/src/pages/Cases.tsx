@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { useLocation, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -7,11 +8,11 @@ import {
   User, ShieldCheck, Share2, Filter, Zap, ChevronLeft, ChevronRight,
   Eye
 } from 'lucide-react';
-import { getCases, getStaffProfiles, SapphireCase, StaffProfile, bulkUpdateVerdict, updateCaseVerdict } from '../lib/supabase';
+import { getCases, getStaffProfiles, SapphireCase, StaffProfile, bulkUpdateVerdict, updateCaseVerdict, deleteCase } from '../lib/supabase';
 import ProofDrawer from '../components/ProofDrawer';
 import { validateCase } from '../lib/cukEngine';
 import { useAuth } from '../contexts/AuthContext';
-import { hasPermission } from '../lib/auth';
+import { hasPermission, isManagementRole } from '../lib/auth';
 import { minutesToHuman, relativeTime, parseDateSafe, formatDate, isPenaltyActive } from '../lib/utils';
 import { useToast } from '../contexts/ToastContext';
 import { resolveStaffName, resolveStaffAvatar } from '../lib/staffDisplay';
@@ -36,6 +37,7 @@ export default function Cases() {
   const [staff, setStaff] = useState<StaffProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const [search, setSearch] = useState('');
   const [verdictFilter, setVerdictFilter] = useState<'all' | 'valid' | 'invalid' | 'pending'>('all');
@@ -107,6 +109,7 @@ export default function Cases() {
 
   const loadData = async (refresh = false) => {
     if (refresh) setRefreshing(true); else setLoading(true);
+    setError(null);
     try {
       const [casesData, staffData] = await Promise.all([
         getCases(300),
@@ -117,7 +120,8 @@ export default function Cases() {
       if (refresh) {
         showToast(language === 'tr' ? 'Cezalar başarıyla güncellendi' : 'Cases refreshed successfully', 'success');
       }
-    } catch (err) {
+    } catch (err: any) {
+      setError(err?.message || String(err));
       showToast('Veriler yüklenirken hata oluştu', 'error');
     } finally {
       setLoading(false);
@@ -277,6 +281,28 @@ export default function Cases() {
     }
   };
 
+  const handleDeleteCase = async (c: SapphireCase) => {
+    if (!session || !isManagementRole(session.role)) {
+      showToast('Bu işlemi gerçekleştirmek için yetkiniz yok', 'error');
+      return;
+    }
+    if (!window.confirm(`Case #${c.case_id} silinecektir. Emin misiniz?`)) return;
+
+    setCaseUpdating(c.case_id);
+    try {
+      await deleteCase(c.case_id);
+      showToast(`Case #${c.case_id} başarıyla silindi`, 'success');
+      setCases((prev) => prev.filter((p) => p.case_id !== c.case_id));
+      if (selectedCase?.case_id === c.case_id) {
+        setSelectedCase(null);
+      }
+    } catch (err: any) {
+      showToast(`Hata: ${err.message || err}`, 'error');
+    } finally {
+      setCaseUpdating(null);
+    }
+  };
+
   const toggleSelect = (id: string) => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
@@ -322,9 +348,15 @@ export default function Cases() {
   );
 
   const pendingCount = cases.filter((c) => c.cuk_verdict === 'pending').length;
+  const isDrawerOpen = proofCaseId !== null || selectedCase !== null;
 
   return (
-    <div className="p-6 md:p-8 w-full min-h-screen flex flex-col relative select-none text-left">
+    <>
+      <motion.div 
+        animate={{ scale: isDrawerOpen ? 0.98 : 1, filter: isDrawerOpen ? 'blur(3px)' : 'blur(0px)' }}
+        transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+        className="p-6 md:p-8 w-full min-h-screen flex flex-col relative select-none text-left"
+      >
       
       {/* Top Section Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4 border-b border-white/[0.04] pb-6">
@@ -531,6 +563,32 @@ export default function Cases() {
             <tbody className="divide-y divide-white/[0.02]">
               {loading ? (
                 <TableSkeleton />
+              ) : error ? (
+                <tr>
+                  <td colSpan={8} className="py-20 px-4 text-center">
+                    <motion.div 
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="flex flex-col items-center justify-center max-w-md mx-auto"
+                    >
+                      <div className="w-12 h-12 rounded-xl bg-red-500/10 border border-red-500/20 flex items-center justify-center mb-4 text-red-500">
+                        <AlertCircle size={20} />
+                      </div>
+                      <h4 className="text-sm font-bold text-white mb-2">{language === 'tr' ? 'Veri Yükleme Hatası' : 'Data Loading Error'}</h4>
+                      <p className="text-xs text-white/50 mb-6 leading-relaxed">
+                        {language === 'tr' 
+                          ? 'Cezalar ve yetkili profilleri Supabase sunucusundan çekilemedi. Lütfen internet bağlantınızı kontrol edip tekrar deneyin.' 
+                          : 'Failed to fetch cases and staff profiles from Supabase. Please check your internet connection and try again.'}
+                      </p>
+                      <button
+                        onClick={() => loadData(false)}
+                        className="px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-xs font-bold text-white transition-colors cursor-pointer"
+                      >
+                        {language === 'tr' ? 'Yeniden Dene' : 'Try Again'}
+                      </button>
+                    </motion.div>
+                  </td>
+                </tr>
               ) : paginated.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="py-20 px-4 text-center relative overflow-hidden">
@@ -716,96 +774,90 @@ export default function Cases() {
           </div>
         </div>
       </div>
+      </motion.div>
 
       {/* Details Side-Drawer */}
-      <AnimatePresence>
-        {selectedCase && (
-          <>
-            {/* Backdrop Blur Overlay */}
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setSelectedCase(null)}
-              className="fixed inset-0 bg-black/60 backdrop-blur-xs z-40 cursor-pointer"
-            />
-            
-            {/* Slide-in glassmorphic drawer */}
-            <motion.div 
-              initial={{ x: '100%', opacity: 0.9 }}
-              animate={{ x: 0, opacity: 1 }}
-              exit={{ x: '100%', opacity: 0.9 }}
-              transition={{ type: 'spring', stiffness: 380, damping: 34, mass: 0.9 }}
-              className="fixed right-0 top-0 bottom-0 w-full sm:w-[500px] bg-[#0A0A0C]/90 backdrop-blur-3xl z-50 border-l border-white/[0.08] shadow-[20px_0_60px_-15px_rgba(0,0,0,0.5)] flex flex-col overflow-hidden"
-            >
-              {/* Header Details */}
-              <div className="p-6 border-b border-white/[0.05] flex items-center justify-between bg-black/20">
-                <div className="flex items-center gap-2.5">
-                  <div className="p-2 rounded-lg bg-white/5 border border-white/5 text-[#5E5CE6]">
-                    <MessageSquare size={16} />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <button 
-                        onClick={() => openSapphireCase(selectedCase)}
-                        className="text-[13px] font-mono font-bold text-[#5E5CE6] hover:text-[#A259FE] hover:underline cursor-pointer flex items-center gap-1"
-                        title="Sapphire Panelinde Göster"
-                      >
-                        #{selectedCase.case_id}
-                        <ExternalLink size={10} className="opacity-60" />
-                      </button>
-                      <span className={`status-badge ${selectedCase.cuk_verdict === 'valid' ? 'success' : selectedCase.cuk_verdict === 'invalid' ? 'danger' : 'neutral'} scale-90`}>
-                        {selectedCase.cuk_verdict === 'valid' ? 'DOĞRU' : selectedCase.cuk_verdict === 'invalid' ? 'HATALI' : 'BEKLEYEN'}
-                      </span>
+      {typeof document !== 'undefined' && createPortal(
+        <AnimatePresence>
+          {selectedCase && (
+            <>
+              {/* Backdrop Blur Overlay */}
+              <motion.div 
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={() => setSelectedCase(null)}
+                className="fixed inset-0 bg-black/60 backdrop-blur-xs z-40 cursor-pointer"
+              />
+              
+              {/* Slide-in glassmorphic drawer */}
+              <motion.div 
+                initial={{ x: '100%', opacity: 0.9 }}
+                animate={{ x: 0, opacity: 1 }}
+                exit={{ x: '100%', opacity: 0.9 }}
+                transition={{ type: 'spring', stiffness: 300, damping: 28 }}
+                className="fixed right-0 top-0 bottom-0 w-full sm:w-[500px] bg-[#0A0A0C]/95 backdrop-blur-3xl z-50 border-l border-white/[0.08] shadow-[20px_0_60px_-15px_rgba(0,0,0,0.5)] flex flex-col overflow-hidden"
+              >
+                {/* Header Details */}
+                <div className="p-6 border-b border-white/[0.05] flex items-center justify-between bg-black/20">
+                  <div className="flex items-center gap-2.5">
+                    <div className="p-2 rounded-lg bg-white/5 border border-white/5 text-[#5E5CE6]">
+                      <MessageSquare size={16} />
                     </div>
-                    <p className="text-[11px] text-white/40 mt-0.5 tracking-wider font-mono uppercase">{selectedCase.type} • DETAYLAR</p>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <button 
+                          onClick={() => openSapphireCase(selectedCase)}
+                          className="text-[13px] font-mono font-bold text-[#5E5CE6] hover:text-[#A259FE] hover:underline cursor-pointer flex items-center gap-1"
+                          title="Sapphire Panelinde Göster"
+                        >
+                          #{selectedCase.case_id}
+                          <ExternalLink size={10} className="opacity-60" />
+                        </button>
+                        <span className={`status-badge ${selectedCase.cuk_verdict === 'valid' ? 'success' : selectedCase.cuk_verdict === 'invalid' ? 'danger' : 'neutral'} scale-90`}>
+                          {selectedCase.cuk_verdict === 'valid' ? 'DOĞRU' : selectedCase.cuk_verdict === 'invalid' ? 'HATALI' : 'BEKLEYEN'}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-white/40 mt-0.5 tracking-wider font-mono uppercase">{selectedCase.type} • DETAYLAR</p>
+                    </div>
                   </div>
-                </div>
-                
-                <button 
-                  onClick={() => setSelectedCase(null)} 
-                  className="w-8 h-8 rounded-full hover:bg-white/5 border border-transparent hover:border-white/10 flex items-center justify-center text-white/40 hover:text-white transition-colors"
-                >
-                  <X size={16} />
-                </button>
-              </div>
-
-              {/* Scrollable details container */}
-              <div className="flex-1 overflow-y-auto p-6 space-y-6">
-                
-                {/* Users list info */}
-                <div className="space-y-3">
-                  <span className="text-[10px] font-bold text-white/40 uppercase tracking-widest block">Kullanıcı İlişkileri</span>
                   
-                  {/* Target User Info card */}
-                  <div className="bg-[#141416]/60 border border-white/5 rounded-xl p-3 flex flex-col gap-2 relative overflow-hidden group">
-                    <div className="absolute top-0 right-0 w-32 h-32 bg-[#5E5CE6]/3 rounded-full filter blur-xl pointer-events-none" />
-                    <span className="text-[9px] font-bold text-white/30 uppercase tracking-wider block">Cezalı Kullanıcı</span>
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <img 
-                          src={selectedCase.punished_user_avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${selectedCase.punished_user_discord_id}`} 
-                          alt="target user" 
-                          className="w-10 h-10 rounded-full border border-white/10 object-cover" 
-                        />
-                        <div>
-                          {!selectedCase.punished_user_display_name || /^(unknown user|bilinmeyen kullanıcı|bilinmeyen|unknown|bilinmeyen kullanici)$/i.test(selectedCase.punished_user_display_name.trim()) ? (
-                            <div className="flex items-center gap-1.5">
-                              <p className="text-[13px] font-bold text-white font-mono">{selectedCase.punished_user_discord_id || '—'}</p>
-                              {selectedCase.punished_user_discord_id && (
-                                <button 
-                                  onClick={() => handleCopy(selectedCase.punished_user_discord_id)}
-                                  className="p-1 rounded text-white/30 hover:text-white hover:bg-white/5 transition-all outline-none cursor-pointer flex items-center justify-center"
-                                >
-                                  <Copy size={11} className={copiedId === selectedCase.punished_user_discord_id ? 'text-[#32D74B]' : ''} />
-                                </button>
-                              )}
-                            </div>
-                          ) : (
-                            <>
-                              <p className="text-[13px] font-bold text-white">{selectedCase.punished_user_display_name}</p>
-                              <div className="flex items-center gap-1 text-white/40 mt-0.5">
-                                <span className="text-[11px] font-mono">{selectedCase.punished_user_discord_id || '—'}</span>
+                  <button 
+                    onClick={() => setSelectedCase(null)} 
+                    className="w-8 h-8 rounded-full hover:bg-white/5 border border-transparent hover:border-white/10 flex items-center justify-center text-white/40 hover:text-white transition-colors"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+
+                {/* Scrollable details container */}
+                <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar scroll-smooth">
+                  <motion.div
+                    initial={{ opacity: 0, y: 12 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ type: 'spring', stiffness: 300, damping: 30, delay: 0.15 }}
+                    className="space-y-6"
+                  >
+                  
+                  {/* Users list info */}
+                  <div className="space-y-3">
+                    <span className="text-[10px] font-bold text-white/40 uppercase tracking-widest block">Kullanıcı İlişkileri</span>
+                    
+                    {/* Target User Info card */}
+                    <div className="bg-[#141416]/60 border border-white/5 rounded-xl p-3 flex flex-col gap-2 relative overflow-hidden group">
+                      <div className="absolute top-0 right-0 w-32 h-32 bg-[#5E5CE6]/3 rounded-full filter blur-xl pointer-events-none" />
+                      <span className="text-[9px] font-bold text-white/30 uppercase tracking-wider block">Cezalı Kullanıcı</span>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <img 
+                            src={selectedCase.punished_user_avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${selectedCase.punished_user_discord_id}`} 
+                            alt="target user" 
+                            className="w-10 h-10 rounded-full border border-white/10 object-cover" 
+                          />
+                          <div>
+                            {!selectedCase.punished_user_display_name || /^(unknown user|bilinmeyen kullanıcı|bilinmeyen|unknown|bilinmeyen kullanici)$/i.test(selectedCase.punished_user_display_name.trim()) ? (
+                              <div className="flex items-center gap-1.5">
+                                <p className="text-[13px] font-bold text-white font-mono">{selectedCase.punished_user_discord_id || '—'}</p>
                                 {selectedCase.punished_user_discord_id && (
                                   <button 
                                     onClick={() => handleCopy(selectedCase.punished_user_discord_id)}
@@ -815,140 +867,176 @@ export default function Cases() {
                                   </button>
                                 )}
                               </div>
-                            </>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Staff Info card */}
-                  <div className="bg-[#141416]/60 border border-white/5 rounded-xl p-3 flex flex-col gap-2 relative overflow-hidden group">
-                    <div className="absolute top-0 right-0 w-32 h-32 bg-[#A259FE]/3 rounded-full filter blur-xl pointer-events-none" />
-                    <span className="text-[9px] font-bold text-white/30 uppercase tracking-wider block">Cezalandıran Yetkili</span>
-                    <div className="flex items-center justify-between flex-wrap gap-2">
-                      <div className="flex items-center gap-3">
-                        <img 
-                          src={resolveStaffAvatar(staffMap.get(selectedCase.author_discord_id), selectedCase, selectedCase.author_discord_id)} 
-                          alt="staff" 
-                          className="w-10 h-10 rounded-lg border border-white/10 object-cover" 
-                        />
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <p className="text-[13px] font-bold text-white">{getModName(selectedCase.author_discord_id, selectedCase.author_display_name)}</p>
-                            {isFormerStaff(staffMap.get(selectedCase.author_discord_id)) && (
-                              <span className="text-[9px] font-extrabold text-[#FF453A] bg-[#FF453A]/10 border border-[#FF453A]/20 px-2 py-0.5 rounded-full uppercase tracking-wider">
-                                Eski Yetkili
-                              </span>
+                            ) : (
+                              <>
+                                <p className="text-[13px] font-bold text-white">{selectedCase.punished_user_display_name}</p>
+                                <div className="flex items-center gap-1 text-white/40 mt-0.5">
+                                  <span className="text-[11px] font-mono">{selectedCase.punished_user_discord_id || '—'}</span>
+                                  {selectedCase.punished_user_discord_id && (
+                                    <button 
+                                      onClick={() => handleCopy(selectedCase.punished_user_discord_id)}
+                                      className="p-1 rounded text-white/30 hover:text-white hover:bg-white/5 transition-all outline-none cursor-pointer flex items-center justify-center"
+                                    >
+                                      <Copy size={11} className={copiedId === selectedCase.punished_user_discord_id ? 'text-[#32D74B]' : ''} />
+                                    </button>
+                                  )}
+                                </div>
+                              </>
                             )}
                           </div>
-                          <div className="flex items-center gap-1 text-white/40 mt-0.5">
-                            <span className="text-[11px] font-mono">{selectedCase.author_discord_id}</span>
-                            <button 
-                              onClick={() => handleCopy(selectedCase.author_discord_id)}
-                              className="p-1 rounded text-white/30 hover:text-white hover:bg-white/5 transition-all outline-none cursor-pointer"
-                            >
-                              <Copy size={11} className={copiedId === selectedCase.author_discord_id ? 'text-[#32D74B]' : ''} />
-                            </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Staff Info card */}
+                    <div className="bg-[#141416]/60 border border-white/5 rounded-xl p-3 flex flex-col gap-2 relative overflow-hidden group">
+                      <div className="absolute top-0 right-0 w-32 h-32 bg-[#A259FE]/3 rounded-full filter blur-xl pointer-events-none" />
+                      <span className="text-[9px] font-bold text-white/30 uppercase tracking-wider block">Cezalandıran Yetkili</span>
+                      <div className="flex items-center justify-between flex-wrap gap-2">
+                        <div className="flex items-center gap-3">
+                          <img 
+                            src={resolveStaffAvatar(staffMap.get(selectedCase.author_discord_id), selectedCase, selectedCase.author_discord_id)} 
+                            alt="staff" 
+                            className="w-10 h-10 rounded-lg border border-white/10 object-cover" 
+                          />
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <p className="text-[13px] font-bold text-white">{getModName(selectedCase.author_discord_id, selectedCase.author_display_name)}</p>
+                              {isFormerStaff(staffMap.get(selectedCase.author_discord_id)) && (
+                                <span className="text-[9px] font-extrabold text-[#FF453A] bg-[#FF453A]/10 border border-[#FF453A]/20 px-2 py-0.5 rounded-full uppercase tracking-wider">
+                                  Eski Yetkili
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-1 text-white/40 mt-0.5">
+                              <span className="text-[11px] font-mono">{selectedCase.author_discord_id}</span>
+                              <button 
+                                onClick={() => handleCopy(selectedCase.author_discord_id)}
+                                className="p-1 rounded text-white/30 hover:text-white hover:bg-white/5 transition-all outline-none cursor-pointer"
+                              >
+                                <Copy size={11} className={copiedId === selectedCase.author_discord_id ? 'text-[#32D74B]' : ''} />
+                              </button>
+                            </div>
                           </div>
                         </div>
                       </div>
                     </div>
                   </div>
+
+                  {/* Valid Durations Analysis Panel */}
+                  <div className="space-y-2">
+                    <span className="text-[10px] font-bold text-white/40 uppercase tracking-widest block mb-2.5">CUK Süre Karşılaştırması</span>
+                    <ValidDurationsPanel caseData={selectedCase} />
+                  </div>
+
+                  {/* Additional Metadata Rows */}
+                  <div className="space-y-1">
+                    <span className="text-[10px] font-bold text-white/40 uppercase tracking-widest block mb-2.5">Ek Detaylar</span>
+                    <div className="divide-y divide-white/[0.03] bg-[#141416]/40 border border-white/5 rounded-xl px-4 py-2">
+                      <DetailMetadataRow label="Sebep" value={selectedCase.reason_raw || '—'} />
+                      <DetailMetadataRow label="Süre" value={selectedCase.is_permanent ? 'Kalıcı' : minutesToHuman(Math.floor((selectedCase.duration_ms || 0) / 60000))} />
+                      <DetailMetadataRow label="Tarih" value={formatDate(selectedCase.created_at_sapphire)} />
+                      {selectedCase.cuk_analysis && (
+                        <>
+                          <DetailMetadataRow label="CUK Kategori" value={selectedCase.cuk_analysis.category} />
+                          <DetailMetadataRow label="CUK Mesaj" value={selectedCase.cuk_analysis.message} isHighlight={selectedCase.cuk_verdict === 'invalid'} />
+                        </>
+                      )}
+                    </div>
+                  </div>
+                  </motion.div>
                 </div>
 
-                {/* Valid Durations Analysis Panel */}
-                <div className="space-y-2">
-                  <span className="text-[10px] font-bold text-white/40 uppercase tracking-widest block mb-2.5">CUK Süre Karşılaştırması</span>
-                  <ValidDurationsPanel caseData={selectedCase} />
-                </div>
+                {/* Bottom Action buttons */}
+                {canEdit && (
+                  <div className="p-6 border-t border-white/[0.05] bg-black/40 space-y-2 shrink-0">
+                    <div className="grid grid-cols-2 gap-2">
+                      <button 
+                        disabled={caseUpdating === selectedCase.case_id}
+                        onClick={() => handleSingleVerdict(selectedCase, 'valid')}
+                        className={`py-2.5 rounded-xl text-[12px] font-bold flex items-center justify-center gap-2 cursor-pointer transition-colors ${
+                          selectedCase.cuk_verdict === 'valid' 
+                            ? 'bg-[#32D74B] text-black border border-[#32D74B]' 
+                            : 'bg-[#32D74B]/10 border border-[#32D74B]/20 text-[#32D74B] hover:bg-[#32D74B]/15'
+                        }`}
+                      >
+                        <CheckCircle2 size={13} /> Doğru
+                      </button>
+                      <button 
+                        disabled={caseUpdating === selectedCase.case_id}
+                        onClick={() => handleSingleVerdict(selectedCase, 'invalid')}
+                        className={`py-2.5 rounded-xl text-[12px] font-bold flex items-center justify-center gap-2 cursor-pointer transition-colors ${
+                          selectedCase.cuk_verdict === 'invalid' 
+                            ? 'bg-[#FF453A] text-white border border-[#FF453A]' 
+                            : 'bg-[#FF453A]/10 border border-[#FF453A]/20 text-[#FF453A] hover:bg-[#FF453A]/15'
+                        }`}
+                      >
+                        <AlertCircle size={13} /> Hatalı
+                      </button>
+                    </div>
+                    
+                    <button 
+                      onClick={() => {
+                        setProofCaseId(selectedCase.case_id);
+                        setSelectedProofCase(selectedCase);
+                      }}
+                      className="w-full py-2.5 rounded-xl bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.1] flex items-center justify-center gap-2 text-[12px] text-white/95 font-bold transition-all cursor-pointer"
+                    >
+                      <Eye size={13} className="text-white/40" /> Kanıt Görseli & AI Analizi
+                    </button>
 
-                {/* Additional Metadata Rows */}
-                <div className="space-y-1">
-                  <span className="text-[10px] font-bold text-white/40 uppercase tracking-widest block mb-2.5">Ek Detaylar</span>
-                  <div className="divide-y divide-white/[0.03] bg-[#141416]/40 border border-white/5 rounded-xl px-4 py-2">
-                    <DetailMetadataRow label="Sebep" value={selectedCase.reason_raw || '—'} />
-                    <DetailMetadataRow label="Süre" value={selectedCase.is_permanent ? 'Kalıcı' : minutesToHuman(Math.floor((selectedCase.duration_ms || 0) / 60000))} />
-                    <DetailMetadataRow label="Tarih" value={formatDate(selectedCase.created_at_sapphire)} />
-                    {selectedCase.cuk_analysis && (
-                      <>
-                        <DetailMetadataRow label="CUK Kategori" value={selectedCase.cuk_analysis.category} />
-                        <DetailMetadataRow label="CUK Mesaj" value={selectedCase.cuk_analysis.message} isHighlight={selectedCase.cuk_verdict === 'invalid'} />
-                      </>
+                    <button 
+                      onClick={() => openSapphireCase(selectedCase)}
+                      className="w-full py-2.5 rounded-xl bg-[#5E5CE6]/10 hover:bg-[#5E5CE6]/20 border border-[#5E5CE6]/20 flex items-center justify-center gap-2 text-[12px] text-white/95 font-bold transition-all cursor-pointer"
+                    >
+                      <ExternalLink size={13} className="text-white/40" /> Case Dashboard'da Aç (Sapphire)
+                    </button>
+                    <button 
+                      onClick={() => window.open(buildLutheusCaseUrl(selectedCase.case_id), '_blank', 'noopener,noreferrer')}
+                      className="w-full py-2.5 rounded-xl bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.08] flex items-center justify-center gap-2 text-[12px] text-white/90 font-semibold transition-all cursor-pointer"
+                    >
+                      <Share2 size={13} className="text-white/40" /> Lutheus Raporu Paylaş
+                    </button>
+                    {isManagementRole(session?.role || '') && (
+                      <div className="pt-2 border-t border-white/[0.05] space-y-2">
+                        <button 
+                          onClick={() => window.open(`https://supabase.com/dashboard/project/jxhzhaqqtlynbnntwpyu/editor/sapphire_cases?filter=case_id%3Deq%3D${encodeURIComponent(selectedCase.case_id)}`, '_blank', 'noopener,noreferrer')}
+                          className="w-full py-2.5 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 flex items-center justify-center gap-2 text-[12px] text-emerald-400 font-bold transition-all cursor-pointer"
+                        >
+                          <ExternalLink size={13} className="text-emerald-400/40" /> Supabase'de Aç
+                        </button>
+                        <button 
+                          disabled={caseUpdating === selectedCase.case_id}
+                          onClick={() => handleDeleteCase(selectedCase)}
+                          className="w-full py-2.5 rounded-xl bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 flex items-center justify-center gap-2 text-[12px] text-red-400 font-bold transition-all cursor-pointer disabled:opacity-50"
+                        >
+                          <X size={13} /> Cezayı (Case) Veri Tabanından Sil
+                        </button>
+                      </div>
                     )}
                   </div>
-                </div>
-
-              </div>
-
-              {/* Bottom Action buttons */}
-              {canEdit && (
-                <div className="p-6 border-t border-white/[0.05] bg-black/40 space-y-2 shrink-0">
-                  <div className="grid grid-cols-2 gap-2">
-                    <button 
-                      disabled={caseUpdating === selectedCase.case_id}
-                      onClick={() => handleSingleVerdict(selectedCase, 'valid')}
-                      className={`py-2.5 rounded-xl text-[12px] font-bold flex items-center justify-center gap-2 cursor-pointer transition-colors ${
-                        selectedCase.cuk_verdict === 'valid' 
-                          ? 'bg-[#32D74B] text-black border border-[#32D74B]' 
-                          : 'bg-[#32D74B]/10 border border-[#32D74B]/20 text-[#32D74B] hover:bg-[#32D74B]/15'
-                      }`}
-                    >
-                      <CheckCircle2 size={13} /> Doğru
-                    </button>
-                    <button 
-                      disabled={caseUpdating === selectedCase.case_id}
-                      onClick={() => handleSingleVerdict(selectedCase, 'invalid')}
-                      className={`py-2.5 rounded-xl text-[12px] font-bold flex items-center justify-center gap-2 cursor-pointer transition-colors ${
-                        selectedCase.cuk_verdict === 'invalid' 
-                          ? 'bg-[#FF453A] text-white border border-[#FF453A]' 
-                          : 'bg-[#FF453A]/10 border border-[#FF453A]/20 text-[#FF453A] hover:bg-[#FF453A]/15'
-                      }`}
-                    >
-                      <AlertCircle size={13} /> Hatalı
-                    </button>
-                  </div>
-                  
-                  <button 
-                    onClick={() => {
-                      setProofCaseId(selectedCase.case_id);
-                      setSelectedProofCase(selectedCase);
-                    }}
-                    className="w-full py-2.5 rounded-xl bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.1] flex items-center justify-center gap-2 text-[12px] text-white/95 font-bold transition-all cursor-pointer"
-                  >
-                    <Eye size={13} className="text-white/40" /> Kanıt Görseli & AI Analizi
-                  </button>
-
-                  <button 
-                    onClick={() => openSapphireCase(selectedCase)}
-                    className="w-full py-2.5 rounded-xl bg-[#5E5CE6]/10 hover:bg-[#5E5CE6]/20 border border-[#5E5CE6]/20 flex items-center justify-center gap-2 text-[12px] text-white/95 font-bold transition-all cursor-pointer"
-                  >
-                    <ExternalLink size={13} className="text-white/40" /> Case Dashboard'da Aç (Sapphire)
-                  </button>
-                  <button 
-                    onClick={() => window.open(buildLutheusCaseUrl(selectedCase.case_id), '_blank', 'noopener,noreferrer')}
-                    className="w-full py-2.5 rounded-xl bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.08] flex items-center justify-center gap-2 text-[12px] text-white/90 font-semibold transition-all cursor-pointer"
-                  >
-                    <Share2 size={13} className="text-white/40" /> Lutheus Raporu Paylaş
-                  </button>
-                </div>
-              )}
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
+                )}
+              </motion.div>
+            </>
+          )}
+        </ AnimatePresence>,
+        document.body
+      )}
 
       {/* Bulk action confirmation modal */}
-      <ConfirmationModal
-        isOpen={confirmBulk !== null}
-        onClose={() => setConfirmBulk(null)}
-        onConfirm={handleBulkAction}
-        title={`${selectedIds.size} kayıt toplu ${confirmBulk === 'valid' ? 'onaylanacak' : 'reddedilecek'}`}
-        description="Bu işlem seçili tüm cezaların durumunu değiştirecek ve Supabase'e yazılacak."
-        confirmText={confirmBulk === 'valid' ? 'Onayla' : 'Reddet'}
-        danger={confirmBulk === 'invalid'}
-        loading={bulkLoading}
-      />
+      {typeof document !== 'undefined' && createPortal(
+        <ConfirmationModal
+          isOpen={confirmBulk !== null}
+          onClose={() => setConfirmBulk(null)}
+          onConfirm={handleBulkAction}
+          title={`${selectedIds.size} kayıt toplu ${confirmBulk === 'valid' ? 'onaylanacak' : 'reddedilecek'}`}
+          description="Bu işlem seçili tüm cezaların durumunu değiştirecek ve Supabase'e yazılacak."
+          confirmText={confirmBulk === 'valid' ? 'Onayla' : 'Reddet'}
+          danger={confirmBulk === 'invalid'}
+          loading={bulkLoading}
+        />,
+        document.body
+      )}
 
       {/* Case Proof and AI Analysis Drawer */}
       <ProofDrawer
@@ -967,59 +1055,62 @@ export default function Cases() {
       {/* ── Lightbox: Tam boyut görsel önizleme ──
           Sağ panel açıkken lightbox ekranin SOL bölümünde
           Center modda ise tam orta da gözüksün */}
-      <AnimatePresence>
-        {lightboxUrl && (
-          <>
-            {/* Backdrop */}
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setLightboxUrl(null)}
-              className="fixed inset-0 bg-black/80 backdrop-blur-md z-[60] cursor-zoom-out"
-            />
-            {/* Image container — sağ panel varsa solda, yoksa orta */}
-            <motion.div
-              initial={{ opacity: 0, scale: 0.92 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.92 }}
-              transition={{ type: 'spring', damping: 24, stiffness: 260 }}
-              className={`fixed z-[70] flex flex-col items-center gap-3 ${
-                panelStyle === 'side' && proofCaseId
-                  ? 'top-1/2 left-[calc(50%-240px)] -translate-y-1/2 -translate-x-1/2 max-w-[calc(100vw-520px)]'
-                  : 'top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 max-w-[90vw]'
-              } w-full`}
-            >
-              <img
-                src={lightboxUrl}
-                alt="Kanıt Görseli"
-                className="max-h-[80vh] w-full object-contain rounded-2xl shadow-2xl border border-white/10"
-                onClick={e => e.stopPropagation()}
+      {typeof document !== 'undefined' && createPortal(
+        <AnimatePresence>
+          {lightboxUrl && (
+            <>
+              {/* Backdrop */}
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={() => setLightboxUrl(null)}
+                className="fixed inset-0 bg-black/80 backdrop-blur-md z-[60] cursor-zoom-out"
               />
-              <div className="flex items-center gap-3">
-                <a
-                  href={lightboxUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 border border-white/15 text-white text-[12px] font-bold flex items-center gap-1.5 transition-all"
-                >
-                  <ExternalLink size={13} />
-                  Yeni Sekmede Aç
-                </a>
-                <button
-                  type="button"
-                  onClick={() => setLightboxUrl(null)}
-                  className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white/60 hover:text-white text-[12px] font-bold flex items-center gap-1.5 transition-all cursor-pointer"
-                >
-                  <X size={13} />
-                  Kapat
-                </button>
-              </div>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
-    </div>
+              {/* Image container — sağ panel varsa solda, yoksa orta */}
+              <motion.div
+                initial={{ opacity: 0, scale: 0.92 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.92 }}
+                transition={{ type: 'spring', damping: 24, stiffness: 260 }}
+                className={`fixed z-[70] flex flex-col items-center gap-3 ${
+                  panelStyle === 'side' && proofCaseId
+                    ? 'top-1/2 left-[calc(50%-240px)] -translate-y-1/2 -translate-x-1/2 max-w-[calc(100vw-520px)]'
+                    : 'top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 max-w-[90vw]'
+                } w-full`}
+              >
+                <img
+                  src={lightboxUrl}
+                  alt="Kanıt Görseli"
+                  className="max-h-[80vh] w-full object-contain rounded-2xl shadow-2xl border border-white/10"
+                  onClick={e => e.stopPropagation()}
+                />
+                <div className="flex items-center gap-3">
+                  <a
+                    href={lightboxUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 border border-white/15 text-white text-[12px] font-bold flex items-center gap-1.5 transition-all"
+                  >
+                    <ExternalLink size={13} />
+                    Yeni Sekmede Aç
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => setLightboxUrl(null)}
+                    className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white/60 hover:text-white text-[12px] font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+                  >
+                    <X size={13} />
+                    Kapat
+                  </button>
+                </div>
+              </motion.div>
+            </>
+          )}
+        </AnimatePresence>,
+        document.body
+      )}
+    </>
   );
 }
 

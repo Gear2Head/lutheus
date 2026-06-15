@@ -128,6 +128,18 @@ module.exports = async function handler(req, res) {
                 throw Object.assign(new Error('DISCORD_STATE_MISSING'), { stage: 'state_validation' });
             }
             const state = readState(req.query.state);
+
+            // CSRF Verification: Verify token matches cookie
+            if (state.source === 'web' && state.csrfToken) {
+                const cookies = req.headers.cookie || '';
+                const savedState = cookies.split('; ').find(row => row.trim().startsWith('lutheus_oauth_csrf='))?.split('=')[1];
+                if (!savedState || state.csrfToken !== savedState) {
+                    throw Object.assign(new Error('INVALID_OAUTH_STATE_CSRF'), { stage: 'state_validation' });
+                }
+                // Clear the cookie immediately
+                res.setHeader('Set-Cookie', 'lutheus_oauth_csrf=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0');
+            }
+
             redirectUri = state.redirectUri || defaultPostLoginUrl;
             oauthRedirectUri = state.oauthRedirectUri || fallbackCallbackUrl;
         } else {

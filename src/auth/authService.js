@@ -264,6 +264,14 @@ export const AuthService = {
             window.location.href = startUrl.toString();
             return new Promise(() => {});
         }
+        
+        const stateToken = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+        if (chrome.storage && chrome.storage.session) {
+            await new Promise(resolve => chrome.storage.session.set({ oauth_state: stateToken }, resolve));
+        } else if (chrome.storage && chrome.storage.local) {
+            await new Promise(resolve => chrome.storage.local.set({ oauth_state: stateToken }, resolve));
+        }
+
         const redirectUri = chrome.identity.getRedirectURL();
         const clientId = APP_CONFIG.discordClientId || '1500551629768888542';
         const scopes = (APP_CONFIG.discordOAuthScopes || ['identify', 'guilds']).join(' ');
@@ -273,6 +281,7 @@ export const AuthService = {
         authUrl.searchParams.set('client_id', clientId);
         authUrl.searchParams.set('redirect_uri', redirectUri);
         authUrl.searchParams.set('scope', scopes);
+        authUrl.searchParams.set('state', stateToken);
         authUrl.searchParams.set('prompt', 'consent');
 
         console.log('[Lutheus Auth] Discord auth URL:', authUrl.toString());
@@ -297,6 +306,21 @@ export const AuthService = {
         console.log('[Lutheus Auth] launchWebAuthFlow final URL:', finalUrl);
 
         const params = parseHashOrQuery(finalUrl);
+        const returnedState = params.get('state');
+
+        let savedState = null;
+        if (chrome.storage && chrome.storage.session) {
+            savedState = await new Promise(resolve => chrome.storage.session.get(['oauth_state'], res => resolve(res?.oauth_state)));
+            chrome.storage.session.remove(['oauth_state']);
+        } else if (chrome.storage && chrome.storage.local) {
+            savedState = await new Promise(resolve => chrome.storage.local.get(['oauth_state'], res => resolve(res?.oauth_state)));
+            chrome.storage.local.remove(['oauth_state']);
+        }
+
+        if (!returnedState || !savedState || returnedState !== savedState) {
+            throw new Error('INVALID_OAUTH_STATE');
+        }
+
         const code = params.get('code');
         if (!code) {
             const err = params.get('error') || 'DISCORD_CODE_MISSING';

@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const { createState } = require('../../_lib/oauthState');
 
 // SECTION: API_ROUTES
@@ -28,12 +29,17 @@ module.exports = async function handler(req, res) {
     let redirectUri = String(req.query.redirect_uri || '');
     let scope = 'identify guilds';
 
+    let csrfToken = '';
     if (source === 'web') {
         const returnTo = sanitizeReturnTo(req.query.returnTo, baseOrigin);
         const loginUrl = new URL('/src/auth/login.html', authBaseUrl);
         loginUrl.searchParams.set('returnTo', returnTo);
         redirectUri = loginUrl.toString();
         scope = 'identify guilds email guilds.members.read';
+
+        // CSRF Protection: Generate secure random token and write to HttpOnly Cookie
+        csrfToken = crypto.randomUUID();
+        res.setHeader('Set-Cookie', `lutheus_oauth_csrf=${csrfToken}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=600`);
     } else {
         const isAllowedRedirect = /^https:\/\/[a-z0-9]{32}\.chromiumapp\.org\/?$/i.test(redirectUri);
         if (!isAllowedRedirect) {
@@ -45,7 +51,8 @@ module.exports = async function handler(req, res) {
     const state = createState({
         redirectUri,
         oauthRedirectUri: callbackUrl.toString(),
-        source
+        source,
+        ...(csrfToken ? { csrfToken } : {})
     });
 
     const url = new URL('https://discord.com/oauth2/authorize');

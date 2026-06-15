@@ -2,7 +2,7 @@ import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Users, ShieldAlert, Activity, Settings as SettingsIcon,
   LogOut, Zap, BookOpen, Bot, User, ChevronUp, Shield, RefreshCw,
-  WifiOff, Wifi, Megaphone, Sliders, ChevronLeft, Bell, Check
+  WifiOff, Wifi, Megaphone, Sliders, ChevronLeft, Bell, Check, UserCheck
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import React, { useState, useRef, useEffect } from 'react';
@@ -17,8 +17,10 @@ import { getGlassClass } from '../lib/theme';
 
 const NAV_ITEMS = [
   { icon: LayoutDashboard, label: 'Home', path: '/home', translationKey: 'nav.home' },
+  { icon: User, label: 'Profilim', path: '/profile', translationKey: 'nav.profile' },
   { icon: ShieldAlert, label: 'Cases', path: '/cases', translationKey: 'nav.cases' },
   { icon: Users, label: 'Staff', path: '/staff', translationKey: 'nav.staff' },
+  { icon: UserCheck, label: 'Profiller', path: '/staff-profiles', translationKey: 'nav.staffProfiles' },
   { icon: Bot, label: 'AI Agent', path: '/ai-agent', translationKey: 'nav.ai-agent' },
   { icon: Shield, label: 'Erişim', path: '/access', translationKey: 'nav.access' },
   { icon: Megaphone, label: 'Duyurular', path: '/announcements', translationKey: 'nav.announcements' },
@@ -132,7 +134,7 @@ export default function AppLayout() {
     const isMgmt = ['kurucu', 'admin', 'yonetici', 'genel_sorumlu', 'discord_yoneticisi', 'kidemli', 'kidemli_discord_moderatoru', 'senior_moderator'].includes(role);
     const isSenior = ['kidemli', 'kidemli_discord_moderatoru', 'senior_moderator'].includes(role);
 
-    if (path === '/access' || path === '/rules' || path === '/announcements' || path === '/bot-setup') {
+    if (path === '/access' || path === '/rules' || path === '/announcements' || path === '/bot-setup' || path === '/staff-profiles') {
       return isMgmt;
     }
     if (path === '/pointtrain' || path === '/scan') {
@@ -217,12 +219,31 @@ export default function AppLayout() {
     }
   }, [session]);
 
+  useEffect(() => {
+    if (!session || ['pending', 'blocked', 'eski_yetkili'].includes(session.role?.toLowerCase() || '')) return;
+    const triggerUrlRefresh = async () => {
+      try {
+        const { AdminApiClient } = await import('../../../lib/adminApiClient.js') as unknown as { AdminApiClient: any };
+        console.log('[Lutheus] Triggering backend Discord URL refresh...');
+        await AdminApiClient.refreshExpiredUrls();
+      } catch (e) {
+        console.warn('[Lutheus] Discord CDN URL refresh check failed:', e);
+      }
+    };
+    const timer = setTimeout(triggerUrlRefresh, 5000);
+    return () => clearTimeout(timer);
+  }, [session]);
+
   const handleRequestAccess = async () => {
     if (!session?.idToken) return;
     setRequestingAccess(true);
     try {
       const { AdminApiClient } = await import('../../../lib/adminApiClient.js') as unknown as { AdminApiClient: any };
-      await AdminApiClient.requestAccess();
+      await AdminApiClient.requestAccess({
+        username: session.profile?.username,
+        displayName: session.profile?.displayName || session.profile?.username,
+        avatarUrl: session.profile?.avatar
+      });
       setAccessRequested(true);
     } catch (err) {
       console.error('Request access error:', err);

@@ -65,7 +65,7 @@ export const QueryCaseCommand = {
             if (row.author_discord_id) {
                 const { data } = await supabase
                     .from('staff_profiles')
-                    .select('discord_id, username, in_game_name, display_name')
+                    .select('discord_id, username, display_name')
                     .eq('discord_id', row.author_discord_id)
                     .maybeSingle();
                 staffProfile = data;

@@ -1333,25 +1333,49 @@ async function handleRequestAccess(req, res) {
 
     const actor = await requireUser(req);
     const now = new Date().toISOString();
+    const { username, displayName, avatarUrl } = req.body || {};
 
     const { data: profile } = await supabase
         .from('staff_profiles')
-        .select('display_name')
+        .select('*')
         .eq('discord_id', actor.discordId)
         .maybeSingle();
 
-    const displayName = profile?.display_name || `Kullanıcı (${actor.discordId})`;
+    const finalDisplayName = displayName || profile?.display_name || `Kullanıcı (${actor.discordId})`;
 
-    const { error } = await supabase
-        .from('staff_profiles')
-        .update({
-            access_status: 'pending',
-            access_requested_at: now,
-            updated_at: now
-        })
-        .eq('discord_id', actor.discordId);
+    let resultError;
+    if (profile) {
+        const { error } = await supabase
+            .from('staff_profiles')
+            .update({
+                access_status: 'pending',
+                access_requested_at: now,
+                updated_at: now,
+                username: username || profile.username,
+                display_name: displayName || profile.display_name,
+                avatar_url: avatarUrl || profile.avatar_url
+            })
+            .eq('discord_id', actor.discordId);
+        resultError = error;
+    } else {
+        const { error } = await supabase
+            .from('staff_profiles')
+            .insert([{
+                discord_id: actor.discordId,
+                username: username || `User_${actor.discordId}`,
+                display_name: displayName || `Kullanıcı (${actor.discordId})`,
+                avatar_url: avatarUrl || null,
+                staff_rank: 'pending',
+                is_active_staff: false,
+                access_status: 'pending',
+                access_requested_at: now,
+                created_at: now,
+                updated_at: now
+            }]);
+        resultError = error;
+    }
 
-    if (error) return serverError(res, error);
+    if (resultError) return serverError(res, resultError);
 
     // Send alert notification to the Discord server alerts/CUK logs channel or specific panel-erişim-talepleri channel
     const guildId = process.env.DISCORD_GUILD_ID || '';
@@ -1367,7 +1391,7 @@ async function handleRequestAccess(req, res) {
             if (alertChannelId) {
                 const embed = {
                     title: 'Yeni Erişim Talebi 🔐',
-                    description: `**Kullanıcı:** <@${actor.discordId}> (${displayName})\n**Discord ID:** \`${actor.discordId}\`\n\nKullanıcı panel erişimi talep etti. Hızlı "Onayla" butonu ile varsayılan olarak Viewer yetkisi verebilir, listeden rütbe seçerek onaylayabilir ya da talebi reddedebilirsiniz.`,
+                    description: `**Kullanıcı:** <@${actor.discordId}> (${finalDisplayName})\n**Discord ID:** \`${actor.discordId}\`\n\nKullanıcı panel erişimi talep etti. Hızlı "Onayla" butonu ile varsayılan olarak Viewer yetkisi verebilir, listeden rütbe seçerek onaylayabilir ya da talebi reddedebilirsiniz.`,
                     color: 0x5e5ce6,
                     timestamp: now
                 };
@@ -1585,6 +1609,166 @@ async function handleAnnouncements(req, res) {
     return res.status(405).json({ ok: false, error: 'METHOD_NOT_ALLOWED' });
 }
 
+async function handleRefreshUrls(req, res) {
+    if (req.method !== 'POST') {
+        res.setHeader('Allow', 'POST');
+        return res.status(405).json({ ok: false, error: 'METHOD_NOT_ALLOWED' });
+    }
+
+    const botToken = process.env.DISCORD_BOT_TOKEN;
+    if (!botToken) {
+        return badRequest(res, 'DISCORD_BOT_TOKEN_NOT_CONFIGURED');
+    }
+
+    try {
+        const twelveHoursAgo = new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString();
+        const { data: proofs, error } = await supabase
+            .from('case_proofs')
+            .select('case_id, proof_url, video_url, thumbnail_url, additional_proofs')
+            .or(`updated_at.is.null,updated_at.lt.${twelveHoursAgo}`);
+            
+        if (error) {
+            return serverError(res, error);
+        }
+        if (!proofs || proofs.length === 0) {
+            return ok(res, { success: true, message: 'No URLs need refreshing.' });
+        }
+
+        const urlToProofsMap = new Map();
+
+        const addUrl = (url, caseId, field, index) => {
+            if (!url) return;
+            const lower = url.toLowerCase();
+            if (lower.includes('cdn.discordapp.com/attachments/') || lower.includes('media.discordapp.net/attachments/')) {
+                if (!urlToProofsMap.has(url)) {
+                    urlToProofsMap.set(url, []);
+                }
+                urlToProofsMap.get(url).push({ caseId, field, index });
+            }
+        };
+
+        for (const proof of proofs) {
+            addUrl(proof.proof_url, proof.case_id, 'proof_url');
+            addUrl(proof.video_url, proof.case_id, 'video_url');
+            addUrl(proof.thumbnail_url, proof.case_id, 'thumbnail_url');
+            if (proof.additional_proofs && Array.isArray(proof.additional_proofs)) {
+                proof.additional_proofs.forEach((ap, idx) => {
+                    addUrl(ap.proof_url, proof.case_id, 'additional_proofs', idx);
+                    addUrl(ap.video_url, proof.case_id, 'additional_proofs_video', idx);
+                    addUrl(ap.thumbnail_url, proof.case_id, 'additional_proofs_thumbnail', idx);
+                });
+            }
+        }
+
+        const allUrls = Array.from(urlToProofsMap.keys());
+        if (allUrls.length === 0) {
+            return ok(res, { success: true, message: 'No Discord CDN URLs need refreshing.' });
+        }
+
+        const batchSize = 50;
+        let successCount = 0;
+
+        for (let i = 0; i < allUrls.length; i += batchSize) {
+            if (i > 0) {
+                await new Promise(resolve => setTimeout(resolve, 1000));
+            }
+
+            const batch = allUrls.slice(i, i + batchSize);
+            const batchRefreshedMap = new Map();
+
+            const response = await fetch('https://discord.com/api/v10/attachments/refresh-urls', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bot ${botToken}`
+                },
+                body: JSON.stringify({ attachment_urls: batch })
+            });
+
+            if (!response.ok) {
+                console.error(`Failed to refresh batch ${i / batchSize + 1}: ${response.status}`);
+                continue;
+            }
+
+            const result = await response.json();
+            if (result && Array.isArray(result.refreshed_urls)) {
+                for (const item of result.refreshed_urls) {
+                    batchRefreshedMap.set(item.original, item.refreshed);
+                }
+            }
+
+            if (batchRefreshedMap.size === 0) continue;
+
+            const caseUpdates = new Map();
+
+            for (const [originalUrl, refreshedUrl] of batchRefreshedMap.entries()) {
+                const mappings = urlToProofsMap.get(originalUrl);
+                if (!mappings) continue;
+
+                for (const mapping of mappings) {
+                    if (!caseUpdates.has(mapping.caseId)) {
+                        const originalProof = proofs.find(p => p.case_id === mapping.caseId);
+                        if (originalProof) {
+                            caseUpdates.set(mapping.caseId, {
+                                proof_url: originalProof.proof_url,
+                                video_url: originalProof.video_url,
+                                thumbnail_url: originalProof.thumbnail_url,
+                                additional_proofs: originalProof.additional_proofs ? JSON.parse(JSON.stringify(originalProof.additional_proofs)) : null
+                            });
+                        }
+                    }
+
+                    const updateObj = caseUpdates.get(mapping.caseId);
+                    if (updateObj) {
+                        if (mapping.field === 'proof_url') {
+                            updateObj.proof_url = refreshedUrl;
+                        } else if (mapping.field === 'video_url') {
+                            updateObj.video_url = refreshedUrl;
+                        } else if (mapping.field === 'thumbnail_url') {
+                            updateObj.thumbnail_url = refreshedUrl;
+                        } else if (mapping.field === 'additional_proofs' && typeof mapping.index === 'number') {
+                            if (updateObj.additional_proofs && updateObj.additional_proofs[mapping.index]) {
+                                updateObj.additional_proofs[mapping.index].proof_url = refreshedUrl;
+                            }
+                        } else if (mapping.field === 'additional_proofs_video' && typeof mapping.index === 'number') {
+                            if (updateObj.additional_proofs && updateObj.additional_proofs[mapping.index]) {
+                                updateObj.additional_proofs[mapping.index].video_url = refreshedUrl;
+                            }
+                        } else if (mapping.field === 'additional_proofs_thumbnail' && typeof mapping.index === 'number') {
+                            if (updateObj.additional_proofs && updateObj.additional_proofs[mapping.index]) {
+                                updateObj.additional_proofs[mapping.index].thumbnail_url = refreshedUrl;
+                            }
+                        }
+                    }
+                }
+            }
+
+            for (const [caseId, updateData] of caseUpdates.entries()) {
+                const { error: updateError } = await supabase
+                    .from('case_proofs')
+                    .update({
+                        proof_url: updateData.proof_url,
+                        video_url: updateData.video_url,
+                        thumbnail_url: updateData.thumbnail_url,
+                        additional_proofs: updateData.additional_proofs,
+                        updated_at: new Date().toISOString()
+                    })
+                    .eq('case_id', caseId);
+
+                if (!updateError) {
+                    successCount++;
+                }
+            }
+        }
+
+        const actor = await requireUser(req);
+        await addAudit('refresh_urls', actor, { urls_count: allUrls.length, success_count: successCount });
+        return ok(res, { success: true, message: `Refreshed ${allUrls.length} Discord URLs. ${successCount} database updates.` });
+    } catch (err) {
+        return serverError(res, err);
+    }
+}
+
 module.exports = async function handler(req, res) {
     res.setHeader('Cache-Control', 'no-store');
 
@@ -1604,6 +1788,7 @@ module.exports = async function handler(req, res) {
         if (route === 'discord-bot-action') return await handleDiscordBotAction(req, res);
         if (route === 'repair-dates') return await handleRepairDates(req, res);
         if (route === 'announcements') return await handleAnnouncements(req, res);
+        if (route === 'refresh-urls' || route === 'refresh_urls') return await handleRefreshUrls(req, res);
 
         return res.status(404).json({ ok: false, error: 'NOT_FOUND', route });
     } catch (error) {

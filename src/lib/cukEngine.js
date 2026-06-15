@@ -393,10 +393,10 @@ export function getRuleDetails(reasonRaw) {
     }
 
     // 8. Küfür / Hakaret
-    if (match(['cinsellik', 'cinsel', 'fantezi', 'sex', 'nsfw', 'sikerim', 'götünü', 'amını', 'şişe'])) {
+    if (match(['cinsellik', 'cinsel', 'fantezi', 'sex', 'nsfw', 'sikerim', 'götünü', 'amını', 'şişe', 's!kerim', 's*kerim'])) {
         return { category: 'Küfür/Hakaret', degree: 2, allowedMinutes: [720, 1440, 2880, 0] };
     }
-    if (match(['küfür', 'argo', 'uygunsuz', 'kelime', 'mesaj', 'içerik', 'amk', 'amınakoyum', 'hassiktir', 'vay amk'])) {
+    if (match(['küfür', 'argo', 'uygunsuz', 'kelime', 'mesaj', 'içerik', 'amk', 'amınakoyum', 'hassiktir', 'vay amk', 'aq', 'sg', 'oç', 'o.ç', 'piç', 'siktir'])) {
         return { category: 'Küfür/Hakaret', degree: 1, allowedMinutes: [15, 30, 60, 120, 240, 480, 960, 1920, 0] };
     }
 

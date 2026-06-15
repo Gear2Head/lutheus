@@ -1333,6 +1333,30 @@ async function handleDiscordScan() {
         Toast.error('Eklenti', 'Chrome tabs API bulunamadi.');
     }
 }
+async function convertDiscordUrlToBase64(url) {
+    if (!url) return url;
+    const lowerUrl = url.toLowerCase();
+    if (!lowerUrl.includes('cdn.discordapp.com/attachments/') && !lowerUrl.includes('media.discordapp.net/attachments/')) {
+        return url;
+    }
+    try {
+        console.log(`[Lutheus] Converting Discord attachment to base64: ${url}`);
+        const response = await fetch(url);
+        if (!response.ok) {
+            throw new Error(`HTTP error ${response.status}`);
+        }
+        const blob = await response.blob();
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result);
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+        });
+    } catch (err) {
+        console.warn('[Lutheus] Discord attachment to base64 conversion failed:', err);
+        return url; // fallback to original URL
+    }
+}
 
 function executeScraping(tabId, token) {
     if (typeof chrome === 'undefined' || !chrome.scripting?.executeScript) {
@@ -1494,10 +1518,11 @@ function executeScraping(tabId, token) {
         // ── Çözümle: user_id → case_id ──────────────────────────────
         const rawProofs = [];
         for (const proof of scrapedResults) {
+            const base64Url = await convertDiscordUrlToBase64(proof.proof_url);
             if (proof.case_id) {
                 rawProofs.push({
                     case_id: proof.case_id,
-                    proof_url: proof.proof_url,
+                    proof_url: base64Url,
                     raw_text: proof.raw_text
                 });
             } else if (proof.user_id) {
@@ -1514,7 +1539,7 @@ function executeScraping(tabId, token) {
                         if (cases && cases.length > 0) {
                             rawProofs.push({
                                 case_id: cases[0].case_id,
-                                proof_url: proof.proof_url,
+                                proof_url: base64Url,
                                 raw_text: proof.raw_text
                             });
                         }

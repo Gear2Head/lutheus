@@ -41,4 +41,26 @@ describe('CUKEngine.validate', () => {
         });
         expect(result.status).toBe(PenaltyStatus.VALID);
     });
+
+    test('validates slang and argo words under Küfür/Hakaret', () => {
+        const slangs = ['sg', 'amk', 'aq', 'oç', 'o.ç', 'piç', 'siktir'];
+        for (const slang of slangs) {
+            const result = CUKEngine.validate({
+                reason: slang,
+                duration: '15 dk',
+                type: 'mute'
+            });
+            expect(result.status).toBe(PenaltyStatus.VALID);
+            expect(result.details.category).toBe('Küfür/Hakaret');
+        }
+    });
+
+    test('validates incorrect duration for slang', () => {
+        const result = CUKEngine.validate({
+            reason: 'sg',
+            duration: '9 dk', // outside 5-minute tolerance of 15 min
+            type: 'mute'
+        });
+        expect(result.status).toBe(PenaltyStatus.INVALID);
+    });
 });

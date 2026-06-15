@@ -1,7 +1,7 @@
 // SECTION: STATE_STORE
 // PURPOSE: Computes and aggregates moderator point train statistics from Supabase cases.
 
-import { FirebaseRepository } from '../lib/firebaseRepository.js';
+import { DbRepository } from '../lib/dbRepository.js';
 import { RULES } from '../config/punishments';
 
 export interface PointTrainResult {
@@ -33,7 +33,7 @@ function getPTValueForRule(ruleId: string): number {
 
 export async function fetchPointTrainData(startDate: Date, endDate: Date, moderatorId?: string): Promise<PointTrainResult[]> {
   try {
-    const rawCases = await FirebaseRepository.listCases() as PointTrainCase[];
+    const rawCases = await DbRepository.listCases() as PointTrainCase[];
     if (!rawCases || !Array.isArray(rawCases)) return [];
 
     const cases = rawCases.filter(c => {

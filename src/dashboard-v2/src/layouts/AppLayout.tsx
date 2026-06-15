@@ -41,7 +41,9 @@ export default function AppLayout() {
   const [syncing, setSyncing] = useState(false);
   const [requestingAccess, setRequestingAccess] = useState(false);
   const [accessRequested, setAccessRequested] = useState(false);
+  const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
   const profileRef = useRef<HTMLDivElement>(null);
+  const mobileMoreRef = useRef<HTMLDivElement>(null);
 
   // Theme states
   const [theme, setTheme] = useState<'midnight' | 'deepspace' | 'sunset' | 'arctic'>(() => {
@@ -164,6 +166,9 @@ export default function AppLayout() {
     function handleClickOutside(e: MouseEvent) {
       if (profileRef.current && !profileRef.current.contains(e.target as Node)) {
         setProfileOpen(false);
+      }
+      if (mobileMoreRef.current && !mobileMoreRef.current.contains(e.target as Node)) {
+        setMobileMoreOpen(false);
       }
     }
     document.addEventListener('mousedown', handleClickOutside);
@@ -341,7 +346,7 @@ export default function AppLayout() {
   };
 
   const getSidebarClass = () => {
-    const base = `border-r flex flex-col shrink-0 z-20 select-none ${isResizing ? '' : 'transition-all duration-300'} `;
+    const base = `hidden md:flex border-r flex flex-col shrink-0 z-20 select-none ${isResizing ? '' : 'transition-all duration-300'} `;
     if (theme === 'deepspace') {
       return base + "border-white/[0.06] bg-black/75";
     }
@@ -575,7 +580,7 @@ export default function AppLayout() {
       {!isCollapsed && (
         <div
           onMouseDown={startResizing}
-          className="w-[4px] hover:w-[6px] active:w-[6px] h-full cursor-col-resize bg-white/[0.03] hover:bg-[#5E5CE6]/40 active:bg-[#5E5CE6] transition-all z-30 shrink-0 select-none relative group"
+          className="hidden md:block w-[4px] hover:w-[6px] active:w-[6px] h-full cursor-col-resize bg-white/[0.03] hover:bg-[#5E5CE6]/40 active:bg-[#5E5CE6] transition-all z-30 shrink-0 select-none relative group"
         >
           {/* Subtle grab handle visual */}
           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[2px] h-[30px] rounded-full bg-white/10 group-hover:bg-white/30" />
@@ -583,9 +588,9 @@ export default function AppLayout() {
       )}
 
       {/* Main Content Pane */}
-      <main className="flex-1 flex flex-col relative z-10 min-w-0 bg-transparent h-full overflow-hidden">
+      <main className="flex-1 flex flex-col relative min-w-0 bg-transparent h-full overflow-hidden">
         {/* Scrollable Subpage Content Container */}
-        <div className="flex-1 overflow-auto hide-scrollbar relative flex flex-col" id="scroll-main">
+        <div className="flex-1 overflow-auto hide-scrollbar relative flex flex-col pb-24 md:pb-0" id="scroll-main">
           {/* Page Routing Authorization Check wrapper */}
           <div className="flex-1 flex flex-col w-full">
             {(() => {
@@ -629,6 +634,180 @@ export default function AppLayout() {
 
       {/* Global Notification Center Drawer */}
       <NotificationCenter isOpen={notificationCenterOpen} onClose={() => setNotificationCenterOpen(false)} />
+
+      {/* Premium Floating Bottom Navigation (flex md:hidden) */}
+      <nav className="fixed bottom-4 left-4 right-4 h-16 bg-[#0D0D11]/80 backdrop-blur-2xl border border-white/10 rounded-2xl flex items-center justify-around px-4 shadow-[0_8px_32px_rgba(0,0,0,0.5)] z-40 md:hidden select-none">
+        {(() => {
+          const allowedNavItems = NAV_ITEMS.filter((item) => isAuthorized(item.path));
+          const mobileMainItems = allowedNavItems.slice(0, 4);
+          const mobileMoreItems = allowedNavItems.slice(4);
+
+          const getActiveMobileColor = () => {
+            switch (theme) {
+              case 'midnight': return 'text-[#5E5CE6]';
+              case 'sunset': return 'text-[#FF453A]';
+              case 'arctic': return 'text-[#0DF5FF]';
+              case 'deepspace':
+              default: return 'text-white';
+            }
+          };
+
+          const getActiveMobileBg = () => {
+            switch (theme) {
+              case 'midnight': return 'bg-[#5E5CE6]/10 border-[#5E5CE6]/15 shadow-[0_0_15px_rgba(94,92,230,0.15)]';
+              case 'sunset': return 'bg-[#FF453A]/10 border-[#FF453A]/15 shadow-[0_0_15px_rgba(255,69,58,0.15)]';
+              case 'arctic': return 'bg-[#0DF5FF]/10 border-[#0DF5FF]/15 shadow-[0_0_15px_rgba(13,245,255,0.15)]';
+              case 'deepspace':
+              default: return 'bg-white/10 border-white/15';
+            }
+          };
+
+          return (
+            <>
+              {mobileMainItems.map((item) => {
+                const Icon = item.icon;
+                const isActive = location.pathname.startsWith(item.path);
+                return (
+                  <NavLink
+                    key={item.path}
+                    to={item.path}
+                    onClick={(e) => {
+                      setMobileMoreOpen(false);
+                      handleNavClick(e, item.path);
+                    }}
+                    className="relative flex flex-col items-center justify-center w-12 h-12 rounded-xl transition-colors z-10"
+                  >
+                    <Icon className={`w-5 h-5 transition-transform ${isActive ? `${getActiveMobileColor()} scale-110` : 'text-white/40 hover:text-white/80'}`} />
+                    <span className={`text-[8.5px] mt-0.5 font-bold tracking-wide uppercase transition-colors ${isActive ? getActiveMobileColor() : 'text-white/30'}`}>
+                      {t(item.translationKey)}
+                    </span>
+                    {isActive && (
+                      <motion.div
+                        layoutId="activeTabMobile"
+                        className={`absolute inset-0 border rounded-xl -z-10 ${getActiveMobileBg()}`}
+                        transition={{ type: "spring", stiffness: 380, damping: 30 }}
+                      />
+                    )}
+                  </NavLink>
+                );
+              })}
+
+              {/* Daha Fazla (More) Button */}
+              <div className="relative" ref={mobileMoreRef}>
+                <button
+                  onClick={() => setMobileMoreOpen(!mobileMoreOpen)}
+                  className={`relative flex flex-col items-center justify-center w-12 h-12 rounded-xl transition-colors z-10 ${
+                    mobileMoreOpen ? getActiveMobileColor() : 'text-white/40 hover:text-white/80'
+                  }`}
+                >
+                  <Sliders className={`w-5 h-5 transition-transform ${mobileMoreOpen ? 'scale-110' : ''}`} />
+                  <span className={`text-[8.5px] mt-0.5 font-bold tracking-wide uppercase ${mobileMoreOpen ? getActiveMobileColor() : 'text-white/30'}`}>
+                    {language === 'tr' ? 'Menü' : 'Menu'}
+                  </span>
+                  {mobileMoreOpen && (
+                    <motion.div
+                      layoutId="activeTabMobile"
+                      className={`absolute inset-0 border rounded-xl -z-10 ${getActiveMobileBg()}`}
+                      transition={{ type: "spring", stiffness: 380, damping: 30 }}
+                    />
+                  )}
+                </button>
+
+                {/* Dropup Drawer */}
+                <AnimatePresence>
+                  {mobileMoreOpen && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 15, scale: 0.95 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                      transition={{ type: 'spring', damping: 20, stiffness: 300 }}
+                      className="absolute bottom-16 right-0 w-[200px] bg-[#0D0D11]/95 border border-white/[0.08] rounded-xl p-2 shadow-[0_15px_30px_-5px_rgba(0,0,0,0.6)] backdrop-blur-2xl z-30 flex flex-col space-y-0.5"
+                    >
+                      {/* Header */}
+                      <div className="px-3 py-2 border-b border-white/[0.04] mb-1.5 flex items-center justify-between">
+                        <span className="text-[10px] font-mono text-white/40 tracking-wider uppercase font-bold">Lutheus Access</span>
+                        <div className="flex items-center gap-1">
+                          <span className={`w-1.5 h-1.5 rounded-full ${pendingSync > 0 ? 'bg-amber-500 animate-pulse' : 'bg-[#32D74B]'}`} />
+                          <span className={`text-[9px] font-mono font-bold uppercase ${pendingSync > 0 ? 'text-amber-500' : 'text-[#32D74B]'}`}>
+                            {pendingSync > 0 ? `${pendingSync}` : 'ONLINE'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Remaining Nav Items */}
+                      {mobileMoreItems.map((item) => {
+                        const Icon = item.icon;
+                        return (
+                          <button
+                            key={item.path}
+                            onClick={() => {
+                              setMobileMoreOpen(false);
+                              if (window.__lutheus_is_dirty) {
+                                window.dispatchEvent(new CustomEvent('lutheus-dirty-navigate'));
+                                alert(language === 'tr' ? 'Lütfen kaydetmediğiniz değişiklikleri kaydetmeden veya iptal etmeden sayfadan ayrılmayın!' : 'Please save or cancel your unsaved changes before leaving this page!');
+                                return;
+                              }
+                              navigate(item.path);
+                            }}
+                            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-white/5 text-white/70 hover:text-white transition-colors text-left text-[12px] font-semibold cursor-pointer"
+                          >
+                            <Icon size={13} className="text-white/40" />
+                            <span>{t(item.translationKey)}</span>
+                          </button>
+                        );
+                      })}
+
+                      {/* Profile and Logout links */}
+                      <div className="border-t border-white/[0.04] my-1 pt-1" />
+                      <button
+                        onClick={() => {
+                          setMobileMoreOpen(false);
+                          if (window.__lutheus_is_dirty) {
+                            window.dispatchEvent(new CustomEvent('lutheus-dirty-navigate'));
+                            alert(language === 'tr' ? 'Lütfen kaydetmediğiniz değişiklikleri kaydetmeden veya iptal etmeden sayfadan ayrılmayın!' : 'Please save or cancel your unsaved changes before leaving this page!');
+                            return;
+                          }
+                          navigate('/staff', { state: { staffId: session?.profile?.discordId } });
+                        }}
+                        className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-white/5 text-white/70 hover:text-white transition-colors text-left text-[12px] font-semibold cursor-pointer"
+                      >
+                        <User size={13} className="text-white/40" />
+                        <span>{t('nav.profile')}</span>
+                      </button>
+                      <button
+                        onClick={() => {
+                          setMobileMoreOpen(false);
+                          if (window.__lutheus_is_dirty) {
+                            window.dispatchEvent(new CustomEvent('lutheus-dirty-navigate'));
+                            alert(language === 'tr' ? 'Lütfen kaydetmediğiniz değişiklikleri kaydetmeden veya iptal etmeden sayfadan ayrılmayın!' : 'Please save or cancel your unsaved changes before leaving this page!');
+                            return;
+                          }
+                          navigate('/settings');
+                        }}
+                        className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-white/5 text-white/70 hover:text-white transition-colors text-left text-[12px] font-semibold cursor-pointer"
+                      >
+                        <SettingsIcon size={13} className="text-white/40" />
+                        <span>{t('nav.settings')}</span>
+                      </button>
+                      <div className="border-t border-white/[0.04] my-1 pt-1" />
+                      <button
+                        onClick={() => {
+                          setMobileMoreOpen(false);
+                          logout();
+                        }}
+                        className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-[#FF453A]/10 text-white/70 hover:text-[#FF453A] transition-colors text-left text-[12px] font-bold cursor-pointer"
+                      >
+                        <LogOut size={13} className="text-inherit opacity-60" />
+                        <span>{t('nav.logout')}</span>
+                      </button>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            </>
+          );
+        })()}
+      </nav>
     </div>
   );
 }

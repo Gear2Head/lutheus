@@ -146,7 +146,13 @@ ANALİZ VE TOLERANS KURALLARI:
 - Kategori dışı, belirsiz, anlamsız veya placeholder sebeplerde (örneğin "bos", "test", "abc" vb.) ya da kitapçıktaki sürelere uymayan cezalarda KESİNLİKLE "valid": false döndür.
 - Süre dakika cinsinden verilir. Eğer süresiz ise 0 olarak kabul et.
 - Eğer görsel (ekran görüntüsü) eklendiyse, içindeki metin ve ihlali oku ve denetimde kullan. Görselde hiçbir metin, kullanıcı adı veya ihlal içeriği okunamıyorsa "imageUnreadable": true olarak döndür.
-- Yanıtını SADECE aşağıdaki JSON formatında ver, başka açıklama ekleme.
+
+TÜRKÇE CHAT KISALTMALARI VE SANSÜR KURALLARI (KRİTİK):
+- Sansürlü Küfürler: Kullanıcılar küfür ve hakaretlerin arasına ünlem, yıldız, nokta veya benzeri özel karakterler koyarak filtreleri atlatmaya çalışabilirler. Örn: "a!!nen s!!keyim", "s*keyim", "o.ç", "amk", "aq", "piç", "p!ç". Bunları doğrudan ilgili küfür/hakaret olarak kabul et ve sansürü çöz.
+- Kısaltmalar/Argo: "sg" kelimesi Türkçe chat jargonunda kesinlikle "siktir git" (ağır hakaret / argo / saygısızlık) kısaltmasıdır. "amk" / "aq" = "amına koyayım", "oç" = "orospu çocuğu". Bu ifadeler "Küfür/Hakaret" veya "Saygısızlık" kapsamında kesinlikle GEÇERLİ (valid: true) kabul edilmelidir.
+- Yetkili İsimleri ve Etiketleri (CUK Kural 1): Sohbet logunda yetkili isimleri, rolleri veya etiketleri geçebilir (Örn: "@! Maty", "@Maty", "Maty", "Staff", "Admin", "Mod", "Adal", "@Adal", "ekip", "yetkili", "moderatör"). Eğer sohbet logunda bir üyeden bu yetkililere yönelik uygunsuz üslup, aşağılama, pasif-agresiflik, küfür veya "sg" gibi ifadeler varsa, bu doğrudan "Yetkiliye Hakaret" veya "Yetkililere Saygısızlık" (CUK 1) olarak değerlendirilmeli ve GEÇERLİ (valid: true) sayılmalıdır.
+
+Yanıtını SADECE aşağıdaki JSON formatında ver, başka açıklama ekleme.
 
 JSON ÇIKTI FORMATI:
 {

@@ -53,6 +53,7 @@ import { runDbHealthCheck, setPollCursor, setLastPollError } from './lib/dbDiagn
 import { RaporCommand } from './commands/rapor.js';
 import { CezalarCommand, buildCasesMessage } from './commands/cases.js';
 import { startNotificationBroker } from './services/NotificationBroker.js';
+import { validateCase, parseDuration } from './lib/cukEngine.js';
 
 // In-memory cache for dynamic guild configurations to power real-time welcome, automod, reaction roles etc.
 const guildConfigsCache: Record<string, any> = {};
@@ -1339,13 +1340,35 @@ async function handleDmMessage(message: any): Promise<void> {
 
     if (analysis.degraded) {
         // AI kapalıysa deterministik doğrulamayı çalıştır ve bunu bildir
+        let durationMinutes = 0;
+        const parsedDuration = parseDuration(content);
+        if (parsedDuration !== null && parsedDuration !== Infinity) {
+            durationMinutes = parsedDuration;
+        } else if (parsedDuration === Infinity) {
+            durationMinutes = 0;
+        }
+
+        let reasonRaw = content;
+        const durationPattern = /(\d+)\s*(saniye|sec|seconds?|sn|s|dakika|min|minutes?|dk|m|saat|hours?|hour|sa|h|gün|gun|days?|day|g|d|hafta|weeks?|week|hf|w|ay|months?|month|yıl|yil|sene|years?|year|y)\b/i;
+        reasonRaw = reasonRaw.replace(durationPattern, '').replace(/\s*-\s*/g, '').trim();
+        if (!reasonRaw) {
+            reasonRaw = content;
+        }
+
+        const deterministicResult = validateCase(reasonRaw, durationMinutes);
+        const isValid = deterministicResult.valid;
+        const color = isValid ? 0x2ed573 : 0xff4757;
+        const statusEmoji = isValid ? '✅ GEÇERLİ' : '❌ GEÇERSİZ';
+
         const resultEmbed = new EmbedBuilder()
-            .setTitle('⚠️ AI Geçici Olarak Kullanılamıyor')
-            .setColor(0xffa502)
-            .setDescription('Deterministik CUK doğrulaması çalıştırıldı.\n\nSonuç:\n')
+            .setTitle(`⚠️ AI Çevrimdışı — Deterministik Denetim`)
+            .setColor(color)
+            .setDescription('AI servisi geçici olarak kullanılamıyor. Deterministik CUK denetimi yapıldı.')
             .addFields(
-                { name: '💬 Özet', value: String(analysis.summary || 'AI service unavailable. Deterministic validation only.').slice(0, 300) },
-                { name: '🔎 Güven Notu', value: String(analysis.confidenceNote || 'Fallback mode activated.').slice(0, 200) }
+                { name: '📂 Kategori', value: `\`${deterministicResult.categoryMatched || 'Belirlenemedi'}\``, inline: true },
+                { name: '📊 Durum', value: `**${statusEmoji}**`, inline: true },
+                { name: '💬 Detay', value: String(deterministicResult.message || '-').slice(0, 300) },
+                { name: '🔎 Güven Notu', value: 'Deterministik Kural Eşleşmesi (AI Fallback)', inline: true }
             )
             .setFooter({ text: `Kalan Kota: ${quotaResult.remaining}/${quotaResult.limit} • Lutheus CUK Denetim` })
             .setTimestamp();
@@ -1893,9 +1916,173 @@ async function sendDailyWeeklyReports() {
     }
 }
 
+async function refreshExpiredProofUrls() {
+    console.log('Discord Bot: Executing Discord CDN attachment URL refresh...');
+    try {
+        const twelveHoursAgo = new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString();
+        const { data: proofs, error } = await supabase
+            .from('case_proofs')
+            .select('case_id, proof_url, video_url, thumbnail_url, additional_proofs')
+            .or(`updated_at.is.null,updated_at.lt.${twelveHoursAgo}`);
+            
+        if (error) {
+            console.error('Discord Bot: Failed to fetch case proofs from Supabase:', error.message);
+            return;
+        }
+        if (!proofs || proofs.length === 0) {
+            console.log('Discord Bot: No proofs found/need update in database.');
+            return;
+        }
+
+        const urlToProofsMap: Map<string, { caseId: string; field: string; index?: number }[]> = new Map();
+
+        const addUrl = (url: string | null | undefined, caseId: string, field: string, index?: number) => {
+            if (!url) return;
+            const lower = url.toLowerCase();
+            if (lower.includes('cdn.discordapp.com/attachments/') || lower.includes('media.discordapp.net/attachments/')) {
+                if (!urlToProofsMap.has(url)) {
+                    urlToProofsMap.set(url, []);
+                }
+                urlToProofsMap.get(url)!.push({ caseId, field, index });
+            }
+        };
+
+        for (const proof of proofs) {
+            addUrl(proof.proof_url, proof.case_id, 'proof_url');
+            addUrl(proof.video_url, proof.case_id, 'video_url');
+            addUrl(proof.thumbnail_url, proof.case_id, 'thumbnail_url');
+            if (proof.additional_proofs && Array.isArray(proof.additional_proofs)) {
+                proof.additional_proofs.forEach((ap: any, idx: number) => {
+                    addUrl(ap.proof_url, proof.case_id, 'additional_proofs', idx);
+                    addUrl(ap.video_url, proof.case_id, 'additional_proofs_video', idx);
+                    addUrl(ap.thumbnail_url, proof.case_id, 'additional_proofs_thumbnail', idx);
+                });
+            }
+        }
+
+        const allUrls = Array.from(urlToProofsMap.keys());
+        if (allUrls.length === 0) {
+            console.log('Discord Bot: No Discord CDN URLs need refreshing.');
+            return;
+        }
+
+        console.log(`Discord Bot: Found ${allUrls.length} Discord CDN URLs to refresh.`);
+
+        const batchSize = 50;
+        const refreshedMap: Map<string, string> = new Map();
+
+        for (let i = 0; i < allUrls.length; i += batchSize) {
+            if (i > 0) {
+                // Throttling: Delay for 1.5s between API batches to avoid Discord rate limit (429)
+                console.log('Discord Bot: Pacing requests, waiting 1.5 seconds...');
+                await new Promise(resolve => setTimeout(resolve, 1500));
+            }
+
+            const batch = allUrls.slice(i, i + batchSize);
+            try {
+                const response = await fetch('https://discord.com/api/v10/attachments/refresh-urls', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bot ${botToken}`
+                    },
+                    body: JSON.stringify({ attachment_urls: batch })
+                });
+
+                if (!response.ok) {
+                    const text = await response.text();
+                    console.error(`Discord Bot: Failed to refresh batch ${i / batchSize + 1}: ${response.status} ${text}`);
+                    continue;
+                }
+
+                const result = await response.json() as { refreshed_urls: { original: string; refreshed: string }[] };
+                if (result && Array.isArray(result.refreshed_urls)) {
+                    for (const item of result.refreshed_urls) {
+                        refreshedMap.set(item.original, item.refreshed);
+                    }
+                }
+            } catch (err: any) {
+                console.error(`Discord Bot: Network error during URL refresh batch:`, err.message);
+            }
+        }
+
+        const caseUpdates: Map<string, any> = new Map();
+
+        for (const [originalUrl, refreshedUrl] of refreshedMap.entries()) {
+            const mappings = urlToProofsMap.get(originalUrl);
+            if (!mappings) continue;
+
+            for (const mapping of mappings) {
+                if (!caseUpdates.has(mapping.caseId)) {
+                    const originalProof = proofs.find(p => p.case_id === mapping.caseId);
+                    if (originalProof) {
+                        caseUpdates.set(mapping.caseId, {
+                            proof_url: originalProof.proof_url,
+                            video_url: originalProof.video_url,
+                            thumbnail_url: originalProof.thumbnail_url,
+                            additional_proofs: originalProof.additional_proofs ? JSON.parse(JSON.stringify(originalProof.additional_proofs)) : null
+                        });
+                    }
+                }
+
+                const updateObj = caseUpdates.get(mapping.caseId);
+                if (updateObj) {
+                    if (mapping.field === 'proof_url') {
+                        updateObj.proof_url = refreshedUrl;
+                    } else if (mapping.field === 'video_url') {
+                        updateObj.video_url = refreshedUrl;
+                    } else if (mapping.field === 'thumbnail_url') {
+                        updateObj.thumbnail_url = refreshedUrl;
+                    } else if (mapping.field === 'additional_proofs' && typeof mapping.index === 'number') {
+                        if (updateObj.additional_proofs && updateObj.additional_proofs[mapping.index]) {
+                            updateObj.additional_proofs[mapping.index].proof_url = refreshedUrl;
+                        }
+                    } else if (mapping.field === 'additional_proofs_video' && typeof mapping.index === 'number') {
+                        if (updateObj.additional_proofs && updateObj.additional_proofs[mapping.index]) {
+                            updateObj.additional_proofs[mapping.index].video_url = refreshedUrl;
+                        }
+                    } else if (mapping.field === 'additional_proofs_thumbnail' && typeof mapping.index === 'number') {
+                        if (updateObj.additional_proofs && updateObj.additional_proofs[mapping.index]) {
+                            updateObj.additional_proofs[mapping.index].thumbnail_url = refreshedUrl;
+                        }
+                    }
+                }
+            }
+        }
+
+        let successCount = 0;
+        for (const [caseId, updateData] of caseUpdates.entries()) {
+            const { error: updateError } = await supabase
+                .from('case_proofs')
+                .update({
+                    proof_url: updateData.proof_url,
+                    video_url: updateData.video_url,
+                    thumbnail_url: updateData.thumbnail_url,
+                    additional_proofs: updateData.additional_proofs,
+                    updated_at: new Date().toISOString()
+                })
+                .eq('case_id', caseId);
+
+            if (updateError) {
+                console.error(`Discord Bot: Failed to update proof for case #${caseId}:`, updateError.message);
+            } else {
+                successCount++;
+            }
+        }
+
+        console.log(`Discord Bot: Successfully refreshed and updated ${successCount} case proofs.`);
+    } catch (err: any) {
+        console.error('Discord Bot: Unexpected error in refreshExpiredProofUrls:', err.message);
+    }
+}
+
 function startScheduledReporting() {
     console.log('Discord Bot: Starting daily scheduled reporting clock...');
     setInterval(sendDailyWeeklyReports, 24 * 60 * 60 * 1000);
+
+    console.log('Discord Bot: Starting Discord CDN attachment URL refresh scheduler (12h)...');
+    refreshExpiredProofUrls().catch((err: any) => console.error('Discord Bot: Initial URL refresh failed:', err.message));
+    setInterval(refreshExpiredProofUrls, 12 * 60 * 60 * 1000);
 }
 
 if (botToken) {

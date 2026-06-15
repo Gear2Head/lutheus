@@ -32,7 +32,7 @@ function generateUUID() {
 }
 
 // Legacy repository wrapper; currently backed by Supabase REST, not Firebase.
-export const FirebaseRepository = {
+export const DbRepository = {
     async getUser(uid) {
         if (!uid) return null;
         return null;

@@ -1,6 +1,6 @@
 import { APP_CONFIG } from '../config/appConfig.js';
 import { AuthService } from '../auth/authService.js';
-import { FirebaseRepository } from './firebaseRepository.js';
+import { DbRepository } from './dbRepository.js';
 
 export async function analyzeCaseWithGroq(caseData, cukResult) {
     const session = await AuthService.getSession();
@@ -25,7 +25,7 @@ export async function analyzeCaseWithGroq(caseData, cukResult) {
         return { success: false, error: payload.error || `AI_HTTP_${response.status}` };
     }
 
-    await FirebaseRepository.saveAnalysis(caseData.caseKey || caseData.id || caseData.caseId, {
+    await DbRepository.saveAnalysis(caseData.caseKey || caseData.id || caseData.caseId, {
         deterministic: cukResult,
         ai: payload.analysis,
         provider: 'groq',

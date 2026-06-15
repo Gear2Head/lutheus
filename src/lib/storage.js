@@ -2,7 +2,7 @@
 // Boho integration + Pointtrain persistence layer
 
 import { escapeHtml } from './utils.js';
-import { FirebaseRepository } from './firebaseRepository.js';
+import { DbRepository } from './dbRepository.js';
 import { getStoredSession } from '../auth/sessionStore.js';
 import { CUK_RULES } from './cukEngine.js';
 import { SEEDED_ROLE_MEMBERS, normalizeRole } from '../auth/rolePolicy.js';
@@ -384,7 +384,7 @@ export const Storage = {
         // Throttle: only push to Firebase if batch is >= 1 entry (fire-and-forget)
         const actor = await getActor();
         if (actor && newCases.length > 0) {
-            FirebaseRepository.saveCases(normalizedEntries, undefined, actor).catch((error) => {
+            DbRepository.saveCases(normalizedEntries, undefined, actor).catch((error) => {
                 console.warn('Lutheus: Firestore case sync failed:', error.message);
             });
         }
@@ -411,7 +411,7 @@ export const Storage = {
         await this.upsertStaffDirectoryFromCases(normalized);
         const actor = await getActor();
         if (actor) {
-            await FirebaseRepository.saveCases(normalized, undefined, actor).catch((error) => {
+            await DbRepository.saveCases(normalized, undefined, actor).catch((error) => {
                 console.warn('Lutheus: Firestore case save failed:', error.message);
             });
         }
@@ -423,7 +423,7 @@ export const Storage = {
         if (index === -1) return false;
         cases[index] = { ...cases[index], ...metadata };
         await this.setCasesLocal(cases);
-        await FirebaseRepository.saveCases([cases[index]], undefined, await getActor()).catch((error) => {
+        await DbRepository.saveCases([cases[index]], undefined, await getActor()).catch((error) => {
             console.warn('Lutheus: Firestore case metadata save failed:', error.message);
         });
         return true;
@@ -440,7 +440,7 @@ export const Storage = {
         }
 
         try {
-            const remoteCases = await FirebaseRepository.listCases();
+            const remoteCases = await DbRepository.listCases();
             if (Array.isArray(remoteCases)) {
                 for (const entry of remoteCases) {
                     const id = String(entry.caseId || entry.id || '');
@@ -673,7 +673,7 @@ export const Storage = {
             formerStaff: !isActiveStaff,
             aliases: registry[id].aliases || []
         });
-        await FirebaseRepository.setRoleCache(`discord:${id}`, {
+        await DbRepository.setRoleCache(`discord:${id}`, {
             discordId: id,
             displayName: registry[id].name,
             role,
@@ -722,7 +722,7 @@ export const Storage = {
         const localRules = await this.getSync('dynamicRules');
         if (localRules?.categories && Object.keys(localRules.categories).length) return localRules;
 
-        const policy = await FirebaseRepository.getRolePolicy().catch(() => null);
+        const policy = await DbRepository.getRolePolicy().catch(() => null);
         if (policy?.dynamicRules?.categories && Object.keys(policy.dynamicRules.categories).length) {
             await this.setSync('dynamicRules', policy.dynamicRules);
             return policy.dynamicRules;
@@ -730,7 +730,7 @@ export const Storage = {
 
         const defaults = cloneDefaultRules();
         await this.setSync('dynamicRules', defaults);
-        await FirebaseRepository.saveRolePolicy({ dynamicRules: defaults }, await getActor()).catch((error) => {
+        await DbRepository.saveRolePolicy({ dynamicRules: defaults }, await getActor()).catch((error) => {
             console.warn('Lutheus: Firestore default CUK seed failed:', error.message);
         });
         return defaults;
@@ -739,7 +739,7 @@ export const Storage = {
     async saveDynamicRules(rules) {
         await this.setSync('dynamicRules', rules);
         try {
-            await FirebaseRepository.saveRolePolicy({ dynamicRules: rules }, await getActor());
+            await DbRepository.saveRolePolicy({ dynamicRules: rules }, await getActor());
             return { synced: true };
         } catch (error) {
             console.warn('Lutheus: Firestore CUK policy update failed:', error.message);
@@ -1003,7 +1003,7 @@ export const Storage = {
         const runs = await this.getPointtrainRuns();
         runs.unshift(run);
         await this.set('pointtrainRuns', runs.slice(0, 30));
-        await FirebaseRepository.saveScanRun({
+        await DbRepository.saveScanRun({
             ...run,
             type: 'pointtrain'
         }).catch((error) => {
@@ -1019,7 +1019,7 @@ export const Storage = {
 
     async getRoleCache() {
         try {
-            const remoteCache = await FirebaseRepository.listRoleCache();
+            const remoteCache = await DbRepository.listRoleCache();
             if (Array.isArray(remoteCache) && remoteCache.length) {
                 await this.set('roleCache', remoteCache);
                 return remoteCache;

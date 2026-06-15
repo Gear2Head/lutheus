@@ -403,7 +403,8 @@ export async function getCases(limit = 100): Promise<SapphireCase[]> {
   try {
     dbCases = await getRecentCases(limit);
   } catch (err) {
-    console.warn('[Lutheus] Supabase unavailable:', err);
+    console.error('[Lutheus Supabase Error Boundary] Supabase unavailable:', err);
+    throw err;
   }
 
   let localCases: SapphireCase[] = [];

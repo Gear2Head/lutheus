@@ -76,10 +76,11 @@ export default function Staff() {
       setWarnings([]);
       return;
     }
+    const targetDiscordId = selected.discordId;
     async function loadWarnings() {
       setWarningsLoading(true);
       try {
-        const data = await getStaffWarnings(selected.discordId);
+        const data = await getStaffWarnings(targetDiscordId);
         setWarnings(data);
       } catch (err) {
         console.error('Failed to load staff warnings:', err);

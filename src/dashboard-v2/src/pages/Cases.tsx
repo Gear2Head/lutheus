@@ -658,6 +658,23 @@ export default function Cases() {
                         {/* Case ID */}
                         <td className="py-3.5 px-2">
                           <div className="flex items-center gap-2">
+                            {/* Aktiflik Dotu */}
+                            <span 
+                              className={`w-1.5 h-1.5 rounded-full shrink-0 ${isPenaltyActive(c) ? 'bg-[#32D74B] animate-pulse shadow-[0_0_8px_rgba(50,215,75,0.8)]' : 'bg-white/20'}`}
+                              title={isPenaltyActive(c) ? 'Aktif Ceza' : 'Süresi Dolmuş / Pasif'} 
+                            />
+                            
+                            {/* Ceza İkonu */}
+                            <span className="shrink-0 flex items-center justify-center min-w-[14px]">
+                              {(() => {
+                                const t = (c.type || '').toLowerCase();
+                                if (t.includes('mute')) return <i className="fa-solid fa-microphone-slash text-[10px] text-[#FF9F0A]" title="Mute" />;
+                                if (t.includes('ban')) return <i className="fa-solid fa-gavel text-[10px] text-[#FF453A]" title="Ban" />;
+                                if (t.includes('warn')) return <i className="fa-solid fa-triangle-exclamation text-[10px] text-[#FFD60A]" title="Uyarı" />;
+                                return <i className="fa-solid fa-gavel text-[10px] text-white/40" />;
+                              })()}
+                            </span>
+
                             <span className="text-[12px] font-mono font-semibold text-[#5E5CE6] flex items-center gap-1.5 group-hover:text-[#A259FE] transition-colors">
                               <span className="opacity-40">#</span>{c.case_id}
                             </span>

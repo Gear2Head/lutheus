@@ -6,10 +6,8 @@
     align-items: center;
     justify-content: center;
     padding: 24px;
-    background-image: url('/public/background.png');
-    background-size: cover;
-    background-position: center;
-    background-repeat: no-repeat;
+    background-color: #09090b !important;
+    background-image: none !important;
     position: relative;
     overflow: hidden;
 }
@@ -20,12 +18,13 @@
     position: absolute;
     top: -10%;
     left: -10%;
-    width: 40%;
-    height: 40%;
+    width: 45%;
+    height: 45%;
     border-radius: 50%;
-    background: rgba(124, 58, 237, 0.08);
-    filter: blur(100px);
+    background: radial-gradient(circle, rgba(162, 89, 254, 0.22) 0%, rgba(94, 92, 230, 0.05) 70%, transparent 100%);
+    filter: blur(120px);
     z-index: 1;
+    pointer-events: none;
 }
 
 .login-shell::after {
@@ -33,22 +32,24 @@
     position: absolute;
     bottom: -10%;
     right: -10%;
-    width: 40%;
-    height: 40%;
+    width: 45%;
+    height: 45%;
     border-radius: 50%;
-    background: rgba(59, 130, 246, 0.08);
-    filter: blur(100px);
+    background: radial-gradient(circle, rgba(94, 92, 230, 0.18) 0%, rgba(162, 89, 254, 0.05) 70%, transparent 100%);
+    filter: blur(120px);
     z-index: 1;
+    pointer-events: none;
 }
 
 .login-container {
     width: min(900px, 100%);
     min-height: 550px;
-    background: rgba(18, 18, 24, 0.92) !important;
-    backdrop-filter: none !important;
-    border: 1px solid rgba(124, 58, 237, 0.18) !important;
+    background: rgba(18, 18, 24, 0.65) !important;
+    backdrop-filter: blur(20px) !important;
+    -webkit-backdrop-filter: blur(20px) !important;
+    border: 1px solid rgba(162, 89, 254, 0.15) !important;
     border-radius: 32px;
-    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45) !important;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.75), inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
     display: flex;
     overflow: hidden;
     position: relative;
@@ -56,7 +57,8 @@
 }
 
 .login-container.glass-panel {
-    backdrop-filter: none !important;
+    backdrop-filter: blur(20px) !important;
+    -webkit-backdrop-filter: blur(20px) !important;
 }
 
 /* Left Form Column */
@@ -146,26 +148,43 @@
     justify-content: center;
     gap: 10px;
     box-shadow: none !important;
+    backdrop-filter: blur(8px) !important;
+    -webkit-backdrop-filter: blur(8px) !important;
 }
 
 .discord-btn {
-    background: #5865F2 !important;
+    background: rgba(88, 101, 242, 0.8) !important;
+    border: 1px solid rgba(88, 101, 242, 0.4) !important;
     color: #ffffff !important;
+    transition: all 200ms ease-out !important;
 }
 
 .discord-btn:hover {
-    background: #4752C4 !important;
-    box-shadow: 0 6px 20px rgba(88, 101, 242, 0.35) !important;
+    background: #5865F2 !important;
+    box-shadow: 0 0 20px rgba(88, 101, 242, 0.4) !important;
+    transform: translateY(-1px);
+}
+
+.discord-btn:active {
+    transform: translateY(1px) scale(0.98);
 }
 
 .google-btn {
-    background: rgba(255, 255, 255, 0.04) !important;
-    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    background: rgba(255, 255, 255, 0.03) !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
     color: var(--text-primary) !important;
+    transition: all 200ms ease-out !important;
 }
 
 .google-btn:hover {
-    background: rgba(255, 255, 255, 0.08) !important;
+    background: rgba(255, 255, 255, 0.07) !important;
+    border-color: rgba(255, 255, 255, 0.15) !important;
+    box-shadow: 0 0 20px rgba(255, 255, 255, 0.05) !important;
+    transform: translateY(-1px);
+}
+
+.google-btn:active {
+    transform: translateY(1px) scale(0.98);
 }
 
 .login-alert-note {

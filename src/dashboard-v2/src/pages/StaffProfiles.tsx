@@ -13,7 +13,7 @@ import {
   SapphireCase, StaffWarning, StaffMessage, getStaffProfiles, StaffProfile
 } from '../lib/supabase';
 import { formatDate } from '../lib/utils';
-import { getRoleColor, getRoleLabel } from '../lib/auth';
+import { getRoleColor, getRoleLabel, isManagementKadrosu } from '../lib/auth';
 import { calculatePerformanceScore, getReliabilityStatus } from '../lib/cukEngine';
 import { Badge } from '../components/ui/Badge';
 import { buildSapphireCaseUrl } from '../lib/sapphireUrl';
@@ -283,35 +283,94 @@ export default function StaffProfiles() {
             </div>
 
             {/* Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
-              {filteredProfiles.map((p) => {
+            {(() => {
+              const managementKadrosu = filteredProfiles.filter(p => p.role !== 'eski_yetkili' && isManagementKadrosu(p.role || ''));
+              const aktifYetkiliKadrosu = filteredProfiles.filter(p => p.role !== 'eski_yetkili' && !isManagementKadrosu(p.role || ''));
+              const eskiYetkililer = filteredProfiles.filter(p => p.role === 'eski_yetkili');
+
+              const renderProfileCard = (p: StaffProfile) => {
                 const color = getRoleColor(p.role);
                 return (
                   <button
                     key={p.discord_id}
                     onClick={() => handleSelectStaff(p)}
-                    className="p-5 rounded-2xl bg-[#111112]/50 border border-white/[0.06] hover:border-white/20 transition-all duration-200 text-center flex flex-col items-center group relative overflow-hidden active:scale-[0.97] cursor-pointer"
+                    className="p-5 rounded-2xl bg-[#111112]/50 border border-white/[0.06] hover:border-white/20 transition-all duration-200 text-center flex flex-col items-center group relative overflow-hidden active:scale-[0.97] cursor-pointer w-full text-left"
                   >
                     <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-primary to-[#A259FE] opacity-0 group-hover:opacity-100 transition-opacity" />
                     <img
                       src={p.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${p.discord_id}`}
                       alt=""
-                      className="w-16 h-16 rounded-xl object-cover bg-black/50 border border-white/10 shadow-sm"
+                      className="w-16 h-16 rounded-xl object-cover bg-black/50 border border-white/10 shadow-sm mx-auto"
                     />
-                    <h4 className="font-bold text-white text-sm mt-3.5 truncate w-full group-hover:text-primary transition-colors">
+                    <h4 className="font-bold text-white text-sm mt-3.5 truncate w-full group-hover:text-primary transition-colors text-center">
                       {p.in_game_name || p.username}
                     </h4>
                     <span 
-                      className="text-[9px] font-extrabold uppercase tracking-widest mt-1.5 px-2.5 py-0.5 rounded-full border bg-black/40" 
+                      className="text-[9px] font-extrabold uppercase tracking-widest mt-1.5 px-2.5 py-0.5 rounded-full border bg-black/40 text-center block mx-auto" 
                       style={{ color, borderColor: `${color}25` }}
                     >
                       {getRoleLabel(p.role || '')}
                     </span>
-                    <span className="text-[10px] text-white/30 font-mono mt-2">{p.discord_id}</span>
+                    <span className="text-[10px] text-white/30 font-mono mt-2 text-center block w-full">{p.discord_id}</span>
                   </button>
                 );
-              })}
-            </div>
+              };
+
+              return (
+                <div className="space-y-8 w-full">
+                  {/* Yönetim Kadrosu */}
+                  <div className="space-y-4">
+                    <h3 className="text-xs font-bold text-[#A259FE] uppercase tracking-wider flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-[#A259FE]" />
+                      Yönetim Kadrosu ({managementKadrosu.length})
+                    </h3>
+                    {managementKadrosu.length === 0 ? (
+                      <div className="p-6 rounded-2xl border border-dashed border-white/[0.06] text-center text-xs text-white/40 italic bg-white/[0.01]">
+                        Kayıtlı yönetim yetkilisi bulunmamaktadır.
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
+                        {managementKadrosu.map(renderProfileCard)}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Aktif Yetkili Kadrosu */}
+                  <div className="space-y-4 pt-6 border-t border-white/[0.04]">
+                    <h3 className="text-xs font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                      Aktif Yetkili Kadrosu ({aktifYetkiliKadrosu.length})
+                    </h3>
+                    {aktifYetkiliKadrosu.length === 0 ? (
+                      <div className="p-6 rounded-2xl border border-dashed border-white/[0.06] text-center text-xs text-white/40 italic bg-white/[0.01]">
+                        Aktif yetkili bulunmamaktadır.
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
+                        {aktifYetkiliKadrosu.map(renderProfileCard)}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Eski Yetkililer */}
+                  <div className="space-y-4 pt-6 border-t border-white/[0.04]">
+                    <h3 className="text-xs font-bold text-white/40 uppercase tracking-wider flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-slate-500" />
+                      Eski Yetkililer ({eskiYetkililer.length})
+                    </h3>
+                    {eskiYetkililer.length === 0 ? (
+                      <div className="p-6 rounded-2xl border border-dashed border-white/[0.06] text-center text-xs text-white/40 italic bg-white/[0.01]">
+                        Kayıtlı eski yetkili bulunmamaktadır.
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
+                        {eskiYetkililer.map(renderProfileCard)}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
           </motion.div>
         ) : (
           // DETAILED STAFF VIEW & EDIT PANELS

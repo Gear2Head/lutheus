@@ -65,8 +65,10 @@ export default function ProofDrawer({
   const [currentProofIndex, setCurrentProofIndex] = useState(0);
   const [allProofs, setAllProofs] = useState<Array<{ proof_url: string | null; video_url?: string | null; thumbnail_url?: string | null; raw_text?: string | null; source_case_id?: string }>>([]);
   const [embeddedProofs, setEmbeddedProofs] = useState<CaseProof[]>([]);
+  const [isZoomed, setIsZoomed] = useState(false);
 
   useEffect(() => {
+    setIsZoomed(false);
     if (!caseId) {
       setProof(null);
       setAllProofs([]);
@@ -282,7 +284,10 @@ export default function ProofDrawer({
                 {hasMultipleProofs && (
                   <div className="flex items-center justify-between px-2">
                     <button
-                      onClick={() => setCurrentProofIndex(prev => Math.max(0, prev - 1))}
+                      onClick={() => {
+                        setIsZoomed(false);
+                        setCurrentProofIndex(prev => Math.max(0, prev - 1));
+                      }}
                       disabled={currentProofIndex === 0}
                       className="p-2 rounded-lg bg-white/[0.02] border border-white/[0.08] hover:bg-white/[0.08] disabled:opacity-30 disabled:cursor-not-allowed text-white/60 hover:text-white transition-all"
                     >
@@ -299,7 +304,10 @@ export default function ProofDrawer({
                       )}
                     </div>
                     <button
-                      onClick={() => setCurrentProofIndex(prev => Math.min(allProofs.length - 1, prev + 1))}
+                      onClick={() => {
+                        setIsZoomed(false);
+                        setCurrentProofIndex(prev => Math.min(allProofs.length - 1, prev + 1));
+                      }}
                       disabled={currentProofIndex === allProofs.length - 1}
                       className="p-2 rounded-lg bg-white/[0.02] border border-white/[0.08] hover:bg-white/[0.08] disabled:opacity-30 disabled:cursor-not-allowed text-white/60 hover:text-white transition-all"
                     >
@@ -354,26 +362,28 @@ export default function ProofDrawer({
                     </div>
                   ) : fullResProofUrl ? (
                     <div className="relative rounded-xl overflow-hidden border border-white/10 group shadow-lg bg-black/40">
-                      {/* Görsel — tıklanınca lightbox */}
+                      {/* Görsel — tıklanınca toggle zoom */}
                       <button
                         type="button"
-                        onClick={() => onOpenLightbox?.(fullResProofUrl)}
-                        className="w-full block cursor-zoom-in border-none bg-transparent p-0"
-                        title="Tam boyut görüntüle"
+                        onClick={() => setIsZoomed(!isZoomed)}
+                        className={`w-full block border-none bg-transparent p-0 overflow-hidden ${isZoomed ? 'cursor-zoom-out' : 'cursor-zoom-in'}`}
+                        title={isZoomed ? "Uzaklaştır" : "Yakınlaştır"}
                       >
                         <img
                           src={fullResProofUrl}
                           alt="Proof"
-                          className="w-full object-contain max-h-72 group-hover:brightness-90 transition-all duration-200"
+                          className={`w-full transition-all duration-300 ${isZoomed ? 'object-contain max-h-[80vh] scale-125' : 'object-contain max-h-72 group-hover:brightness-90'}`}
                           loading="lazy"
                         />
                         {/* Zoom overlay */}
-                        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/30">
-                          <div className="bg-black/70 border border-white/20 rounded-xl px-3 py-2 flex items-center gap-1.5 text-white text-[12px] font-bold shadow-xl">
-                            <ZoomIn size={14} />
-                            Tam Boyut Görüntüle
+                        {!isZoomed && (
+                          <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/30">
+                            <div className="bg-black/70 border border-white/20 rounded-xl px-3 py-2 flex items-center gap-1.5 text-white text-[12px] font-bold shadow-xl">
+                              <ZoomIn size={14} />
+                              Yakınlaştırmak İçin Tıkla
+                            </div>
                           </div>
-                        </div>
+                        )}
                       </button>
                       {/* Dışarıda aç linki */}
                       <a
@@ -514,7 +524,7 @@ export default function ProofDrawer({
                 animate={{ x: 0 }}
                 exit={{ x: '100%' }}
                 transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-                className={`fixed top-0 right-0 h-full w-full sm:w-[480px] z-50 shadow-2xl flex flex-col ${getGlassClass(intensity, theme)}`}
+                className={`fixed top-0 right-0 h-[100dvh] w-full sm:w-[480px] z-50 shadow-2xl flex flex-col overflow-hidden ${getGlassClass(intensity, theme)}`}
               >
                 {drawerContent}
               </motion.div>

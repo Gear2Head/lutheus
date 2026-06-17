@@ -43,6 +43,16 @@ async function handleInvalidCase(client: Client, caseRow: any) {
     if (!guildId) return;
 
     try {
+        // Fetch target user (the moderator who applied the wrong penalty) to cache it
+        const targetUserId = caseRow.author_discord_id;
+        let targetUser = null;
+        if (targetUserId) {
+            targetUser = await client.users.fetch(targetUserId).catch((err) => {
+                console.warn(`[NotificationBroker] Failed to fetch target user ${targetUserId}:`, err.message || err);
+                return null;
+            });
+        }
+
         const guild = client.guilds.cache.get(guildId) || await client.guilds.fetch(guildId).catch(() => null);
         if (!guild) {
             console.warn(`[NotificationBroker] Guild not found: ${guildId}`);
@@ -71,6 +81,19 @@ async function handleInvalidCase(client: Client, caseRow: any) {
             console.log(`[NotificationBroker] Alert message successfully sent to #lutheus-logs`);
         } else {
             console.warn(`[NotificationBroker] Channel 'lutheus-logs' not found in guild.`);
+        }
+
+        // Send DM to the target user (the moderator)
+        if (targetUser) {
+            try {
+                await targetUser.send({
+                    content: `⚠️ **CUK İhlali Bildirimi:** Uyguladığınız ceza geçersiz/hatalı olarak değerlendirildi. Detaylar aşağıdadır.`,
+                    embeds: [embed]
+                });
+                console.log(`[NotificationBroker] DM successfully sent to target moderator: ${targetUserId}`);
+            } catch (dmErr: any) {
+                console.warn(`[NotificationBroker] Failed to DM target moderator ${targetUserId}:`, dmErr.message || dmErr);
+            }
         }
 
         // Send DMs to founders

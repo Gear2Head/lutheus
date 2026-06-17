@@ -1,1 +1,1 @@
-import{Q as d,p as a}from"./main.js";function n({className:r,children:o,...s}){return d.jsx("div",{className:a("bg-card border border-border/50 rounded-[20px] shadow-sm",r),...s,children:o})}export{n as C};
+import{a2 as a,s as d}from"./main.js";function n({className:r,children:s,...o}){return a.jsx("div",{className:d("bg-card border border-border/50 rounded-[20px] shadow-sm",r),...o,children:s})}export{n as C};

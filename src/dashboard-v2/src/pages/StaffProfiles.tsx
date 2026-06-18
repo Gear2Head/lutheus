@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   User, ShieldAlert, Award, MessageSquare, AlertCircle, 
   Send, Loader2, Calendar, FileText, BadgeAlert, AlertTriangle, ExternalLink,
-  ChevronLeft, Search, Plus, Trash2, Edit2, Check
+  ChevronLeft, Search, Plus, Trash2, Edit2, Check, TrendingUp
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
@@ -13,7 +13,7 @@ import {
   SapphireCase, StaffWarning, StaffMessage, getStaffProfiles, StaffProfile
 } from '../lib/supabase';
 import { formatDate } from '../lib/utils';
-import { getRoleColor, getRoleLabel, isManagementKadrosu } from '../lib/auth';
+import { getRoleColor, getRoleLabel, isManagementKadrosu, ROLE_LABELS } from '../lib/auth';
 import { calculatePerformanceScore, getReliabilityStatus } from '../lib/cukEngine';
 import { Badge } from '../components/ui/Badge';
 import { buildSapphireCaseUrl } from '../lib/sapphireUrl';
@@ -43,7 +43,9 @@ export default function StaffProfiles() {
   // Inline edit states
   const [promotedDate, setPromotedDate] = useState('');
   const [mgmtComments, setMgmtComments] = useState('');
+  const [selectedRole, setSelectedRole] = useState('');
   const [savingMeta, setSavingMeta] = useState(false);
+  const [savingRole, setSavingRole] = useState(false);
 
   // Warning Form states
   const [warningReason, setWarningReason] = useState('');
@@ -103,6 +105,9 @@ export default function StaffProfiles() {
 
   const handleSelectStaff = (staff: StaffProfile) => {
     setSelectedStaff(staff);
+    setSelectedRole(staff.role || '');
+    setPromotedDate(staff.last_promoted_at ? staff.last_promoted_at.split('T')[0] : '');
+    setMgmtComments(staff.management_comments || '');
     loadStaffDetails(staff);
   };
 
@@ -135,7 +140,6 @@ export default function StaffProfiles() {
         management_comments: mgmtComments.trim() || null
       });
       showToast('Yetkili bilgileri başarıyla güncellendi.', 'success');
-      // Update selected profile state
       setSelectedStaff(prev => prev ? {
         ...prev,
         last_promoted_at: promotedDate ? new Date(promotedDate).toISOString() : undefined,
@@ -145,6 +149,23 @@ export default function StaffProfiles() {
       showToast(`Hata: ${err.message || err}`, 'error');
     } finally {
       setSavingMeta(false);
+    }
+  };
+
+  // Save role/rank change
+  const handleSaveRole = async () => {
+    if (!selectedStaff || !selectedRole || selectedRole === (selectedStaff.role || '')) return;
+    setSavingRole(true);
+    try {
+      await updateStaffProfile(selectedStaff.discord_id, { role: selectedRole });
+      showToast(`Rütbe başarıyla güncellendi: ${getRoleLabel(selectedRole)}`, 'success');
+      setSelectedStaff(prev => prev ? { ...prev, role: selectedRole } : null);
+      // Also update in the profiles list
+      setProfiles(prev => prev.map(p => p.discord_id === selectedStaff.discord_id ? { ...p, role: selectedRole } : p));
+    } catch (err: any) {
+      showToast(`Rütbe güncellenirken hata: ${err.message || err}`, 'error');
+    } finally {
+      setSavingRole(false);
     }
   };
 
@@ -490,6 +511,36 @@ export default function StaffProfiles() {
                                   className="px-3.5 py-2 bg-background border border-white/10 rounded-xl text-xs text-white focus:outline-none focus:border-primary/50"
                                 />
                               </div>
+                            </div>
+
+                            {/* Rank/Role Change */}
+                            <div className="p-4 rounded-xl bg-[#5E5CE6]/5 border border-[#5E5CE6]/15 space-y-3">
+                              <h5 className="text-[10px] font-bold text-[#5E5CE6] uppercase tracking-wider flex items-center gap-1.5">
+                                <TrendingUp size={12} /> Rütbe / Terfi İşlemi
+                              </h5>
+                              <div className="flex gap-2">
+                                <select
+                                  value={selectedRole}
+                                  onChange={(e) => setSelectedRole(e.target.value)}
+                                  className="flex-1 px-3.5 py-2 bg-background border border-white/10 rounded-xl text-xs text-white focus:outline-none focus:border-primary/50 cursor-pointer"
+                                >
+                                  {Object.entries(ROLE_LABELS).filter(([key]) => key !== 'viewer' && key !== 'pending' && key !== 'blocked').map(([key, label]) => (
+                                    <option key={key} value={key}>{label}</option>
+                                  ))}
+                                </select>
+                                <button
+                                  onClick={handleSaveRole}
+                                  disabled={savingRole || selectedRole === (selectedStaff?.role || '')}
+                                  className="px-4 py-2 rounded-xl bg-[#5E5CE6] hover:bg-[#5E5CE6]/90 disabled:opacity-40 text-xs font-bold text-white flex items-center gap-1.5 cursor-pointer transition-all duration-150 active:scale-[0.97] whitespace-nowrap"
+                                >
+                                  {savingRole ? <Loader2 size={12} className="animate-spin" /> : <><TrendingUp size={12} /> Rütbeyi Güncelle</>}
+                                </button>
+                              </div>
+                              {selectedRole !== (selectedStaff?.role || '') && (
+                                <p className="text-[10px] text-amber-400/80">
+                                  ⚠ {getRoleLabel(selectedStaff?.role || 'Bilinmiyor')} → {getRoleLabel(selectedRole)} olarak güncellenecek
+                                </p>
+                              )}
                             </div>
 
                             <div className="flex flex-col gap-1.5">

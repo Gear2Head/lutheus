@@ -3,8 +3,8 @@ import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   X, Image as ImageIcon, FileText, Sparkles, Loader2, 
-  ExternalLink, CheckCircle2, AlertTriangle, Shield, ZoomIn,
-  ChevronLeft, ChevronRight, Play, Video
+  ExternalLink, CheckCircle2, AlertTriangle, Shield, ZoomIn, ZoomOut,
+  ChevronLeft, ChevronRight, Play, Video, Maximize2
 } from 'lucide-react';
 import { getCaseProof, CaseProof, SapphireCase, getEmbeddedProofs } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
@@ -66,9 +66,22 @@ export default function ProofDrawer({
   const [allProofs, setAllProofs] = useState<Array<{ proof_url: string | null; video_url?: string | null; thumbnail_url?: string | null; raw_text?: string | null; source_case_id?: string }>>([]);
   const [embeddedProofs, setEmbeddedProofs] = useState<CaseProof[]>([]);
   const [isZoomed, setIsZoomed] = useState(false);
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  const [lightboxZoom, setLightboxZoom] = useState(1);
+
+  // ESC key to close lightbox
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setLightboxUrl(null);
+    };
+    if (lightboxUrl) document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [lightboxUrl]);
 
   useEffect(() => {
     setIsZoomed(false);
+    setLightboxUrl(null);
+    setLightboxZoom(1);
     if (!caseId) {
       setProof(null);
       setAllProofs([]);
@@ -362,28 +375,29 @@ export default function ProofDrawer({
                     </div>
                   ) : fullResProofUrl ? (
                     <div className="relative rounded-xl overflow-hidden border border-white/10 group shadow-lg bg-black/40">
-                      {/* Görsel — tıklanınca toggle zoom */}
+                      {/* Görsel — tıklanınca lightbox açar */}
                       <button
                         type="button"
-                        onClick={() => setIsZoomed(!isZoomed)}
-                        className={`w-full block border-none bg-transparent p-0 overflow-hidden ${isZoomed ? 'cursor-zoom-out' : 'cursor-zoom-in'}`}
-                        title={isZoomed ? "Uzaklaştır" : "Yakınlaştır"}
+                        onClick={() => {
+                          setLightboxUrl(fullResProofUrl);
+                          setLightboxZoom(1);
+                        }}
+                        className="w-full block border-none bg-transparent p-0 cursor-zoom-in"
+                        title="Yakınlaştır (Tam Ekran)"
                       >
                         <img
                           src={fullResProofUrl}
                           alt="Proof"
-                          className={`w-full transition-all duration-300 ${isZoomed ? 'object-contain max-h-[80vh] scale-125' : 'object-contain max-h-72 group-hover:brightness-90'}`}
+                          className="w-full object-contain max-h-72 group-hover:brightness-90 transition-all duration-200"
                           loading="lazy"
                         />
-                        {/* Zoom overlay */}
-                        {!isZoomed && (
-                          <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/30">
-                            <div className="bg-black/70 border border-white/20 rounded-xl px-3 py-2 flex items-center gap-1.5 text-white text-[12px] font-bold shadow-xl">
-                              <ZoomIn size={14} />
-                              Yakınlaştırmak İçin Tıkla
-                            </div>
+                        {/* Zoom hint overlay */}
+                        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/30">
+                          <div className="bg-black/70 border border-white/20 rounded-xl px-3 py-2 flex items-center gap-1.5 text-white text-[12px] font-bold shadow-xl">
+                            <Maximize2 size={14} />
+                            Tam Ekran Görüntüle
                           </div>
-                        )}
+                        </div>
                       </button>
                       {/* Dışarıda aç linki */}
                       <a
@@ -485,54 +499,170 @@ export default function ProofDrawer({
 
   if (typeof document === 'undefined') return null;
 
-  return createPortal(
-    <AnimatePresence>
-      {caseId && (
-        <>
-          {isCenter ? (
-            /* ── Orta Modal (center) ── */
+  return (
+    <>
+      {createPortal(
+        <AnimatePresence>
+          {caseId && (
             <>
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                onClick={onClose}
-                className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 cursor-pointer"
-              />
-              <motion.div
-                initial={{ opacity: 0, scale: 0.96, y: 16 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.96, y: 16 }}
-                transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-                className={`fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-lg z-50 shadow-2xl flex flex-col rounded-2xl max-h-[88vh] ${getGlassClass(intensity, theme)}`}
-              >
-                {drawerContent}
-              </motion.div>
+              {isCenter ? (
+                /* ── Orta Modal (center) ── */
+                <>
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    onClick={onClose}
+                    className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 cursor-pointer"
+                  />
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.96, y: 16 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.96, y: 16 }}
+                    transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+                    className={`fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-lg z-50 shadow-2xl flex flex-col rounded-2xl max-h-[88vh] ${getGlassClass(intensity, theme)}`}
+                  >
+                    {drawerContent}
+                  </motion.div>
+                </>
+              ) : (
+                /* ── Sağ Panel (side) ── */
+                <>
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    onClick={onClose}
+                    className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 cursor-pointer"
+                  />
+                  <motion.div
+                    initial={{ x: '100%' }}
+                    animate={{ x: 0 }}
+                    exit={{ x: '100%' }}
+                    transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+                    className={`fixed top-0 right-0 h-[100dvh] w-full sm:w-[480px] z-50 shadow-2xl flex flex-col overflow-hidden ${getGlassClass(intensity, theme)}`}
+                  >
+                    {drawerContent}
+                  </motion.div>
+                </>
+              )}
             </>
-          ) : (
-            /* ── Sağ Panel (side) ── */
+          )}
+        </AnimatePresence>,
+        document.body
+      )}
+
+      {/* ── Lightbox Overlay ── */}
+      {typeof document !== 'undefined' && createPortal(
+        <AnimatePresence>
+          {lightboxUrl && (
             <>
+              {/* Backdrop */}
               <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                onClick={onClose}
-                className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 cursor-pointer"
+                transition={{ duration: 0.15 }}
+                onClick={() => setLightboxUrl(null)}
+                className="fixed inset-0 bg-black/95 z-[200] cursor-zoom-out"
+                onKeyDown={(e) => e.key === 'Escape' && setLightboxUrl(null)}
               />
+
+              {/* Controls bar */}
               <motion.div
-                initial={{ x: '100%' }}
-                animate={{ x: 0 }}
-                exit={{ x: '100%' }}
-                transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-                className={`fixed top-0 right-0 h-[100dvh] w-full sm:w-[480px] z-50 shadow-2xl flex flex-col overflow-hidden ${getGlassClass(intensity, theme)}`}
+                initial={{ opacity: 0, y: -12 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -12 }}
+                transition={{ duration: 0.15, delay: 0.05 }}
+                className="fixed top-4 right-4 z-[210] flex items-center gap-2"
               >
-                {drawerContent}
+                <div className="flex items-center gap-1 bg-black/70 border border-white/10 rounded-xl p-1 backdrop-blur-sm">
+                  <button
+                    onClick={() => setLightboxZoom(z => Math.max(0.5, z - 0.25))}
+                    className="w-8 h-8 rounded-lg hover:bg-white/10 text-white/70 hover:text-white transition-all flex items-center justify-center cursor-pointer"
+                    title="Uzaklaştır"
+                  >
+                    <ZoomOut size={15} />
+                  </button>
+                  <span className="text-[11px] font-mono text-white/50 min-w-[44px] text-center">{Math.round(lightboxZoom * 100)}%</span>
+                  <button
+                    onClick={() => setLightboxZoom(z => Math.min(5, z + 0.25))}
+                    className="w-8 h-8 rounded-lg hover:bg-white/10 text-white/70 hover:text-white transition-all flex items-center justify-center cursor-pointer"
+                    title="Yakınlaştır"
+                  >
+                    <ZoomIn size={15} />
+                  </button>
+                  <div className="w-px h-4 bg-white/10 mx-1" />
+                  <button
+                    onClick={() => setLightboxZoom(1)}
+                    className="px-2 h-8 rounded-lg hover:bg-white/10 text-[10px] font-mono text-white/50 hover:text-white transition-all cursor-pointer"
+                    title="Sıfırla"
+                  >
+                    1:1
+                  </button>
+                </div>
+                <a
+                  href={lightboxUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="w-9 h-9 rounded-xl bg-black/70 border border-white/10 hover:bg-white/10 text-white/60 hover:text-white transition-all flex items-center justify-center cursor-pointer"
+                  title="Yeni sekmede aç"
+                  onClick={e => e.stopPropagation()}
+                >
+                  <ExternalLink size={15} />
+                </a>
+                <button
+                  onClick={() => setLightboxUrl(null)}
+                  className="w-9 h-9 rounded-xl bg-black/70 border border-white/10 hover:bg-red-500/20 hover:border-red-500/30 text-white/60 hover:text-white transition-all flex items-center justify-center cursor-pointer"
+                  title="Kapat (ESC)"
+                >
+                  <X size={16} />
+                </button>
+              </motion.div>
+
+              {/* Zoomed image */}
+              <motion.div
+                initial={{ opacity: 0, scale: 0.92 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.92 }}
+                transition={{ type: 'spring', stiffness: 350, damping: 30 }}
+                className="fixed inset-0 z-[205] flex items-center justify-center pointer-events-none"
+              >
+                <img
+                  src={lightboxUrl}
+                  alt="Kanıt (tam ekran)"
+                  className="max-w-[92vw] max-h-[90vh] rounded-xl shadow-2xl border border-white/10 object-contain pointer-events-auto select-none"
+                  style={{ transform: `scale(${lightboxZoom})`, transformOrigin: 'center', transition: 'transform 150ms ease-out' }}
+                  onWheel={(e) => {
+                    e.stopPropagation();
+                    setLightboxZoom(z => {
+                      const delta = e.deltaY > 0 ? -0.1 : 0.1;
+                      return Math.min(5, Math.max(0.5, z + delta));
+                    });
+                  }}
+                  onClick={e => e.stopPropagation()}
+                  draggable={false}
+                />
+              </motion.div>
+
+              {/* ESC hint */}
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ delay: 0.5 }}
+                className="fixed bottom-5 left-1/2 -translate-x-1/2 z-[210] pointer-events-none"
+              >
+                <div className="bg-black/60 border border-white/10 rounded-lg px-3 py-1.5 flex items-center gap-2 text-[11px] text-white/40">
+                  <kbd className="px-1.5 py-0.5 rounded bg-white/10 font-mono text-[10px] text-white/60">ESC</kbd>
+                  veya dışarıya tıkla
+                </div>
               </motion.div>
             </>
           )}
-        </>
+        </AnimatePresence>,
+        document.body
       )}
-    </AnimatePresence>,
-    document.body
+    </>
   );
 }

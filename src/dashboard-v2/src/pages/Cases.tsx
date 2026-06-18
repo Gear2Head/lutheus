@@ -679,15 +679,17 @@ export default function Cases() {
                               <span className="opacity-40">#</span>{c.case_id}
                             </span>
                             <Tooltip content="Sapphire Panelinde Göster">
-                              <button 
+                              <a 
+                                href={buildSapphireCaseUrl(c.guild_id, c.case_id) || c.case_url || '#'}
+                                target="_blank"
+                                rel="noopener noreferrer"
                                 onClick={(e) => { 
                                   e.stopPropagation(); 
-                                  openSapphireCase(c);
                                 }}
-                                className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-white/10 text-white/50 hover:text-white transition-all cursor-pointer"
+                                className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-white/10 text-white/50 hover:text-white transition-all cursor-pointer inline-flex items-center"
                               >
                                 <ExternalLink size={11} />
-                              </button>
+                              </a>
                             </Tooltip>
                           </div>
                         </td>
@@ -823,14 +825,16 @@ export default function Cases() {
                     </div>
                     <div>
                       <div className="flex items-center gap-2">
-                        <button 
-                          onClick={() => openSapphireCase(selectedCase)}
+                        <a 
+                          href={buildSapphireCaseUrl(selectedCase.guild_id, selectedCase.case_id) || selectedCase.case_url || '#'}
+                          target="_blank"
+                          rel="noopener noreferrer"
                           className="text-[13px] font-mono font-bold text-[#5E5CE6] hover:text-[#A259FE] hover:underline cursor-pointer flex items-center gap-1"
                           title="Sapphire Panelinde Göster"
                         >
                           #{selectedCase.case_id}
                           <ExternalLink size={10} className="opacity-60" />
-                        </button>
+                        </a>
                         <span className={`status-badge ${selectedCase.cuk_verdict === 'valid' ? 'success' : selectedCase.cuk_verdict === 'invalid' ? 'danger' : 'neutral'} scale-90`}>
                           {selectedCase.cuk_verdict === 'valid' ? 'DOĞRU' : selectedCase.cuk_verdict === 'invalid' ? 'HATALI' : 'BEKLEYEN'}
                         </span>
@@ -1003,7 +1007,14 @@ export default function Cases() {
                     </button>
 
                     <button 
-                      onClick={() => openSapphireCase(selectedCase)}
+                      onClick={() => {
+                        const sapphireUrl = buildSapphireCaseUrl(selectedCase.guild_id, selectedCase.case_id) || selectedCase.case_url;
+                        if (sapphireUrl) {
+                          window.open(sapphireUrl, '_blank', 'noopener,noreferrer');
+                        } else {
+                          showToast('Sapphire URL oluşturulamadı. Case ID eksik olabilir.', 'error');
+                        }
+                      }}
                       className="w-full py-2.5 rounded-xl bg-[#5E5CE6]/10 hover:bg-[#5E5CE6]/20 border border-[#5E5CE6]/20 flex items-center justify-center gap-2 text-[12px] text-white/95 font-bold transition-all cursor-pointer"
                     >
                       <ExternalLink size={13} className="text-white/40" /> Case Dashboard'da Aç (Sapphire)

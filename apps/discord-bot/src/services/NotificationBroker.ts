@@ -45,13 +45,12 @@ async function handleInvalidCase(client: Client, caseRow: any) {
     try {
         // Fetch target user (the moderator who applied the wrong penalty) to cache it
         const targetUserId = caseRow.author_discord_id;
-        let targetUser = null;
-        if (targetUserId) {
-            targetUser = await client.users.fetch(targetUserId).catch((err) => {
+        const targetUser = targetUserId
+            ? await client.users.fetch(targetUserId).catch((err) => {
                 console.warn(`[NotificationBroker] Failed to fetch target user ${targetUserId}:`, err.message || err);
                 return null;
-            });
-        }
+              })
+            : null;
 
         const guild = client.guilds.cache.get(guildId) || await client.guilds.fetch(guildId).catch(() => null);
         if (!guild) {

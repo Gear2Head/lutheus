@@ -43,7 +43,10 @@ const ACTIONS = {
     SCAN_PROGRESS_EVENT: 'SCAN_PROGRESS_EVENT',
     POINTTRAIN_PROGRESS_EVENT: 'POINTTRAIN_PROGRESS_EVENT',
     POINTTRAIN_DONE_EVENT: 'POINTTRAIN_DONE_EVENT',
-    REFRESH_AUTH_TOKEN: 'REFRESH_AUTH_TOKEN'
+    REFRESH_AUTH_TOKEN: 'REFRESH_AUTH_TOKEN',
+    // Lutheus Discord Log Scraper
+    SCRAPE_DISCORD_LOGS: 'SCRAPE_DISCORD_LOGS',
+    STOP_DISCORD_OBSERVER: 'STOP_DISCORD_OBSERVER',
 };
 
 const INGEST_QUEUE_KEY = 'lutheusIngestQueue';
@@ -1907,6 +1910,52 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
                 case 'FLUSH_INGEST_QUEUE': {
                     await flushIngestQueue();
                     sendResponse({ success: true });
+                    break;
+                }
+
+                case 'SCRAPE_DISCORD_LOGS': {
+                    // Hedef Discord sekmesini bul ve discordScraper.js'e komut gönder
+                    try {
+                        const discordTabs = await chrome.tabs.query({ url: 'https://discord.com/channels/*' });
+                        if (!discordTabs.length) {
+                            sendResponse({ success: false, error: 'Açık Discord sekmesi bulunamadı.' });
+                            break;
+                        }
+                        const tab = discordTabs[0];
+                        // discordScraper.js inject edildi mi dene
+                        try {
+                            await chrome.scripting.executeScript({
+                                target: { tabId: tab.id },
+                                files: ['src/content/discordScraper.js']
+                            });
+                        } catch (_injectErr) {
+                            // Zaten yüklüyse hata fırlatabilir — görmezden gel
+                        }
+                        const tabReply = await chrome.tabs.sendMessage(tab.id, {
+                            action: 'DISCORD_SCRAPER_START'
+                        }).catch((err) => {
+                            console.warn('Lutheus Scraper Fail: tab message error', err);
+                            return { started: false, error: err.message };
+                        });
+                        sendResponse({ success: true, ...tabReply });
+                    } catch (error) {
+                        console.warn('Lutheus Scraper Fail:', error);
+                        sendResponse({ success: false, error: error.message });
+                    }
+                    break;
+                }
+
+                case 'STOP_DISCORD_OBSERVER': {
+                    try {
+                        const discordTabs = await chrome.tabs.query({ url: 'https://discord.com/channels/*' });
+                        for (const tab of discordTabs) {
+                            chrome.tabs.sendMessage(tab.id, { action: 'DISCORD_SCRAPER_STOP' }).catch(() => {});
+                        }
+                        sendResponse({ success: true });
+                    } catch (error) {
+                        console.warn('Lutheus Scraper Fail:', error);
+                        sendResponse({ success: false, error: error.message });
+                    }
                     break;
                 }
 

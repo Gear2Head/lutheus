@@ -23,7 +23,9 @@
         "https://*.sapph.xyz/*",
         "https://*.vercel.app/*",
         "https://jxhzhaqqtlynbnntwpyu.supabase.co/*",
-        "https://api.dicebear.com/*"
+        "https://api.dicebear.com/*",
+        "https://dash.hadron.bot/*",
+        "https://api.hadron.bot/*"
     ],
     "background": {
         "service_worker": "src/background/service_worker.js"
@@ -71,7 +73,8 @@
             "js": [
                 "src/discord/selectors.js",
                 "src/discord/parser.js",
-                "src/discord/search.js"
+                "src/discord/search.js",
+                "src/content/discordScraper.js"
             ],
             "run_at": "document_idle",
             "all_frames": false
@@ -105,6 +108,16 @@
                 "https://dashboard.sapph.xyz/*"
             ],
             "js": ["src/content/network_listener.js"],
+            "run_at": "document_idle",
+            "all_frames": false
+        },
+        {
+            "matches": [
+                "https://dash.hadron.bot/*/transcripts*",
+                "https://dash.hadron.bot/manage/*/transcripts*",
+                "https://dash.hadron.bot/manage/*/transcripts/view/*"
+            ],
+            "js": ["src/content/hadronScraper.js"],
             "run_at": "document_idle",
             "all_frames": false
         }

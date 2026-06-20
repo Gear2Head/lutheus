@@ -2,7 +2,8 @@ import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Users, ShieldAlert, Activity, Settings as SettingsIcon,
   LogOut, Zap, BookOpen, Bot, User, ChevronUp, Shield, RefreshCw,
-  WifiOff, Wifi, Megaphone, Sliders, ChevronLeft, Bell, Check, UserCheck
+  WifiOff, Wifi, Megaphone, Sliders, ChevronLeft, Bell, Check, UserCheck,
+  Scale, Ticket
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import React, { useState, useRef, useEffect } from 'react';
@@ -22,6 +23,8 @@ const NAV_ITEMS = [
   { icon: Users, label: 'Staff', path: '/staff', translationKey: 'nav.staff' },
   { icon: UserCheck, label: 'Profiller', path: '/staff-profiles', translationKey: 'nav.staffProfiles' },
   { icon: Bot, label: 'AI Agent', path: '/ai-agent', translationKey: 'nav.ai-agent' },
+  { icon: Ticket, label: 'Biletler', path: '/tickets', translationKey: 'nav.tickets' },
+  { icon: Scale, label: 'İtirazlar', path: '/appeals', translationKey: 'nav.appeals' },
   { icon: Shield, label: 'Erişim', path: '/access', translationKey: 'nav.access' },
   { icon: Megaphone, label: 'Duyurular', path: '/announcements', translationKey: 'nav.announcements' },
   { icon: Sliders, label: 'Bot Ayarları', path: '/bot-setup', translationKey: 'nav.botSetup' },
@@ -131,9 +134,14 @@ export default function AppLayout() {
 
   const isAuthorized = (path: string) => {
     const role = session?.role?.toLowerCase() || '';
+    console.log("[Lutheus AppLayout Auth Debug] Current user role: ", role, "for path: ", path);
     const isMgmt = ['kurucu', 'admin', 'yonetici', 'genel_sorumlu', 'discord_yoneticisi', 'kidemli', 'kidemli_discord_moderatoru', 'senior_moderator'].includes(role);
     const isSenior = ['kidemli', 'kidemli_discord_moderatoru', 'senior_moderator'].includes(role);
+    const isStaff = ['kurucu', 'admin', 'yonetici', 'genel_sorumlu', 'discord_yoneticisi', 'kidemli', 'kidemli_discord_moderatoru', 'senior_moderator', 'moderator', 'discord_moderatoru', 'support', 'discord_destek_ekibi'].includes(role);
 
+    if (path === '/appeals' || path === '/tickets') {
+      return isStaff; // kalıcı olarak tüm staff rollerine gösterilsin (read-only inceleme için)
+    }
     if (path === '/access' || path === '/rules' || path === '/announcements' || path === '/bot-setup' || path === '/staff-profiles') {
       return isMgmt;
     }

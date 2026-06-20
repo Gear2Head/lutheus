@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap');
 
 /* Lutheus CezaRapor - Dark Theme with Status Colors */
 .hidden {
@@ -64,7 +64,7 @@
     --radius-xs: 4px;
     --shadow-card: 0 4px 20px rgba(0, 0, 0, 0.4);
     --border-color: rgba(255, 255, 255, 0.07);
-    --font-main: 'DM Sans', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    --font-main: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
 /* Reset & Base */
@@ -201,23 +201,203 @@ body {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 20px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border-color);
+    margin-bottom: 14px;
 }
 
-.welcome-text {
-    font-size: 18px;
+.brand-logo {
+    width: 32px;
+    height: 32px;
+    filter: drop-shadow(0px 0px 8px rgba(124, 90, 245, 0.6));
+    transition: transform 0.3s ease;
+}
+
+.brand-logo:hover {
+    transform: rotate(15deg) scale(1.08);
+}
+
+.header-right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.profile-info-block {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 1px;
+}
+
+.profile-name {
+    font-size: 13px;
+    font-weight: 700;
+    color: #ffffff;
+}
+
+.profile-role {
+    font-size: 10px;
     font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
 }
 
-.highlight {
-    color: var(--accent-primary);
+.profile-avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    border: 2px solid var(--border-color);
+    object-fit: cover;
+    transition: border-color 0.2s ease;
 }
 
-.subtitle {
-    font-size: 12px;
-    color: var(--text-muted);
-    margin-top: 2px;
+/* Status colors for profile role text */
+.profile-role.kurucu, .profile-role.admin, .profile-role.yonetici { color: #f04e4e; }
+.profile-role.genel_sorumlu { color: #dc2626; }
+.profile-role.discord_yoneticisi { color: #ff2da8; }
+.profile-role.kidemli, .profile-role.kidemli_discord_moderatoru, .profile-role.senior_moderator { color: #c2410c; }
+.profile-role.moderator, .profile-role.discord_moderatoru { color: #fb923c; }
+.profile-role.support, .profile-role.discord_destek_ekibi { color: #be185d; }
+
+/* Tabs Navigation */
+.tabs-nav {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 16px;
 }
+
+.tab-nav-btn {
+    flex: 1;
+    padding: 10px;
+    border-radius: var(--radius-md);
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+    font-family: var(--font-main);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    transition: all 0.2s cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.tab-nav-btn:hover {
+    background: rgba(255, 255, 255, 0.07);
+    color: var(--text-primary);
+}
+
+.tab-nav-btn:active, .btn:active, .run-channel-btn:active {
+    transform: scale(0.97);
+}
+
+.tab-nav-btn.active {
+    background: var(--accent-bg);
+    color: var(--accent-light);
+    border-color: rgba(124, 90, 245, 0.4);
+    box-shadow: 0 0 12px rgba(124, 90, 245, 0.15);
+}
+
+/* Stat Widget red theme */
+.stat-widget.red-theme {
+    background: rgba(240, 78, 78, 0.08);
+    border: 1px solid rgba(240, 78, 78, 0.2);
+}
+.stat-widget.red-theme .stat-icon {
+    color: #f04e4e;
+}
+
+/* Discord Channels Scraper List */
+.discord-channels-list {
+    background: rgba(255, 255, 255, 0.01);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    padding: 12px;
+}
+
+.discord-channel-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 10px;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    transition: background 0.2s ease;
+}
+
+.discord-channel-row:hover {
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.channel-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.channel-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.channel-status {
+    font-size: 9px;
+    font-weight: 700;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.channel-status.active {
+    color: #22c55e;
+}
+
+.channel-status.active::before {
+    content: '';
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #22c55e;
+    box-shadow: 0 0 6px #22c55e;
+}
+
+.channel-status.offline {
+    color: #747f8d;
+}
+
+.channel-status.offline::before {
+    content: '';
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #747f8d;
+}
+
+.run-channel-btn {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+    padding: 6px 12px;
+    font-size: 11px;
+    font-weight: 600;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.run-channel-btn:hover:not(:disabled) {
+    background: var(--accent-primary);
+    border-color: var(--accent-primary);
+    color: #fff;
+}
+
 
 
 /* ========================================
@@ -226,14 +406,28 @@ body {
 .view-section {
     display: none;
     flex-direction: column;
-    height: 100%;
+    height: calc(100vh - 100px); /* Calculate height based on window, preventing sidepanel overflow */
     gap: 16px;
     overflow-y: auto;
     overflow-x: hidden;
+    padding-bottom: 24px;
 }
 
 .view-section.active {
     display: flex;
+}
+
+/* Discord Scraper Panel Modernization */
+.discord-scraper-panel {
+    background: rgba(88, 101, 242, 0.04);
+    border: 1px solid rgba(88, 101, 242, 0.15);
+    border-radius: var(--radius-lg);
+    padding: 12px;
+}
+
+.discord-scraper-panel:hover {
+    border-color: rgba(88, 101, 242, 0.3);
+    box-shadow: 0 4px 20px rgba(88, 101, 242, 0.08);
 }
 
 /* SECTION: POINTTRAIN_STYLES */
@@ -403,11 +597,19 @@ body {
    CARDS
    ======================================== */
 .card {
-    background: var(--bg-card);
+    background: rgba(18, 18, 24, 0.7);
     backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
     border-radius: var(--radius-lg);
-    padding: 20px;
-    border: 1px solid var(--border-color);
+    padding: 16px;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+    transition: all 0.3s cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.card:hover {
+    border-color: rgba(124, 90, 245, 0.2);
+    box-shadow: 0 12px 40px 0 rgba(124, 90, 245, 0.08);
 }
 
 .large-card {
@@ -417,26 +619,38 @@ body {
     min-height: 120px;
     position: relative;
     overflow: hidden;
+    background: linear-gradient(135deg, rgba(124, 90, 245, 0.1) 0%, rgba(18, 18, 24, 0.8) 100%) !important;
 }
 
 .large-card h2 {
-    font-size: 16px;
-    font-weight: 600;
+    font-size: 15px;
+    font-weight: 700;
     margin-bottom: 6px;
+    color: #ffffff;
+    letter-spacing: -0.2px;
 }
 
 .large-card p {
-    font-size: 13px;
+    font-size: 12px;
     color: var(--text-secondary);
     margin-bottom: 16px;
+    max-width: 80%;
+    line-height: 1.4;
 }
 
 .card-image {
-    font-size: 64px;
-    color: rgba(255, 255, 255, 0.03);
+    font-size: 72px;
+    color: rgba(124, 90, 245, 0.05);
     position: absolute;
-    right: 0;
-    bottom: -10px;
+    right: 12px;
+    bottom: -15px;
+    pointer-events: none;
+    transition: transform 0.5s ease;
+}
+
+.large-card:hover .card-image {
+    transform: scale(1.1) rotate(-5deg);
+    color: rgba(124, 90, 245, 0.08);
 }
 
 /* ========================================
@@ -444,18 +658,33 @@ body {
    ======================================== */
 .stats-scroll {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(2, 1fr);
     gap: 12px;
 }
 
 .stat-widget {
-    background: var(--bg-card);
-    border-radius: var(--radius-md);
+    background: rgba(255, 255, 255, 0.02);
+    border-radius: var(--radius-lg);
     padding: 16px;
     display: flex;
     flex-direction: column;
-    gap: 8px;
-    border: 1px solid var(--border-color);
+    gap: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.04);
+    box-shadow: var(--shadow-card);
+    transition: all 0.3s cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.stat-widget:hover {
+    transform: translateY(-2px);
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.stat-widget.dark {
+    border-left: 3px solid var(--accent-primary);
+}
+
+.stat-widget.red-theme {
+    border-left: 3px solid #f04e4e;
 }
 
 .stat-widget.dark {

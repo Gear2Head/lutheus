@@ -9,8 +9,8 @@ import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import { 
   getCases, getStaffWarnings, getStaffMessages, sendStaffMessage, replyStaffMessage,
-  addStaffWarning, deleteStaffWarning, updateStaffProfile,
-  SapphireCase, StaffWarning, StaffMessage, getStaffProfiles, StaffProfile
+  addStaffWarning, deleteStaffWarning, updateStaffProfile, getTickets,
+  SapphireCase, StaffWarning, StaffMessage, getStaffProfiles, StaffProfile, UserTicket
 } from '../lib/supabase';
 import { formatDate } from '../lib/utils';
 import { getRoleColor, getRoleLabel, isManagementKadrosu, ROLE_LABELS } from '../lib/auth';
@@ -31,6 +31,7 @@ export default function StaffProfiles() {
   const [cases, setCases] = useState<SapphireCase[]>([]);
   const [warnings, setWarnings] = useState<StaffWarning[]>([]);
   const [messages, setMessages] = useState<StaffMessage[]>([]);
+  const [tickets, setTickets] = useState<UserTicket[]>([]);
   const [detailLoading, setDetailLoading] = useState(false);
 
   // Search & Filter
@@ -38,7 +39,7 @@ export default function StaffProfiles() {
   const [roleFilter, setRoleFilter] = useState('all');
 
   // Detail tab states
-  const [activeTab, setActiveTab] = useState<'overview' | 'cases' | 'warnings' | 'messages'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'cases' | 'warnings' | 'messages' | 'tickets'>('overview');
   
   // Inline edit states
   const [promotedDate, setPromotedDate] = useState('');
@@ -80,16 +81,18 @@ export default function StaffProfiles() {
   const loadStaffDetails = async (staff: StaffProfile) => {
     setDetailLoading(true);
     try {
-      const [allCases, staffWarnings, staffMessages] = await Promise.all([
+      const [allCases, staffWarnings, staffMessages, staffTickets] = await Promise.all([
         getCases(500),
         getStaffWarnings(staff.discord_id),
-        getStaffMessages(staff.discord_id)
+        getStaffMessages(staff.discord_id),
+        getTickets({ modId: staff.discord_id, limit: 100 })
       ]);
 
       const staffCases = allCases.filter(c => c.author_discord_id === staff.discord_id);
       setCases(staffCases);
       setWarnings(staffWarnings);
       setMessages(staffMessages);
+      setTickets(staffTickets || []);
       
       // Sync form states
       setPromotedDate(staff.last_promoted_at ? new Date(staff.last_promoted_at).toISOString().split('T')[0] : '');
@@ -472,7 +475,8 @@ export default function StaffProfiles() {
                       { id: 'overview', label: 'Yönetim & Karne' },
                       { id: 'cases', label: 'Cezaları' },
                       { id: 'warnings', label: 'Uyarıları' },
-                      { id: 'messages', label: 'İtiraz & Mesajları' }
+                      { id: 'messages', label: 'İtiraz & Mesajları' },
+                      { id: 'tickets', label: 'Hadron Biletleri' }
                     ].map((tab) => (
                       <button
                         key={tab.id}
@@ -785,6 +789,60 @@ export default function StaffProfiles() {
                                       </button>
                                     </div>
                                   )}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </motion.div>
+                      )}
+
+                      {activeTab === 'tickets' && (
+                        <motion.div
+                          key="tickets"
+                          initial={{ opacity: 0, y: 8 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -8 }}
+                          className="space-y-4 text-left"
+                        >
+                          <h4 className="text-xs font-bold text-white uppercase tracking-wider mb-2">Hadron Destek Bileti Geçmişi ({tickets.length})</h4>
+                          
+                          {tickets.length === 0 ? (
+                            <div className="text-xs text-white/30 italic py-8 text-center bg-[#111112]/10 rounded-xl border border-white/[0.03]">
+                              Bu yetkili tarafından kapatılmış Hadron bileti bulunmuyor.
+                            </div>
+                          ) : (
+                            <div className="space-y-2">
+                              {tickets.map((t) => (
+                                <div key={t.id} className="p-3.5 rounded-xl bg-[#111112]/20 border border-white/[0.05] flex items-center justify-between hover:bg-secondary/20 transition-colors">
+                                  <div className="flex-1 min-w-0 mr-3">
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-xs font-mono font-bold text-[#5E5CE6]">#{t.ticket_id}</span>
+                                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-black/40 text-white/60 uppercase font-mono">{t.category || 'Genel'}</span>
+                                    </div>
+                                    <div className="text-xs text-white/70 truncate mt-1">
+                                      {t.ticket_name || 'İsimsiz Bilet'}
+                                    </div>
+                                    <div className="flex items-center gap-3 mt-1.5 text-[10px] text-white/40">
+                                      <span className="flex items-center gap-1">
+                                        <MessageSquare size={10} /> {t.message_count} mesaj
+                                      </span>
+                                      <span className="flex items-center gap-1">
+                                        <Calendar size={10} /> {formatDate(t.closed_at)}
+                                      </span>
+                                    </div>
+                                  </div>
+                                  <button
+                                    onClick={() => {
+                                      const cleanId = t.ticket_id.replace(/[^0-9]/g, '').trim();
+                                      const url = `https://dash.hadron.bot/manage/1223431616081166336/transcripts/view/${cleanId}`;
+                                      window.open(url, '_blank', 'noopener,noreferrer');
+                                    }}
+                                    className="p-2 rounded-lg bg-primary/10 hover:bg-primary/20 text-primary transition-all cursor-pointer flex items-center gap-1.5"
+                                    title="Bilete Git"
+                                  >
+                                    <ExternalLink size={12} />
+                                    <span className="text-[10px] font-bold">Bilete Git</span>
+                                  </button>
                                 </div>
                               ))}
                             </div>

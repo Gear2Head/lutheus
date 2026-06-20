@@ -59,6 +59,37 @@ export interface AuditLog {
   created_at: string;
 }
 
+// ─── Appeal & Ticket types ─────────────────────────────────────────────────
+
+export interface CaseAppeal {
+  id: string;
+  case_id: string | null;
+  user_id: string;
+  user_tag: string | null;
+  appeal_reason: string;
+  /** 'approved' | 'rejected' */
+  status: string;
+  discord_message_id: string;
+  created_at: string;
+}
+
+export interface UserTicket {
+  id: string;
+  ticket_id: string;
+  ticket_name: string | null;
+  user_id: string | null;
+  user_tag: string | null;
+  category: string | null;
+  assigned_mod_id: string | null;
+  message_count: number;
+  discord_message_id: string | null;
+  closed_at: string | null;
+  transcript_url: string | null;
+  thread_url: string | null;
+  rating: number | null;
+  created_at: string | null;
+}
+
 // ---------- Core fetch ----------
 
 let _userToken: string | null = null;
@@ -492,11 +523,17 @@ export interface CaseProof {
   embedded_to_case_ids?: string[];
 }
 
+const CASE_PROOF_COLS = 'case_id,proof_url,raw_text,ai_verdict,ai_analysis,created_at,updated_at,additional_proofs,embedded_from_case_id,embedded_to_case_ids';
+
 export async function getCaseProof(caseId: string): Promise<CaseProof | null> {
+  // Use explicit column list — video_url / thumbnail_url may not exist yet in the DB
   const data = await supabaseFetch<CaseProof[]>(
     'case_proofs',
     'GET',
-    `case_id=eq.${caseId}&select=*`
+    `case_id=eq.${caseId}&select=${CASE_PROOF_COLS}`
+  ).catch(() =>
+    // Fallback: retry with select=* in case columns were added later
+    supabaseFetch<CaseProof[]>('case_proofs', 'GET', `case_id=eq.${caseId}&select=*`)
   );
   return data && data.length > 0 ? data[0] : null;
 }
@@ -506,7 +543,9 @@ export async function getEmbeddedProofs(caseId: string): Promise<CaseProof[]> {
   const data = await supabaseFetch<CaseProof[]>(
     'case_proofs',
     'GET',
-    `embedded_to_case_ids=cs.{${caseId}}&select=*`
+    `embedded_to_case_ids=cs.{${caseId}}&select=${CASE_PROOF_COLS}`
+  ).catch(() =>
+    supabaseFetch<CaseProof[]>('case_proofs', 'GET', `embedded_to_case_ids=cs.{${caseId}}&select=*`)
   );
   return data || [];
 }
@@ -611,5 +650,86 @@ export async function replyStaffMessage(id: string, response: string, respondedB
   );
 }
 
+// ─── Case Appeals ──────────────────────────────────────────────────────────
 
+/**
+ * Tüm itiraz kayıtlarını getirir. userId verilirse o kullanıcıya ait kayıtları filtreler.
+ */
+export async function getAppeals(userId?: string): Promise<CaseAppeal[]> {
+  try {
+    let params = 'order=created_at.desc&limit=500';
+    if (userId) params += `&user_id=eq.${encodeURIComponent(userId)}`;
+    const data = await supabaseFetch<CaseAppeal[]>('case_appeals', 'GET', params);
+    return data || [];
+  } catch (error) {
+    console.error("Lutheus DB Error: Failed to fetch case_appeals. This might be due to RLS policies or missing tables.", error);
+    throw error;
+  }
+}
 
+/**
+ * Belirli bir ceza ID'sine ait itiraz kaydını getirir.
+ */
+export async function getAppealByCaseId(caseId: string): Promise<CaseAppeal | null> {
+  try {
+    const data = await supabaseFetch<CaseAppeal[]>(
+      'case_appeals',
+      'GET',
+      `case_id=eq.${encodeURIComponent(caseId)}&limit=1`,
+    );
+    return data?.[0] ?? null;
+  } catch (error) {
+    console.error(`Lutheus DB Error: Failed to fetch appeal for case #${caseId}`, error);
+    throw error;
+  }
+}
+
+/**
+ * Genel itiraz metriklerini hesaplar.
+ */
+export async function getAppealStats(): Promise<{
+  total: number;
+  approved: number;
+  rejected: number;
+  approvalRate: number;
+}> {
+  try {
+    const data = await supabaseFetch<CaseAppeal[]>('case_appeals', 'GET', 'order=created_at.desc&limit=2000');
+    const appeals = data || [];
+    const total = appeals.length;
+    const approved = appeals.filter(a => a.status === 'approved').length;
+    const rejected = appeals.filter(a => a.status === 'rejected').length;
+    const approvalRate = total > 0 ? Math.round((approved / total) * 100) : 0;
+    return { total, approved, rejected, approvalRate };
+  } catch (error) {
+    console.error("Lutheus DB Error: Failed to fetch appeal stats.", error);
+    throw error;
+  }
+}
+
+// ─── Hadron User Tickets ────────────────────────────────────────────────────
+
+/**
+ * Tüm Hadron biletlerini getirir.
+ * userId verilirse o üyenin açtığı biletler;
+ * modId verilirse o yetkilinin kapattığı biletler filtrelenir.
+ */
+export async function getTickets(options?: {
+  userId?: string;
+  modId?: string;
+  limit?: number;
+  user_id?: string;
+}): Promise<UserTicket[]> {
+  try {
+    const limit = options?.limit ?? 500;
+    let params = `order=closed_at.desc&limit=${limit}`;
+    if (options?.userId) params += `&user_id=eq.${encodeURIComponent(options.userId)}`;
+    if (options?.user_id) params += `&user_id=eq.${encodeURIComponent(options.user_id)}`;
+    if (options?.modId)  params += `&assigned_mod_id=eq.${encodeURIComponent(options.modId)}`;
+    const data = await supabaseFetch<UserTicket[]>('user_tickets', 'GET', params);
+    return data || [];
+  } catch (error) {
+    console.error("Lutheus DB Error: Failed to fetch user_tickets. This might be due to RLS policies or missing tables.", error);
+    throw error;
+  }
+}

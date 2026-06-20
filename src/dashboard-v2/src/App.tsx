@@ -17,6 +17,8 @@ const Access = lazy(() => import('./pages/Access'));
 const Announcements = lazy(() => import('./pages/Announcements'));
 const BotSetup = lazy(() => import('./pages/BotSetup'));
 const Settings = lazy(() => import('./pages/Settings'));
+const Appeals = lazy(() => import('./pages/Appeals'));
+const Tickets = lazy(() => import('./pages/Tickets'));
 
 function PageLoader() {
   return (
@@ -54,6 +56,8 @@ export default function App() {
                 <Route path="announcements" element={<Suspense fallback={<PageLoader />}><Announcements /></Suspense>} />
                 <Route path="bot-setup" element={<Suspense fallback={<PageLoader />}><BotSetup /></Suspense>} />
                 <Route path="settings" element={<Suspense fallback={<PageLoader />}><Settings /></Suspense>} />
+                <Route path="appeals" element={<Suspense fallback={<PageLoader />}><Appeals /></Suspense>} />
+                <Route path="tickets" element={<Suspense fallback={<PageLoader />}><Tickets /></Suspense>} />
               </Route>
             </Routes>
           </HashRouter>

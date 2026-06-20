@@ -36,65 +36,32 @@
     </div>
 
     <div class="app-layout">
-        <!-- Sol İkon Menüsü -->
-        <nav class="sidebar">
-            <div class="logo-area" style="padding: 10px 0; text-align: center;">
-                <img src="../../favicon_shield.png" width="32" height="32" alt="Lutheus Logo" style="filter: drop-shadow(0px 0px 8px rgba(124, 90, 245, 0.5));">
-            </div>
-
-            <div class="nav-links">
-                <button class="nav-btn active" data-section="home" title="Ana Sayfa">
-                    <i class="fa-solid fa-house"></i>
-                </button>
-                <button class="nav-btn privileged-only" data-section="scan" title="Tarama Merkezi">
-                    <i class="fa-solid fa-satellite-dish"></i>
-                </button>
-                <button class="nav-btn privileged-only" id="btnOpenAdmin" title="Admin Paneli">
-                    <i class="fa-solid fa-gauge-high"></i>
-                </button>
-                <button class="nav-btn privileged-only" data-section="cleanup" title="Veri Temizliği">
-                    <i class="fa-solid fa-broom"></i>
-                </button>
-            </div>
-
-            <!-- Hidden navigation elements to satisfy legacy JS bindings without layout presence -->
-            <div style="display: none !important;">
-                <button class="nav-btn" data-section="stats" title="İstatistikler"></button>
-                <button class="nav-btn" data-section="pointtrain" title="Pointtrain"></button>
-                <button class="nav-btn" data-section="profile" title="Profil"></button>
-                <button class="nav-btn" data-section="settings" title="Ayarlar"></button>
-            </div>
-
-            <div class="nav-footer">
-                <div class="status-dot" id="statusDot" title="Sistem Durumu"></div>
-            </div>
-        </nav>
-
         <!-- Ana İçerik Alanı -->
         <main class="content-area">
 
-            <!-- Header -->
-            <header class="top-header" style="display: flex; align-items: center; justify-content: space-between;">
-                <div style="display: flex; align-items: center; gap: 12px;">
-                    <img src="../../favicon_shield.png" width="28" height="28" alt="Lutheus Logo" style="filter: drop-shadow(0px 0px 6px rgba(124, 90, 245, 0.4));">
-                    <div>
-                        <h1 class="welcome-text" style="margin: 0;">Lutheus <span class="highlight">CezaRapor</span></h1>
-                        <p class="subtitle" style="margin-top: 2px;">Moderasyon Analiz Sistemi v2.0</p>
-                    </div>
+            <!-- Compact Header (Logo sol üstte, Profil sağ üstte, isim-rütbe onun solunda) -->
+            <header class="top-header">
+                <div class="header-left">
+                    <img src="../../favicon_shield.png" class="brand-logo" alt="Lutheus Logo">
                 </div>
                 <div class="header-right">
-                    <!-- SECTION: LANGUAGE_SELECTOR -->
-                    <!-- PURPOSE: Sidepanel ve dashboard-v2 ortak dil ayarını Chrome storage üzerinden yönetir. -->
-                    <select class="language-select" id="languageSelect" aria-label="Dil">
-                        <option value="tr">TR</option>
-                        <option value="en">EN</option>
-                    </select>
-                    <div class="profile-area" id="profileArea">
-                        <img src="../../assets/icon48.png" alt="Profile" class="profile-avatar" id="profileAvatar">
+                    <div class="profile-info-block">
                         <span class="profile-name" id="profileName">Yükleniyor...</span>
+                        <span class="profile-role" id="profileRole">Yükleniyor...</span>
                     </div>
+                    <img src="../../assets/icon48.png" alt="Profile" class="profile-avatar" id="profileAvatar">
                 </div>
             </header>
+
+            <!-- Navigasyon Sekmeleri (Ana Sayfa / Tarama) -->
+            <div class="tabs-nav">
+                <button class="tab-nav-btn active" data-section="home">
+                    <i class="fa-solid fa-house"></i> Ana Sayfa
+                </button>
+                <button class="tab-nav-btn" data-section="scan">
+                    <i class="fa-solid fa-satellite-dish"></i> Tarama
+                </button>
+            </div>
 
             <!-- SECTION: HOME -->
             <section id="section-home" class="view-section active">
@@ -106,78 +73,12 @@
                             <span class="stat-label">Toplam Ceza</span>
                         </div>
                     </div>
-                    <div class="stat-widget purple">
-                        <div class="stat-icon"><i class="fa-solid fa-users-gear"></i></div>
+                    <div class="stat-widget red-theme">
+                        <div class="stat-icon"><i class="fa-solid fa-triangle-exclamation"></i></div>
                         <div class="stat-info">
-                            <span class="stat-num" id="totalMods">0</span>
-                            <span class="stat-label">Aktif Yetkili</span>
+                            <span class="stat-num" id="totalInvalidCases">0</span>
+                            <span class="stat-label">Hatalı Ceza</span>
                         </div>
-                    </div>
-                    <div class="stat-widget green">
-                        <div class="stat-icon"><i class="fa-solid fa-layer-group"></i></div>
-                        <div class="stat-info">
-                            <span class="stat-num" id="scannedPagesVal">0</span>
-                            <span class="stat-label">Taranan Sayfa</span>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="card large-card privileged-only">
-                    <div class="card-content">
-                        <h2>Hızlı Başlat</h2>
-                        <p>Son ayarlarla otomatik tarama başlat.</p>
-                        <button class="btn primary-btn" id="btnQuickScan">
-                            <i class="fa-solid fa-bolt"></i> Başlat
-                        </button>
-                    </div>
-                    <div class="card-image">
-                        <i class="fa-solid fa-rocket"></i>
-                    </div>
-                </div>
-
-                <!-- Sapphire Auto Scan Management Widget (privileged-only) -->
-                <div class="card auto-scan-card privileged-only" style="margin-top: 12px;">
-                    <div class="auto-scan-header">
-                        <div class="auto-scan-title">
-                            <i class="fa-solid fa-clock-rotate-left" style="color: var(--accent-primary);"></i>
-                            <span>Sapphire Otomatik Tarama</span>
-                        </div>
-                        <span class="pulse-dot" id="autoScanPulse"></span>
-                    </div>
-
-                    <div class="switch-container">
-                        <span class="switch-label">Otomatik Eşitleme (1 Saat)</span>
-                        <label class="toggle-switch">
-                            <input type="checkbox" id="toggleAutoOpenWidget">
-                            <span class="toggle-slider"></span>
-                        </label>
-                    </div>
-
-                    <div class="auto-scan-grid">
-                        <div class="auto-scan-stat">
-                            <span class="auto-scan-stat-label">Son Tarama</span>
-                            <span class="auto-scan-stat-value" id="valLastScanTime">-</span>
-                        </div>
-                        <div class="auto-scan-stat">
-                            <span class="auto-scan-stat-label">Son Durum</span>
-                            <span class="auto-scan-stat-value success" id="valLastScanStatus">-</span>
-                        </div>
-                        <div class="auto-scan-stat">
-                            <span class="auto-scan-stat-label">Sonraki Tarama</span>
-                            <span class="auto-scan-stat-value pending" id="valNextScanCountdown">-</span>
-                        </div>
-                        <div class="auto-scan-stat">
-                            <span class="auto-scan-stat-label">Yeni Eklenen Ceza</span>
-                            <span class="auto-scan-stat-value" id="valNewCasesCount">0</span>
-                        </div>
-                    </div>
-
-                    <button class="btn primary-btn full" id="btnTriggerAutoScanNow" style="background: linear-gradient(135deg, var(--accent-primary), var(--accent-dark)); box-shadow: 0 4px 15px var(--accent-glow); height: 38px;">
-                        <i class="fa-solid fa-arrow-rotate-right"></i> Şimdi Tetikle
-                    </button>
-
-                    <div class="auto-scan-logs" id="autoScanLogs">
-                        <div class="auto-scan-log-item">Sistem hazır. Otomatik tarama bekleniyor...</div>
                     </div>
                 </div>
 
@@ -193,342 +94,153 @@
                         <i class="fa-solid fa-gauge-high" style="color: var(--accent-primary);"></i>
                     </div>
                 </div>
-
-                <div class="card log-card">
-                    <div class="card-header">
-                        <h3><i class="fa-solid fa-terminal" style="margin-right: 10px; opacity: 0.6;"></i>Sistem
-                            Kayıtları</h3>
-                        <button class="btn-text privileged-only" id="btnClearLogs"><i class="fa-solid fa-trash-can"></i>
-                            Temizle</button>
-                    </div>
-                    <div class="log-list" id="logContent"></div>
-                </div>
             </section>
 
             <!-- SECTION: SCAN -->
             <section id="section-scan" class="view-section">
-                <div class="card full-height">
+                <!-- Sapphire Tarama Bölümü -->
+                <div class="card scan-card">
                     <div class="card-header">
-                        <h3><i class="fa-solid fa-sliders" style="margin-right: 10px; opacity: 0.6;"></i>Tarama
-                            Konfigürasyonu</h3>
+                        <h3><i class="fa-solid fa-bolt" style="margin-right: 8px; color: var(--accent-primary);"></i>Sapphire Taraması</h3>
                     </div>
+                    <div class="card-body" style="margin-top: 10px;">
+                        <!-- Detaylı Seçenekler Panel -->
+                        <div class="scan-options-panel glass-panel" style="margin-bottom: 12px; padding: 12px; border-radius: var(--radius-md); border: 1px solid var(--border-color); background: rgba(255,255,255,0.02);">
+                            
+                            <!-- Sayfa Seçimi -->
+                            <div class="form-group" style="margin-bottom: 12px;">
+                                <label style="display: flex; justify-content: space-between; font-size: 11px; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px;">
+                                    <span>Taranacak Sayfalar</span>
+                                    <span id="scanModeLabel" style="color: var(--accent-light);">Tüm Sayfalar (Oto)</span>
+                                </label>
+                                <div style="display: flex; gap: 8px;">
+                                    <input type="text" id="pageInput" placeholder="Örn: 1-5 veya 3" style="flex: 1; height: 36px; padding: 0 10px; border-radius: var(--radius-sm); border: 1px solid var(--border-color); background: var(--bg-input); color: var(--text-primary); font-size: 12px; outline: none;" disabled>
+                                    <button id="toggleAutofill" class="btn" style="height: 36px; padding: 0 12px; font-size: 11px; font-weight: bold; border-radius: var(--radius-sm); background: var(--accent-bg); color: var(--accent-light); border: 1px solid var(--accent-glow); cursor: pointer; transition: all 0.2s;" title="Otomatik ve Manuel Seçim Arasında Geçiş Yap">
+                                        <i class="fa-solid fa-wand-magic-sparkles"></i> Oto
+                                    </button>
+                                </div>
+                            </div>
 
-                    <div class="form-group margin-top">
-                        <label>Sayfa Hedefi</label>
-                        <div class="input-row">
-                            <input type="text" id="pageInput" placeholder="Örn: 5 veya 1-10">
-                            <button id="toggleAutofill" class="toggle-btn" title="Otomatik Doldur">
-                                <i class="fa-solid fa-wand-magic-sparkles"></i>
-                                <span>Auto</span>
-                            </button>
+                            <!-- Tarih Seçimi -->
+                            <div class="form-group" style="margin-bottom: 12px;">
+                                <label style="display: block; font-size: 11px; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px;">Tarih Aralığı</label>
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px;">
+                                    <input type="date" id="startDate" style="height: 34px; padding: 0 8px; border-radius: var(--radius-sm); border: 1px solid var(--border-color); background: var(--bg-input); color: var(--text-primary); font-size: 11px; outline: none;">
+                                    <input type="date" id="endDate" style="height: 34px; padding: 0 8px; border-radius: var(--radius-sm); border: 1px solid var(--border-color); background: var(--bg-input); color: var(--text-primary); font-size: 11px; outline: none;">
+                                </div>
+                                <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px;">
+                                    <button id="btnToday" class="btn preset-btn" style="font-size: 9px; padding: 6px 0; border-radius: var(--radius-xs); background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); color: var(--text-secondary); cursor: pointer;">Bugün</button>
+                                    <button id="btnLastWeek" class="btn preset-btn" style="font-size: 9px; padding: 6px 0; border-radius: var(--radius-xs); background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); color: var(--text-secondary); cursor: pointer;">1 Hafta</button>
+                                    <button id="btnLastMonth" class="btn preset-btn" style="font-size: 9px; padding: 6px 0; border-radius: var(--radius-xs); background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); color: var(--text-secondary); cursor: pointer;">1 Ay</button>
+                                    <button id="btnAllTime" class="btn preset-btn" style="font-size: 9px; padding: 6px 0; border-radius: var(--radius-xs); background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); color: var(--text-secondary); cursor: pointer;">Hepsi</button>
+                                </div>
+                            </div>
+
+                            <!-- Mod Seçenekleri -->
+                            <div class="form-group" style="display: flex; flex-direction: column; gap: 8px; margin-top: 12px; border-top: 1px solid var(--border-color); padding-top: 10px;">
+                                <label style="display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--text-secondary); cursor: pointer;">
+                                    <input type="checkbox" id="chkCumulativeMode" checked style="accent-color: var(--accent-primary); cursor: pointer;">
+                                    <span>Kümülatif Mod (Eskileri Silme)</span>
+                                </label>
+                                <label style="display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--text-secondary); cursor: pointer;">
+                                    <input type="checkbox" id="chkDetailScan" style="accent-color: var(--accent-primary); cursor: pointer;">
+                                    <span>Detaylı Tarama (API Sorgusu)</span>
+                                </label>
+                                <div id="detailLimitWrapper" style="display: none; align-items: center; gap: 8px; margin-left: 20px;">
+                                    <span style="font-size: 11px; color: var(--text-muted);">Sınır:</span>
+                                    <input type="number" id="detailLimit" value="0" min="0" placeholder="0 = Sınırsız" style="width: 80px; height: 28px; padding: 0 6px; border-radius: var(--radius-xs); border: 1px solid var(--border-color); background: var(--bg-input); color: var(--text-primary); font-size: 11px; outline: none;">
+                                </div>
+                                <label style="display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--text-secondary); cursor: pointer;">
+                                    <input type="checkbox" id="chkOpenAdmin" style="accent-color: var(--accent-primary); cursor: pointer;">
+                                    <span>Taramadan Sonra Admin Panelini Aç</span>
+                                </label>
+                                <label style="display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--text-secondary); cursor: pointer;">
+                                    <input type="checkbox" id="chkCloseDashboard" style="accent-color: var(--accent-primary); cursor: pointer;">
+                                    <span>Tarama Sonrası Sekmeyi Kapat</span>
+                                </label>
+                            </div>
                         </div>
-                        <small id="pageHint">5 = Sadece 5. sayfa · 1-10 = Aralık tarama</small>
-                    </div>
 
-                    <div class="form-group">
-                        <label>Tarih Filtresi</label>
-                        <div class="date-grid">
-                            <input type="date" id="startDate">
-                            <span class="arrow"><i class="fa-solid fa-arrow-right"></i></span>
-                            <input type="date" id="endDate">
-                        </div>
-                        <div class="chips">
-                            <button class="chip" id="btnToday"><i class="fa-solid fa-calendar-day"></i> Gün</button>
-                            <button class="chip" id="btnLastWeek"><i class="fa-solid fa-calendar-week"></i>
-                                Hafta</button>
-                            <button class="chip" id="btnLastMonth"><i class="fa-solid fa-calendar-days"></i> Ay</button>
-                            <button class="chip" id="btnAllTime"><i class="fa-solid fa-infinity"></i> Tümü</button>
-                        </div>
-                    </div>
-
-                    <div class="form-group">
-                        <label>Tarama Modu</label>
-                        <div class="check-list">
-                            <label class="custom-check">
-                                <input type="checkbox" id="chkDetailScan">
-                                <span class="checkmark"></span>
-                                <span>Detayli tarama: cezalarin detay sayfalarini da ac</span>
-                            </label>
-                        </div>
-                        <small>Kapaliysa sadece Sapphire dashboard listesinden hizli analiz yapilir.</small>
-                    </div>
-
-                    <div class="form-group">
-                        <label>Detay Limiti</label>
-                        <input type="number" id="detailLimit" min="0" value="0">
-                        <small>0 = taranan tum cezalar. Sadece detayli taramada kullanilir.</small>
-                    </div>
-
-                    <div class="form-group">
-                        <label>Otomasyon</label>
-                        <div class="check-list">
-                            <label class="custom-check">
-                                <input type="checkbox" id="chkOpenAdmin" checked>
-                                <span class="checkmark"></span>
-                                <span>Tarama bitince Admin Paneli aç</span>
-                            </label>
-                            <label class="custom-check">
-                                <input type="checkbox" id="chkCloseDashboard" checked>
-                                <span class="checkmark"></span>
-                                <span>Tarama bitince Dashboard'u kapat</span>
-                            </label>
-                            <label class="custom-check">
-                                <input type="checkbox" id="chkCumulativeMode" checked>
-                                <span class="checkmark"></span>
-                                <span
-                                    title="Yeni verileri mevcut verilerin üzerine ekler. Kapalıysa sadece son taramayı tutar.">Üst
-                                    üste ekleyerek kaydet</span>
-                            </label>
-                        </div>
-                    </div>
-
-                    <div class="action-footer">
-                        <button class="btn primary-btn full" id="btnStartScan">
-                            <i class="fa-solid fa-play"></i> Taramayı Başlat
+                        <button class="btn primary-btn full" id="btnStartScan" style="margin-bottom: 8px;">
+                            <i class="fa-solid fa-play"></i> Sapphire Taramasını Başlat
                         </button>
                         <button class="btn danger-btn full" id="btnStopScan" disabled>
                             <i class="fa-solid fa-stop"></i> Durdur
                         </button>
-                        <button class="btn full" id="btnDiscordScan" style="background-color: #5865F2; color: white; margin-top: 10px;">
-                            <i class="fa-brands fa-discord"></i> Discord'u Aç ve Kanıtları Tara
+                    </div>
+                </div>
+
+                <!-- Discord Kanal Taramaları -->
+                <div class="card scan-card" style="margin-top: 12px;">
+                    <div class="card-header" style="display: flex; align-items: center; justify-content: space-between;">
+                        <h3><i class="fa-brands fa-discord" style="margin-right: 8px; color: #5865F2;"></i>Discord Taramaları</h3>
+                        <button class="btn" id="btnStartAllDiscord" style="background: #5865F2; color: white; padding: 6px 12px; font-size: 11px; font-weight: bold; border-radius: 6px;">
+                            <i class="fa-solid fa-play"></i> Hepsini Başlat
                         </button>
                     </div>
+                    
+                    <div class="discord-channels-list" style="margin-top: 12px; display: flex; flex-direction: column; gap: 10px;">
+                        <!-- Hadron Transcripts -->
+                        <div class="discord-channel-row">
+                            <div class="channel-info">
+                                <span class="channel-name">Hadron Biletleri (Transcripts)</span>
+                                <span class="channel-status offline" id="status-ticket-logs">İNKTİSİZ</span>
+                            </div>
+                            <button class="btn run-channel-btn" id="btnScan-ticket-logs">
+                                <i class="fa-solid fa-magnifying-glass"></i> Tarı
+                            </button>
+                        </div>
 
-                    <div class="progress-overlay" id="progressBox">
-                        <div class="progress-info">
-                            <span id="progressLabel">Hazırlanıyor...</span>
-                            <span id="progressPercent">0%</span>
+                        <!-- #dispute-logs -->
+                        <div class="discord-channel-row">
+                            <div class="channel-info">
+                                <span class="channel-name">#dispute-logs</span>
+                                <span class="channel-status offline" id="status-dispute-logs">İNKTİSİZ</span>
+                            </div>
+                            <button class="btn run-channel-btn" id="btnScan-dispute-logs" data-channel-id="1445465527223980042">
+                                <i class="fa-solid fa-magnifying-glass"></i> Tarı
+                            </button>
                         </div>
-                        <div class="progress-track">
-                            <div class="progress-bar" id="progressFill"></div>
-                        </div>
+                    </div>
+                </div>
+
+                <!-- Progress Overlay -->
+                <div class="progress-overlay" id="progressBox">
+                    <div class="progress-info">
+                        <span id="progressLabel">Hazırlanıyor...</span>
+                        <span id="progressPercent">0%</span>
+                    </div>
+                    <div class="progress-track">
+                        <div class="progress-bar" id="progressFill"></div>
                     </div>
                 </div>
             </section>
 
-            <!-- SECTION: DATA CLEANUP -->
-            <section id="section-cleanup" class="view-section">
-                <div class="card">
-                    <h3><i class="fa-solid fa-broom" style="margin-right: 10px; opacity: 0.6;"></i>Veri Temizliği</h3>
-                    <p class="subtitle" style="margin: 8px 0 16px;">Yalnızca eklenti yerel kayıtları. Supabase veritabanına dokunulmaz.</p>
-                    <div class="btn-group" style="flex-direction: column; gap: 8px;">
-                        <button class="btn secondary-btn full" id="btnScanInvalidStaff">
-                            <i class="fa-solid fa-magnifying-glass"></i> Boş Yetkilileri Tara
-                        </button>
-                        <button class="btn outline-danger full" id="btnCleanInvalidStaff">
-                            <i class="fa-solid fa-user-xmark"></i> Geçersiz Yetkilileri Temizle
-                        </button>
-                        <button class="btn outline-danger full" id="btnResetLocalRegistry">
-                            <i class="fa-solid fa-rotate-left"></i> Local Registry Sıfırla
-                        </button>
-                        <button class="btn primary-btn full" id="btnResyncStaffFromDb">
-                            <i class="fa-solid fa-cloud-arrow-down"></i> DB ile Yeniden Eşitle (okuma)
-                        </button>
-                    </div>
-                    <div class="log-list margin-top" id="cleanupResults" style="max-height: 220px; min-height: 80px;"></div>
-                </div>
-            </section>
-
-            <!-- Hidden Legacy Sections to prevent DOM selector failures in sidepanel.js -->
+            <!-- Hidden Legacy/Dummy Elements to satisfy active DOM queries in background storage / scripts -->
             <div style="display: none !important;">
-
-            <!-- SECTION: STATS -->
-            <section id="section-stats" class="view-section">
-                <!-- Main List View -->
-                <div id="statsMainView">
-                    <div class="stats-toolbar">
-                        <div class="search-bar">
-                            <i class="fa-solid fa-magnifying-glass"></i>
-                            <input type="text" id="searchMod" placeholder="Yetkili ara...">
-                        </div>
-                        <div class="toolbar-actions">
-                            <button class="toolbar-btn" id="btnExport" title="Raporu İndir">
-                                <i class="fa-solid fa-download"></i>
-                            </button>
-                            <button class="toolbar-btn" id="btnOpenAdmin" title="Admin Konsolu">
-                                <i class="fa-solid fa-external-link"></i>
-                            </button>
-                        </div>
-                    </div>
-
-                    <div class="mod-list-container" id="modList">
-                        <!-- JS creates list items -->
-                    </div>
-
-                </div>
-
-                <!-- Detail View (Hidden by default) -->
-                <div id="statsDetailView" class="hidden">
-                    <div class="detail-header">
-                        <button class="btn-icon-only" id="btnBackToStats">
-                            <i class="fa-solid fa-arrow-left"></i>
-                        </button>
-                        <div class="detail-title">
-                            <h3 id="detailModName">Yetkili Adı</h3>
-                            <span id="detailModId" class="detail-subtitle">ID: ---</span>
-                        </div>
-                    </div>
-
-                    <div class="detail-cases-list" id="detailCasesList">
-                        <!-- Cases will be rendered here -->
-                    </div>
-                </div>
-            </section>
-
-            <!-- SECTION: SETTINGS -->
-            <section id="section-pointtrain" class="view-section">
-                <div class="card">
-                    <div class="card-header">
-                        <h3><i class="fa-solid fa-ranking-star" style="margin-right: 10px; opacity: 0.6;"></i>Pointtrain Otomasyonu</h3>
-                    </div>
-                    <div class="pointtrain-grid margin-top">
-                        <div class="form-group">
-                            <label>Dönem</label>
-                            <div class="chips">
-                                <button class="chip" id="ptBtnToday"><i class="fa-solid fa-calendar-day"></i> Gün</button>
-                                <button class="chip" id="ptBtnLastWeek"><i class="fa-solid fa-calendar-week"></i> 7 Gün</button>
-                                <button class="chip" id="ptBtnLastMonth"><i class="fa-solid fa-calendar-days"></i> 30 Gün</button>
-                            </div>
-                            <div class="date-grid">
-                                <input type="date" id="ptStartDate">
-                                <span class="arrow"><i class="fa-solid fa-arrow-right"></i></span>
-                                <input type="date" id="ptEndDate">
-                            </div>
-                        </div>
-                        <div class="form-group">
-                            <label>Kanal Kapsamı</label>
-                            <div id="pointtrainChannelList" class="channel-config-list"></div>
-                            <div class="toolbar-actions" style="margin-top:10px;">
-                                <button class="toolbar-btn" id="btnPointtrainResetChannels" title="Preset kanalları yükle">
-                                    <i class="fa-solid fa-rotate-left"></i>
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="weight-grid">
-                        <div class="form-group">
-                            <label>Ceza Ağırlığı</label>
-                            <input type="number" id="ptPunishmentWeight" step="0.1" min="0">
-                        </div>
-                        <div class="form-group">
-                            <label>Mesaj Ağırlığı</label>
-                            <input type="number" id="ptMessageWeight" step="0.01" min="0">
-                        </div>
-                        <div class="form-group">
-                            <label>Kanal Bonusu</label>
-                            <input type="number" id="ptChannelBonus" step="0.1" min="0">
-                        </div>
-                        <div class="form-group">
-                            <label>Aktif Gün Bonusu</label>
-                            <input type="number" id="ptActiveDayBonus" step="0.1" min="0">
-                        </div>
-                    </div>
-                    <div class="action-footer">
-                        <button class="btn primary-btn full" id="btnStartPointtrain">
-                            <i class="fa-solid fa-play"></i> Pointtrain Çalıştır
-                        </button>
-                        <button class="btn danger-btn full" id="btnCancelPointtrain">
-                            <i class="fa-solid fa-stop"></i> İptal
-                        </button>
-                    </div>
-                    <div class="progress-overlay active pointtrain-progress" id="pointtrainProgressBox">
-                        <div class="progress-info">
-                            <span id="pointtrainProgressLabel">Hazır</span>
-                            <span id="pointtrainProgressPercent">0%</span>
-                        </div>
-                        <div class="progress-track">
-                            <div class="progress-bar" id="pointtrainProgressFill"></div>
-                        </div>
-                    </div>
-                </div>
-                <div class="card">
-                    <div class="card-header">
-                        <h3><i class="fa-solid fa-list-ol" style="margin-right: 10px; opacity: 0.6;"></i>Son Pointtrain Sonucu</h3>
-                        <div class="toolbar-actions">
-                            <button class="toolbar-btn" id="btnPointtrainExport" title="CSV dışa aktar">
-                                <i class="fa-solid fa-file-csv"></i>
-                            </button>
-                            <button class="toolbar-btn" id="btnPointtrainCopy" title="Discord formatını kopyala">
-                                <i class="fa-brands fa-discord"></i>
-                            </button>
-                        </div>
-                    </div>
-                    <div id="pointtrainSummary" class="comparison-grid"></div>
-                    <div id="pointtrainResultList" class="pointtrain-results"></div>
-                </div>
-            </section>
-
-            <!-- SECTION: SETTINGS -->
-            <section id="section-profile" class="view-section">
-                <div class="card">
-                    <div class="card-header">
-                        <h3><i class="fa-solid fa-user" style="margin-right: 10px; opacity: 0.6;"></i>Profil</h3>
-                    </div>
-                    <div class="profile-summary">
-                        <img src="../../assets/icon48.png" alt="Profil" class="profile-avatar large" id="profilePageAvatar">
-                        <div>
-                            <h2 id="profilePageName">Yetkili</h2>
-                            <p id="profilePageIdentity" class="subtitle">Kimlik yukleniyor</p>
-                            <span id="profilePageRole" class="role-badge moderator">moderator</span>
-                        </div>
-                    </div>
-                    <div class="comparison-grid margin-top" id="profileStatsGrid"></div>
-                    <div class="action-footer">
-                        <button class="btn secondary-btn full" id="btnLogout">
-                            <i class="fa-solid fa-right-from-bracket"></i> Cikis Yap
-                        </button>
-                    </div>
-                </div>
-            </section>
-
-            <!-- SECTION: SETTINGS -->
-            <section id="section-settings" class="view-section">
-                <div class="card">
-                    <h3><i class="fa-solid fa-sliders" style="margin-right: 10px; opacity: 0.6;"></i>Genel Ayarlar</h3>
-                    <div class="form-group margin-top">
-                        <label>Guild ID</label>
-                        <input type="text" id="guildId" placeholder="Discord Sunucu ID">
-                    </div>
-                    <div class="form-group">
-                        <label>Tarama Hızı (ms)</label>
-                        <input type="number" id="scanDelay" value="2000">
-                        <small>Sayfa geçişleri arası bekleme süresi</small>
-                    </div>
-                    <div class="form-group">
-                        <label class="custom-check">
-                            <input type="checkbox" id="toggleAutoSave" checked>
-                            <span class="checkmark"></span>
-                            <span>Haftalık Otomatik Kayıt</span>
-                        </label>
-                    </div>
-                    <div class="form-group">
-                        <label class="custom-check">
-                            <input type="checkbox" id="toggleAutoOpen">
-                            <span class="checkmark"></span>
-                            <span>Otomatik Sapphire Açılışı (1 Saat)</span>
-                        </label>
-                    </div>
-                </div>
-
-                <div class="card danger-zone">
-                    <h3><i class="fa-solid fa-triangle-exclamation" style="margin-right: 10px;"></i>Tehlikeli Bölge</h3>
-                    <p>Bu işlemler geri alınamaz. Dikkatli olun.</p>
-                    <div class="btn-group">
-                        <button class="btn outline-danger" id="btnClearCases">
-                            <i class="fa-solid fa-eraser"></i> Cezaları Sil
-                        </button>
-                        <button class="btn outline-danger" id="btnResetAll">
-                            <i class="fa-solid fa-rotate-left"></i> Sıfırla
-                        </button>
-                    </div>
-                </div>
-            </section>
-
-            </div> <!-- End of Hidden Legacy Sections -->
-
+                <button class="nav-btn" data-section="stats"></button>
+                <button class="nav-btn" data-section="pointtrain"></button>
+                <button class="nav-btn" data-section="profile"></button>
+                <button class="nav-btn" data-section="settings"></button>
+                <button class="nav-btn" data-section="cleanup"></button>
+                <button class="nav-btn" data-section="scan"></button>
+                <button id="btnOpenAdmin"></button>
+                <div id="statusDot"></div>
+                <button id="btnDiscordScan"></button>
+                <div id="statsMainView"></div><div id="statsDetailView"></div><button id="btnBackToStats"></button><span id="detailModName"></span><span id="detailModId"></span><div id="detailCasesList"></div>
+                <input type="text" id="searchMod"><div id="modList"></div><button id="btnExport"></button>
+                <input type="text" id="guildId"><input type="number" id="scanDelay"><input type="checkbox" id="toggleAutoSave"><input type="checkbox" id="toggleAutoOpen"><input type="checkbox" id="toggleAutoOpenWidget">
+                <button id="btnTriggerAutoScanNow"></button><div id="autoScanPulse"></div><span id="valLastScanTime"></span><span id="valLastScanStatus"></span><span id="valNextScanCountdown"></span><span id="valNewCasesCount"></span><div id="autoScanLogs"></div>
+                <button id="btnClearCases"></button><button id="btnResetAll"></button><div id="logContent"></div><button id="btnClearLogs"></button>
+                <button id="ptBtnToday"></button><button id="ptBtnLastWeek"></button><button id="ptBtnLastMonth"></button><input type="date" id="ptStartDate"><input type="date" id="ptEndDate">
+                <div id="pointtrainChannelList"></div><input type="number" id="ptPunishmentWeight"><input type="number" id="ptMessageWeight"><input type="number" id="ptChannelBonus"><input type="number" id="ptActiveDayBonus">
+                <button id="btnStartPointtrain"></button><button id="btnCancelPointtrain"></button><button id="btnPointtrainResetChannels"></button><button id="btnPointtrainExport"></button><button id="btnPointtrainCopy"></button>
+                <div id="pointtrainProgressBox"></div><div id="pointtrainProgressFill"></div><span id="pointtrainProgressLabel"></span><span id="pointtrainProgressPercent"></span><div id="pointtrainSummary"></div><div id="pointtrainResultList"></div>
+                <img id="profilePageAvatar"><span id="profilePageName"></span><span id="profilePageIdentity"></span><span id="profilePageRole"></span><div id="profileStatsGrid"></div><button id="btnLogout"></button>
+                <select id="languageSelect"><option value="tr">TR</option></select>
+            </div>
         </main>
     </div>
-    <footer class="app-footer">© 2031, GearHead</footer>
     <script type="module" src="sidepanel.js"></script>
 </body>
 

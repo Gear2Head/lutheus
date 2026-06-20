@@ -93,6 +93,42 @@ export const QueryStaffCommand = {
             const pendingCount = cases.filter(c => !c.cuk_verdict || String(c.cuk_verdict || '').toLowerCase() === 'pending').length;
             const accuracy = totalCount ? Math.round((validCount / totalCount) * 100) : 0;
 
+            // Appeal metrics
+            let appealTotal = 0;
+            let appealApproved = 0;
+            let appealRejected = 0;
+            try {
+                const { data: appeals } = await supabase
+                    .from('case_appeals')
+                    .select('*')
+                    .in('case_id', cases.map(c => c.case_id).filter(Boolean));
+                const appealData = appeals || [];
+                appealTotal = appealData.length;
+                appealApproved = appealData.filter(a => a.status === 'approved').length;
+                appealRejected = appealData.filter(a => a.status === 'rejected').length;
+            } catch (err) {
+                console.warn('Lutheus Hadron Scraper Fail: Failed to fetch appeal metrics:', err);
+            }
+
+            // Hadron ticket metrics
+            let ticketTotal = 0;
+            let ticketMessageCount = 0;
+            try {
+                const { data: tickets } = await supabase
+                    .from('user_tickets')
+                    .select('*')
+                    .eq('assigned_mod_id', targetId);
+                const ticketData = tickets || [];
+                ticketTotal = ticketData.length;
+                ticketMessageCount = ticketData.reduce((sum, t) => sum + (t.message_count || 0), 0);
+            } catch (err) {
+                console.warn('Lutheus Hadron Scraper Fail: Failed to fetch ticket metrics:', err);
+            }
+
+            const appealRate = totalCount > 0 ? Math.round((appealTotal / totalCount) * 100) : 0;
+            const appealAccuracy = appealTotal > 0 ? Math.round((appealApproved / appealTotal) * 100) : 0;
+            const avgMessagesPerTicket = ticketTotal > 0 ? Math.round(ticketMessageCount / ticketTotal) : 0;
+
             const roleLabels: Record<string, string> = {
                 admin: '🛡️ Yönetici (Admin)',
                 yonetici: '🛡️ Yönetici',
@@ -120,7 +156,10 @@ export const QueryStaffCommand = {
                     { name: '🔨 Toplam İşlem', value: `\`${totalCount}\``, inline: true },
                     { name: '✅ Doğrulanmış (Valid)', value: `\`${validCount}\``, inline: true },
                     { name: '❌ Hatalı (Invalid)', value: `\`${invalidCount}\``, inline: true },
-                    { name: '⏳ Bekleyen (Pending)', value: `\`${pendingCount}\``, inline: true }
+                    { name: '⏳ Bekleyen (Pending)', value: `\`${pendingCount}\``, inline: true },
+                    { name: '⚖️ İtiraz Oranı', value: `%${appealRate} (${appealTotal}/${totalCount})`, inline: true },
+                    { name: '✅ İtiraz Kabul', value: `%${appealAccuracy} (${appealApproved}/${appealTotal})`, inline: true },
+                    { name: '🎫 Hadron Bileti', value: `${ticketTotal} (Ort. ${avgMessagesPerTicket} msg)`, inline: true }
                 )
                 .setFooter({ text: 'Lutheus CezaRapor SRE Otomasyonu' })
                 .setTimestamp();

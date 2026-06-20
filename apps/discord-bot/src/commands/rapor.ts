@@ -96,6 +96,40 @@ export const RaporCommand = {
             const last24hCount = cases.filter(c => c.scraped_at && (now - new Date(c.scraped_at).getTime()) <= 24 * 60 * 60 * 1000).length;
             const last7dCount = cases.filter(c => c.scraped_at && (now - new Date(c.scraped_at).getTime()) <= 7 * 24 * 60 * 60 * 1000).length;
 
+            // 7. Appeal statistics
+            let appealTotal = 0;
+            let appealApproved = 0;
+            let appealRejected = 0;
+            try {
+                const { data: appeals } = await supabase
+                    .from('case_appeals')
+                    .select('*');
+                const appealData = appeals || [];
+                appealTotal = appealData.length;
+                appealApproved = appealData.filter(a => a.status === 'approved').length;
+                appealRejected = appealData.filter(a => a.status === 'rejected').length;
+            } catch (err) {
+                console.warn('Lutheus Hadron Scraper Fail: Failed to fetch appeal stats:', err);
+            }
+
+            // 8. Hadron ticket statistics
+            let ticketTotal = 0;
+            let ticketMessageCount = 0;
+            try {
+                const { data: tickets } = await supabase
+                    .from('user_tickets')
+                    .select('*');
+                const ticketData = tickets || [];
+                ticketTotal = ticketData.length;
+                ticketMessageCount = ticketData.reduce((sum, t) => sum + (t.message_count || 0), 0);
+            } catch (err) {
+                console.warn('Lutheus Hadron Scraper Fail: Failed to fetch ticket stats:', err);
+            }
+
+            const appealRate = totalCount > 0 ? Math.round((appealTotal / totalCount) * 100) : 0;
+            const appealAccuracy = appealTotal > 0 ? Math.round((appealApproved / appealTotal) * 100) : 0;
+            const avgMessagesPerTicket = ticketTotal > 0 ? Math.round(ticketMessageCount / ticketTotal) : 0;
+
             const accuracyColor = accuracy >= 90 ? 0x2ed573 : accuracy >= 80 ? 0xffa502 : 0xff4757;
             const accuracyEmoji = accuracy >= 90 ? '🟢 MÜKEMMEL' : accuracy >= 80 ? '🟡 STABİL' : '🔴 KRİTİK SEVİYE';
 
@@ -106,6 +140,8 @@ export const RaporCommand = {
                 .addFields(
                     { name: '📈 Genel Durum', value: `Top. Ceza: **${totalCount}**\nAktif Yetkili: **${activeStaffCount}**\n24 Saatlik Akış: **+${last24hCount}**\n7 Günlük Akış: **+${last7dCount}**`, inline: true },
                     { name: '🎯 CUK Uyum Skoru', value: `Skor: **%${accuracy}**\nDurum: **${accuracyEmoji}**\n✅ Geçerli: **${validCount}**\n❌ Hatalı: **${invalidCount}**`, inline: true },
+                    { name: '⚖️ İtiraz İstatistikleri', value: `Toplam: **${appealTotal}**\nKabul: **${appealApproved}**\nRed: **${appealRejected}**\nOran: %${appealRate}\nDoğruluk: %${appealAccuracy}`, inline: true },
+                    { name: '🎫 Hadron Bilet İstatistikleri', value: `Toplam Bilet: **${ticketTotal}**\nToplam Mesaj: **${ticketMessageCount}**\nOrt. Mesaj/Bilet: **${avgMessagesPerTicket}**`, inline: true },
                     { name: '⚡ Ceza Dağılımları', value: typesFormatted },
                     { name: '📜 En Sık İhlal Edilen Kurallar', value: categoriesFormatted }
                 )

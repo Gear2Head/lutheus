@@ -13,7 +13,7 @@ import {
 import { CUKEngine, PenaltyStatus } from '../lib/cukEngine.js';
 import { buildPointtrainMarkdown, buildPointtrainCsv } from '../lib/pointtrainEngine.js';
 import { AuthService } from '../auth/authService.js';
-import { getVisibleSections, isPrivilegedRole, normalizeRole } from '../auth/rolePolicy.js';
+import { getVisibleSections, isPrivilegedRole, normalizeRole, getRoleLabel } from '../auth/rolePolicy.js';
 import { bindAvatarFallbacks, resolveAvatar } from '../lib/avatar.js';
 
 const ACTIONS = {
@@ -116,6 +116,31 @@ const DOM = {
     profileStatsGrid: document.getElementById('profileStatsGrid'),
     btnLogout: document.getElementById('btnLogout')
 };
+
+// ─── Null-safe DOM Proxy ──────────────────────────────────────────────────────
+// Bazı HTML elementleri gizli bölümlerde (legacy sections) bulunmayabilir.
+// Bu Proxy, null olan DOM referanslarını sessiz bir stub ile değiştirir;
+// böylece "Cannot set properties of null" hataları oluşmaz.
+const DOM_NULL_STUB = new Proxy({}, {
+    get(_t, prop) {
+        // classList, style, dataset gibi nesne özellikleri için stub döndür
+        if (prop === 'classList') return { add() {}, remove() {}, contains() { return false; }, toggle() {} };
+        if (prop === 'style') return new Proxy({}, { set() { return true; }, get() { return ''; } });
+        if (prop === 'dataset') return {};
+        if (prop === 'addEventListener') return () => {};
+        // Diğer string/number setter'ları için setter proxy
+        return undefined;
+    },
+    set() { return true; } // innerHTML, textContent, src, value, checked vs. için
+});
+
+// Proxy: null olan her DOM alanını stub ile sar
+const _domRaw = DOM;
+for (const key of Object.keys(_domRaw)) {
+    if (_domRaw[key] === null || _domRaw[key] === undefined) {
+        _domRaw[key] = DOM_NULL_STUB;
+    }
+}
 
 const state = {
     session: null,
@@ -708,6 +733,24 @@ async function updateUserProfile() {
         role: normalizeRole(state.session?.role || profile.role || 'moderator'),
         identity: profile.discordId ? `Discord ID: ${profile.discordId}` : (profile.email || profile.uid || '-')
     };
+    
+    // Core Header profile selectors
+    const pAvatar = document.getElementById('profileAvatar');
+    const pName = document.getElementById('profileName');
+    const pRole = document.getElementById('profileRole');
+    
+    if (pAvatar) {
+        pAvatar.src = resolveAvatar(resolved.avatar);
+        pAvatar.dataset.avatarImg = '1';
+    }
+    if (pName) {
+        pName.textContent = resolved.name;
+    }
+    if (pRole) {
+        pRole.textContent = getRoleLabel(resolved.role);
+        pRole.className = `profile-role ${resolved.role}`;
+    }
+
     DOM.profileAvatar.src = resolveAvatar(resolved.avatar);
     DOM.profileAvatar.dataset.avatarImg = '1';
     DOM.profileName.textContent = resolved.name;
@@ -734,6 +777,17 @@ async function updateStats() {
     DOM.totalCases.textContent = String(weekly.totalCases || 0);
     DOM.totalMods.textContent = String(weekly.totalModerators || 0);
     DOM.scannedPagesVal.textContent = String(state.scannedPages || 0);
+
+    // Calculate total invalid (errors) for home panel display
+    const totalInvalid = visibleCases.filter(entry => {
+        const val = getValidation(entry);
+        return val.status === PenaltyStatus.INVALID;
+    }).length;
+    const invalidEl = document.getElementById('totalInvalidCases');
+    if (invalidEl) {
+        invalidEl.textContent = String(totalInvalid);
+    }
+
     renderProfileStats(visibleCases);
     await renderModList(DOM.searchMod.value);
 }
@@ -1295,44 +1349,6 @@ async function resyncStaffFromDb() {
     }
 }
 
-async function handleDiscordScan() {
-    const targetUrl = 'https://discord.com/channels/1223431616081166336/1445462327141863657';
-    
-    // Check auth session
-    const session = await Storage.get('lutheusAuthSession');
-    const token = session?.idToken;
-    if (!token) {
-        Toast.error('Oturum', 'Giris gerekli — Kanit taramasi yapilamadi');
-        return;
-    }
-
-    Toast.info('Discord', 'Kanit kanali kontrol ediliyor...');
-
-    if (typeof chrome !== 'undefined' && chrome.tabs?.query) {
-        chrome.tabs.query({}, async (tabs) => {
-            const discordTab = tabs.find(t => t.url && t.url.includes('1445462327141863657'));
-            
-            if (discordTab) {
-                chrome.tabs.update(discordTab.id, { active: true }, async (tab) => {
-                    if (tab.windowId) {
-                        chrome.windows.update(tab.windowId, { focused: true });
-                    }
-                    
-                    Toast.info('Discord', 'Kanitlar taraniyor...');
-                    setTimeout(() => {
-                        executeScraping(discordTab.id, token);
-                    }, 500);
-                });
-            } else {
-                chrome.tabs.create({ url: targetUrl }, (newTab) => {
-                    Toast.success('Discord', 'Kanit kanali acildi. Sayfa yuklenince butona tekrar basarak taramayi tetikleyin.');
-                });
-            }
-        });
-    } else {
-        Toast.error('Eklenti', 'Chrome tabs API bulunamadi.');
-    }
-}
 async function convertDiscordUrlToBase64(url) {
     if (!url) return url;
     const lowerUrl = url.toLowerCase();
@@ -1562,6 +1578,14 @@ function executeScraping(tabId, token) {
         const supabaseUrl = 'https://jxhzhaqqtlynbnntwpyu.supabase.co/rest/v1/case_proofs';
         const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4aHpoYXFxdGx5bmJubnR3cHl1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk2NjMyMTcsImV4cCI6MjA5NTIzOTIxN30.BrmuT-QX_BkgV6SSlpNThfqSGmUDw0UffUW11agaBzI';
         
+        let tabUrl = 'https://discord.com/channels/1223431616081166336/1445465595435814933';
+        try {
+            const activeTab = await new Promise(r => chrome.tabs.get(tabId, r));
+            if (activeTab && activeTab.url) {
+                tabUrl = activeTab.url;
+            }
+        } catch (_) {}
+
         // ── Çözümle: user_id → case_id ve Kalıcı Görsel Yükleme ──
         const rawProofs = [];
         for (const proof of scrapedResults) {
@@ -1608,7 +1632,7 @@ function executeScraping(tabId, token) {
                         const stubCase = {
                             case_id: targetCaseId,
                             guild_id: '1223431616081166336',
-                            case_url: `https://discord.com/channels/1223431616081166336/1445462327141863657`,
+                            case_url: tabUrl,
                             reason_raw: 'Eklenti Taraması (Senkronizasyon Bekliyor)',
                             reason_normalized: 'Diğer / Yönetim Kararı',
                             reason_parse_status: 'parsed',
@@ -1735,32 +1759,177 @@ function executeScraping(tabId, token) {
 }
 
 function bindEvents() {
-    DOM.navButtons.forEach((button) => {
+    // New Tab sections navigation logic
+    document.querySelectorAll('.tab-nav-btn').forEach((button) => {
         button.addEventListener('click', () => {
-            if (button.dataset.section) {
-                switchSection(button.dataset.section);
-            }
+            const sectId = button.dataset.section;
+            document.querySelectorAll('.tab-nav-btn').forEach(btn => btn.classList.remove('active'));
+            button.classList.add('active');
+            
+            document.querySelectorAll('.view-section').forEach(sect => {
+                sect.classList.remove('active');
+                if (sect.id === `section-${sectId}`) {
+                    sect.classList.add('active');
+                }
+            });
         });
     });
 
-    DOM.btnQuickScan?.addEventListener('click', () => switchSection('scan'));
-    DOM.languageSelect?.addEventListener('change', (event) => saveLanguage(event.target.value));
+    // Dashboard redirection closes the sidepanel automatically
+    document.getElementById('btnOpenDashboardDirect')?.addEventListener('click', async () => {
+        try {
+            await sendRuntimeMessage({ action: ACTIONS.OPEN_ADMIN });
+            window.close(); // Close the sidepanel automatically
+        } catch (e) {
+            console.error('Failed to open dashboard or close window:', e);
+        }
+    });
+
+    // Individual and Batch Channel Scraping Logic
+    const channelConfigs = {
+        'ticket-logs': { name: 'Hadron Transcripts', url: 'https://dash.hadron.bot/manage/1223431616081166336/transcripts' },
+        'dispute-logs': { name: '#dispute-logs', url: 'https://discord.com/channels/1223431616081166336/1445465527223980042' }
+    };
+
+    // Scrapes a single channel: opens the tab if missing, prompts user, and runs scrape if tab is already open
+    async function runChannelScraper(key) {
+        const config = channelConfigs[key];
+        const statusText = document.getElementById(`status-${key}`);
+        const scanBtn = document.getElementById(`btnScan-${key}`);
+        
+        if (statusText) {
+            statusText.textContent = 'BAĞLANILIYOR...';
+            statusText.className = 'channel-status active';
+        }
+        if (scanBtn) scanBtn.disabled = true;
+
+        try {
+            const stored = await Storage.get('lutheusAuthSession');
+            const token = stored?.idToken;
+            if (!token) throw new Error('Giriş gerekli — Oturum bulunamadı.');
+
+            // Find or open the channel tab
+            let targetTab = null;
+            if (typeof chrome !== 'undefined' && chrome.tabs?.query) {
+                const allTabs = await new Promise(res => chrome.tabs.query({}, res));
+                targetTab = allTabs.find(t => t.url && t.url.includes(config.url));
+                
+                if (!targetTab) {
+                    // Open tab and ask user to click again once the page loads
+                    targetTab = await new Promise(res => chrome.tabs.create({ url: config.url, active: true }, res));
+                    Toast.warning(config.name, 'Kanal sekmesi açıldı. Sayfa yüklendikten sonra taramak için butona tekrar basın.');
+                    if (statusText) {
+                        statusText.textContent = 'YÜKLENİYOR...';
+                        statusText.className = 'channel-status offline';
+                    }
+                    return; // Stop here, user must click again
+                }
+
+                // If already open, focus the tab and start scraping
+                await new Promise(res => chrome.tabs.update(targetTab.id, { active: true }, res));
+                if (statusText) {
+                    statusText.textContent = 'TARANIYOR...';
+                    statusText.className = 'channel-status active';
+                }
+
+                // Inject content script if needed
+                try {
+                    const scriptFile = key === 'ticket-logs' ? 'src/content/hadronScraper.js' : 'src/content/discordScraper.js';
+                    await chrome.scripting.executeScript({
+                        target: { tabId: targetTab.id },
+                        files: [scriptFile]
+                    });
+                } catch (_) {}
+
+                // Send start command
+                const response = await chrome.tabs.sendMessage(targetTab.id, { action: 'DISCORD_SCRAPER_START' })
+                    .catch(err => { throw new Error(`Kazıyıcı başlatılamadı: ${err.message}`); });
+
+                if (response && response.success) {
+                    Toast.success(config.name, 'Tarama başarıyla başlatıldı!');
+                    // Wait to let MutationObserver collect visible messages
+                    await new Promise(resolve => setTimeout(resolve, 4000));
+                    
+                    // Trigger DOM scraping callback to push case_proofs/tickets to DB
+                    await chrome.tabs.sendMessage(targetTab.id, { action: 'DISCORD_SCRAPER_STOP' });
+                    
+                    // Stop observer
+                    if (statusText) {
+                        statusText.textContent = 'TAMAMLANDI';
+                        statusText.className = 'channel-status active';
+                    }
+                    Toast.success(config.name, 'Veri tabanı eşlemesi tamamlandı.');
+                } else {
+                    throw new Error(response?.error || 'Kazıyıcı yanıt vermedi.');
+                }
+            } else {
+                throw new Error('Eklenti ortamı hazır değil.');
+            }
+        } catch (err) {
+            Toast.error(config.name, `Hata: ${err.message}`);
+            if (statusText) {
+                statusText.textContent = 'HATA VERDİ';
+                statusText.className = 'channel-status offline';
+            }
+        } finally {
+            if (scanBtn) scanBtn.disabled = false;
+        }
+    }
+
+    // Individual scan click handlers
+    Object.keys(channelConfigs).forEach(key => {
+        document.getElementById(`btnScan-${key}`)?.addEventListener('click', () => runChannelScraper(key));
+    });
+
+    // Batch scan click handler
+    document.getElementById('btnStartAllDiscord')?.addEventListener('click', async () => {
+        const allKeys = Object.keys(channelConfigs);
+        Toast.info('Toplu Tarama', 'Tüm kanallar taranmaya başlanıyor...');
+        for (const key of allKeys) {
+            await runChannelScraper(key);
+        }
+        Toast.success('Toplu Tarama', 'İşlem tamamlandı.');
+    });
+
     DOM.btnStartScan?.addEventListener('click', runScan);
     DOM.btnStopScan?.addEventListener('click', stopScan);
-    DOM.btnDiscordScan?.addEventListener('click', handleDiscordScan);
+
     DOM.btnToday?.addEventListener('click', () => applyScanPreset('today'));
     DOM.btnLastWeek?.addEventListener('click', () => applyScanPreset('week'));
     DOM.btnLastMonth?.addEventListener('click', () => applyScanPreset('month'));
     DOM.btnAllTime?.addEventListener('click', () => applyScanPreset('all'));
-    DOM.btnExport?.addEventListener('click', exportReport);
-    DOM.btnOpenAdmin?.addEventListener('click', () => sendRuntimeMessage({ action: ACTIONS.OPEN_ADMIN }));
-    document.getElementById('btnOpenDashboardDirect')?.addEventListener('click', () => sendRuntimeMessage({ action: ACTIONS.OPEN_ADMIN }));
+
+    DOM.chkDetailScan?.addEventListener('change', () => {
+        const wrapper = document.getElementById('detailLimitWrapper');
+        if (wrapper) {
+            wrapper.style.display = DOM.chkDetailScan.checked ? 'flex' : 'none';
+        }
+    });
+
+    DOM.toggleAutofill?.addEventListener('click', () => {
+        const pageInput = DOM.pageInput;
+        const scanModeLabel = document.getElementById('scanModeLabel');
+        if (pageInput.disabled) {
+            pageInput.disabled = false;
+            pageInput.value = '1';
+            if (scanModeLabel) scanModeLabel.textContent = 'Manuel Mod';
+            DOM.toggleAutofill.style.background = 'rgba(255, 255, 255, 0.05)';
+            DOM.toggleAutofill.style.color = 'var(--text-secondary)';
+            DOM.toggleAutofill.style.borderColor = 'var(--border-color)';
+        } else {
+            pageInput.disabled = true;
+            pageInput.value = '';
+            if (scanModeLabel) scanModeLabel.textContent = 'Tüm Sayfalar (Oto)';
+            DOM.toggleAutofill.style.background = 'var(--accent-bg)';
+            DOM.toggleAutofill.style.color = 'var(--accent-light)';
+            DOM.toggleAutofill.style.borderColor = 'var(--accent-glow)';
+        }
+    });
+
     DOM.btnLogout?.addEventListener('click', async () => {
         await AuthService.logout();
         AuthService.redirectToLogin(chrome.runtime.getURL('src/sidepanel/sidepanel.html'));
     });
-    DOM.btnBackToStats?.addEventListener('click', exitFocusMode);
-    DOM.searchMod?.addEventListener('input', debounce((event) => renderModList(event.target.value), 120));
     DOM.guildId?.addEventListener('change', saveSettings);
     DOM.scanDelay?.addEventListener('change', saveSettings);
     DOM.toggleAutoSave?.addEventListener('change', saveSettings);
@@ -1769,14 +1938,6 @@ function bindEvents() {
     DOM.btnTriggerAutoScanNow?.addEventListener('click', triggerAutoScanNow);
     DOM.btnClearCases?.addEventListener('click', clearCases);
     DOM.btnResetAll?.addEventListener('click', resetAll);
-    document.getElementById('btnScanInvalidStaff')?.addEventListener('click', scanInvalidStaff);
-    document.getElementById('btnCleanInvalidStaff')?.addEventListener('click', cleanInvalidStaff);
-    document.getElementById('btnResetLocalRegistry')?.addEventListener('click', resetLocalRegistry);
-    document.getElementById('btnResyncStaffFromDb')?.addEventListener('click', resyncStaffFromDb);
-    DOM.btnClearLogs?.addEventListener('click', async () => {
-        await Storage.set('scanLogs', []);
-        DOM.logContent.innerHTML = '';
-    });
     DOM.ptBtnToday?.addEventListener('click', () => applyPointtrainPreset('today'));
     DOM.ptBtnLastWeek?.addEventListener('click', () => applyPointtrainPreset('last7'));
     DOM.ptBtnLastMonth?.addEventListener('click', () => applyPointtrainPreset('last30'));
@@ -1784,34 +1945,6 @@ function bindEvents() {
     DOM.btnCancelPointtrain?.addEventListener('click', cancelPointtrainScan);
     DOM.btnPointtrainExport?.addEventListener('click', exportPointtrainCsv);
     DOM.btnPointtrainCopy?.addEventListener('click', copyPointtrainMarkdown);
-    DOM.btnPointtrainResetChannels?.addEventListener('click', async () => {
-        renderPointtrainChannels(DEFAULT_POINTTRAIN_CHANNELS);
-        const settings = await Storage.getPointtrainSettings();
-        await Storage.savePointtrainSettings({ ...settings, channels: DEFAULT_POINTTRAIN_CHANNELS });
-        Toast.success('Pointtrain', 'Preset kanallar yuklendi');
-    });
-
-    // Auto-fill page input toggle
-    let autofillActive = false;
-    DOM.toggleAutofill?.addEventListener('click', () => {
-        autofillActive = !autofillActive;
-        if (autofillActive) {
-            DOM.toggleAutofill.classList.add('active');
-            DOM.toggleAutofill.style.background = 'var(--accent)';
-            DOM.toggleAutofill.style.color = '#fff';
-            DOM.pageInput.value = '';
-            DOM.pageInput.placeholder = 'Otomatik (tüm sayfalar)';
-            DOM.pageInput.disabled = true;
-            Toast.info(text('autoMode'), text('scanAllPages'));
-        } else {
-            DOM.toggleAutofill.classList.remove('active');
-            DOM.toggleAutofill.style.background = '';
-            DOM.toggleAutofill.style.color = '';
-            DOM.pageInput.placeholder = 'Örn: 5 veya 1-10';
-            DOM.pageInput.disabled = false;
-            Toast.info(text('autoMode'), text('manualPageInput'));
-        }
-    });
 
     chrome.runtime.onMessage.addListener((message) => {
         if (message.action === ACTIONS.SCAN_PROGRESS_EVENT) {
@@ -1842,7 +1975,6 @@ async function init() {
     Toast.init();
     await loadLanguage();
 
-    // Register storage change listener to reload sidepanel when session state updates
     if (typeof chrome !== 'undefined' && chrome.storage?.onChanged) {
         chrome.storage.onChanged.addListener((changes, areaName) => {
             if (areaName === 'local' && changes.lutheusAuthSession) {
@@ -1895,7 +2027,9 @@ async function init() {
     setInterval(updateAutoScanUIState, 1000);
     resetScanProgress();
     resetPointtrainProgress();
-    switchSection(getVisibleSections(state.session?.role)[0] || 'home');
+    // Default to the home section layout on startup
+    const sectionHome = document.getElementById('section-home');
+    if (sectionHome) sectionHome.classList.add('active');
 }
 
 init().catch((error) => {

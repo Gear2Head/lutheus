@@ -37,6 +37,8 @@ const translations: Record<Language, Record<string, string>> = {
     'nav.accessDeniedDesc': 'You do not have permission to access the moderation panel due to your role restrictions.',
     'nav.unauthorized': 'Unauthorized Access',
     'nav.unauthorizedDesc': 'You do not have permission to view or manage data on this page. Please contact administration.',
+    'nav.appeals': 'Appeals',
+    'nav.tickets': 'Tickets',
     
     // Home Page
     'home.title': 'Overview',
@@ -263,6 +265,8 @@ const translations: Record<Language, Record<string, string>> = {
     'nav.accessDeniedDesc': 'Hesabınız veya rütbeniz engellendiği için moderasyon paneline erişim izniniz bulunmamaktadır.',
     'nav.unauthorized': 'Yetkisiz Erişim',
     'nav.unauthorizedDesc': 'Bu sayfadaki verileri görüntüleme veya yönetme yetkiniz bulunmamaktadır. Lütfen yönetim ile iletişime geçin.',
+    'nav.appeals': 'İtirazlar',
+    'nav.tickets': 'Biletler',
     
     // Home Page
     'home.title': 'Genel Bakış',

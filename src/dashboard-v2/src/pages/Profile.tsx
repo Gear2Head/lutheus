@@ -2,13 +2,15 @@ import { useEffect, useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   User, ShieldAlert, Award, MessageSquare, AlertCircle, 
-  Send, Loader2, Calendar, FileText, BadgeAlert, AlertTriangle, ExternalLink
+  Send, Loader2, Calendar, FileText, BadgeAlert, AlertTriangle, ExternalLink,
+  Scale, Ticket, CheckCircle2, XCircle
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import { 
   getCases, getStaffWarnings, getStaffMessages, sendStaffMessage, 
-  SapphireCase, StaffWarning, StaffMessage, getStaffProfiles, StaffProfile
+  SapphireCase, StaffWarning, StaffMessage, getStaffProfiles, StaffProfile,
+  getAppeals, getTickets, CaseAppeal, UserTicket
 } from '../lib/supabase';
 import { formatDate } from '../lib/utils';
 import { getRoleColor, getRoleLabel } from '../lib/auth';
@@ -16,6 +18,7 @@ import { calculatePerformanceScore, getReliabilityStatus, validateCase } from '.
 import { Badge } from '../components/ui/Badge';
 import { buildSapphireCaseUrl } from '../lib/sapphireUrl';
 import ProofDrawer from '../components/ProofDrawer';
+import { getHadronTranscriptUrl } from '../utils/hadronHelper';
 
 export default function Profile() {
   const { session } = useAuth();
@@ -28,11 +31,14 @@ export default function Profile() {
   const [messages, setMessages] = useState<StaffMessage[]>([]);
 
   // Form states
-  const [activeTab, setActiveTab] = useState<'overview' | 'cases' | 'warnings' | 'messages'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'cases' | 'warnings' | 'messages' | 'appeals' | 'tickets'>('overview');
   const [newMessage, setNewMessage] = useState('');
   const [submittingMessage, setSubmittingMessage] = useState(false);
   const [proofCaseId, setProofCaseId] = useState<string | null>(null);
   const [selectedProofCase, setSelectedProofCase] = useState<SapphireCase | null>(null);
+  // Appeals & Tickets
+  const [myAppeals, setMyAppeals] = useState<CaseAppeal[]>([]);
+  const [myTickets, setMyTickets] = useState<UserTicket[]>([]);
 
   const discordId = session?.profile?.discordId;
 
@@ -40,11 +46,13 @@ export default function Profile() {
     if (!discordId) return;
     setLoading(true);
     try {
-      const [allProfiles, allCases, staffWarnings, staffMessages] = await Promise.all([
+      const [allProfiles, allCases, staffWarnings, staffMessages, appealData, ticketData] = await Promise.all([
         getStaffProfiles(),
         getCases(500),
         getStaffWarnings(discordId),
-        getStaffMessages(discordId)
+        getStaffMessages(discordId),
+        getAppeals(discordId),
+        getTickets({ userId: discordId }),
       ]);
 
       const myProfile = allProfiles.find(p => p.discord_id === discordId);
@@ -67,6 +75,8 @@ export default function Profile() {
       setCases(myCases);
       setWarnings(staffWarnings);
       setMessages(staffMessages);
+      setMyAppeals(appealData);
+      setMyTickets(ticketData);
     } catch (err: any) {
       console.error('Failed to load profile data:', err);
       showToast('Profil verileri yüklenirken hata oluştu', 'error');
@@ -201,17 +211,21 @@ export default function Profile() {
 
         {/* Right column: Tabs container */}
         <div className="lg:col-span-2 space-y-6">
-          <div className="flex bg-[#111112] border border-white/10 rounded-xl p-1">
+          <div className="flex bg-[#111112] border border-white/10 rounded-xl p-1 flex-wrap gap-0.5">
             {[
               { id: 'overview', label: 'Genel Karnem' },
               { id: 'cases', label: 'Cezalarım' },
               { id: 'warnings', label: 'Uyarılarım' },
-              { id: 'messages', label: 'Yönetime Ulaş' }
+              { id: 'messages', label: 'Yönetime Ulaş' },
+              { id: 'appeals', label: '⚖️ İtirazlarım' },
+              { id: 'tickets', label: '🎫 Biletlerim' },
             ].map((tab) => (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as any)}
-                className={`flex-1 py-2 text-center text-xs font-bold rounded-lg transition-all cursor-pointer ${activeTab === tab.id ? 'bg-white/10 text-white shadow-sm' : 'text-white/40 hover:text-white'}`}
+                className={`flex-1 py-2 text-center text-xs font-bold rounded-lg transition-all cursor-pointer min-w-[90px] ${
+                  activeTab === tab.id ? 'bg-white/10 text-white shadow-sm' : 'text-white/40 hover:text-white'
+                }`}
               >
                 {tab.label}
               </button>
@@ -437,6 +451,107 @@ export default function Profile() {
                       </div>
                     )}
                   </div>
+                </motion.div>
+              )}
+
+              {/* ─── İtirazlarım Sekmesi ─── */}
+              {activeTab === 'appeals' && (
+                <motion.div
+                  key="appeals"
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -8 }}
+                  className="space-y-3 text-left"
+                >
+                  <h4 className="text-xs font-bold text-white uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                    <Scale size={13} className="text-[#5E5CE6]" /> Appeal.gg İtiraz Geçmişim
+                  </h4>
+                  {myAppeals.length === 0 ? (
+                    <div className="p-8 text-center rounded-xl bg-secondary/10 border border-white/[0.04]">
+                      <Scale className="w-8 h-8 text-white/20 mx-auto mb-2" />
+                      <p className="text-xs text-white/40">Üzerinize kayıtlı bir itiraz başvurusu bulunmamaktadır.</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {myAppeals.map((a) => (
+                        <div key={a.id} className={`p-4 rounded-xl border flex flex-col gap-2 ${
+                          a.status === 'approved'
+                            ? 'bg-emerald-500/5 border-emerald-500/15'
+                            : 'bg-red-500/5 border-red-500/15'
+                        }`}>
+                          <div className="flex items-center justify-between flex-wrap gap-2">
+                            <div className="flex items-center gap-2">
+                              {a.status === 'approved'
+                                ? <CheckCircle2 size={14} className="text-emerald-400" />
+                                : <XCircle size={14} className="text-red-400" />}
+                              <span className={`text-xs font-bold ${
+                                a.status === 'approved' ? 'text-emerald-400' : 'text-red-400'
+                              }`}>
+                                {a.status === 'approved' ? 'Appeal Accepted — Onaylandı' : 'Appeal Rejected — Reddedildi'}
+                              </span>
+                            </div>
+                            {a.case_id && (
+                              <span className="text-[10px] font-mono text-[#5E5CE6]">Ceza #{a.case_id}</span>
+                            )}
+                          </div>
+                          <p className="text-xs text-white/70 leading-relaxed italic">"{a.appeal_reason.slice(0, 200)}{a.appeal_reason.length > 200 ? '...' : ''}"</p>
+                          <span className="text-[10px] text-white/30 font-mono">{formatDate(a.created_at)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </motion.div>
+              )}
+
+              {/* ─── Hadron Biletlerim Sekmesi ─── */}
+              {activeTab === 'tickets' && (
+                <motion.div
+                  key="tickets"
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -8 }}
+                  className="space-y-3 text-left"
+                >
+                  <h4 className="text-xs font-bold text-white uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                    <Ticket size={13} className="text-[#5E5CE6]" /> Hadron Destek Taleplerim
+                  </h4>
+                  {myTickets.length === 0 ? (
+                    <div className="p-8 text-center rounded-xl bg-secondary/10 border border-white/[0.04]">
+                      <Ticket className="w-8 h-8 text-white/20 mx-auto mb-2" />
+                      <p className="text-xs text-white/40">Adınıza kayıtlı Hadron destek talebi bulunmamaktadır.</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {myTickets.map((t) => (
+                        <div key={t.id} className="p-3.5 rounded-xl bg-secondary/15 border border-white/[0.05] flex items-center justify-between gap-3">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-xs font-mono font-bold text-[#5E5CE6]">#{t.ticket_id}</span>
+                              {t.ticket_name && (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-black/40 text-white/50 font-mono">{t.ticket_name}</span>
+                              )}
+                              {t.category && (
+                                <span className="text-[10px] text-white/40">{t.category}</span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-3 mt-1.5 text-[10px] text-white/30">
+                              <span>{t.message_count} mesaj</span>
+                              <span>•</span>
+                              <span>{formatDate(t.closed_at)}</span>
+                            </div>
+                          </div>
+                          <a
+                            href={getHadronTranscriptUrl(t.ticket_id)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-bold bg-[#5E5CE6]/10 border border-[#5E5CE6]/20 text-[#5E5CE6] hover:bg-[#5E5CE6]/20 transition-all whitespace-nowrap cursor-pointer shrink-0 active:scale-95"
+                          >
+                            <ExternalLink size={11} /> Bilete Git
+                          </a>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </motion.div>
               )}
             </AnimatePresence>

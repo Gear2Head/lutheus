@@ -188,8 +188,13 @@ export default function ProofDrawer({
     }
   };
 
-  const getDiscordChannelLink = () =>
-    `https://discord.com/channels/1223431616081166336/1445462327141863657`;
+  const getDiscordChannelLink = () => {
+    const type = caseData?.type?.toLowerCase() || '';
+    if (type.includes('appeal') || type.includes('itiraz')) {
+      return 'https://discord.com/channels/1223431616081166336/1445465527223980042';
+    }
+    return 'https://discord.com/channels/1223431616081166336/1445465595435814933';
+  };
 
   // Görsel tam çözünürlük URL'si
   const currentProof = allProofs[currentProofIndex] || { proof_url: null, video_url: null, thumbnail_url: null, raw_text: null };

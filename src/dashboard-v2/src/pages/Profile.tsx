@@ -31,7 +31,7 @@ export default function Profile() {
   const [messages, setMessages] = useState<StaffMessage[]>([]);
 
   // Form states
-  const [activeTab, setActiveTab] = useState<'overview' | 'cases' | 'warnings' | 'messages' | 'appeals' | 'tickets'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'cases' | 'warnings' | 'messages' | 'tickets'>('overview');
   const [newMessage, setNewMessage] = useState('');
   const [submittingMessage, setSubmittingMessage] = useState(false);
   const [proofCaseId, setProofCaseId] = useState<string | null>(null);
@@ -217,7 +217,6 @@ export default function Profile() {
               { id: 'cases', label: 'Cezalarım' },
               { id: 'warnings', label: 'Uyarılarım' },
               { id: 'messages', label: 'Yönetime Ulaş' },
-              { id: 'appeals', label: '⚖️ İtirazlarım' },
               { id: 'tickets', label: '🎫 Biletlerim' },
             ].map((tab) => (
               <button
@@ -451,55 +450,6 @@ export default function Profile() {
                       </div>
                     )}
                   </div>
-                </motion.div>
-              )}
-
-              {/* ─── İtirazlarım Sekmesi ─── */}
-              {activeTab === 'appeals' && (
-                <motion.div
-                  key="appeals"
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -8 }}
-                  className="space-y-3 text-left"
-                >
-                  <h4 className="text-xs font-bold text-white uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                    <Scale size={13} className="text-[#5E5CE6]" /> Appeal.gg İtiraz Geçmişim
-                  </h4>
-                  {myAppeals.length === 0 ? (
-                    <div className="p-8 text-center rounded-xl bg-secondary/10 border border-white/[0.04]">
-                      <Scale className="w-8 h-8 text-white/20 mx-auto mb-2" />
-                      <p className="text-xs text-white/40">Üzerinize kayıtlı bir itiraz başvurusu bulunmamaktadır.</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      {myAppeals.map((a) => (
-                        <div key={a.id} className={`p-4 rounded-xl border flex flex-col gap-2 ${
-                          a.status === 'approved'
-                            ? 'bg-emerald-500/5 border-emerald-500/15'
-                            : 'bg-red-500/5 border-red-500/15'
-                        }`}>
-                          <div className="flex items-center justify-between flex-wrap gap-2">
-                            <div className="flex items-center gap-2">
-                              {a.status === 'approved'
-                                ? <CheckCircle2 size={14} className="text-emerald-400" />
-                                : <XCircle size={14} className="text-red-400" />}
-                              <span className={`text-xs font-bold ${
-                                a.status === 'approved' ? 'text-emerald-400' : 'text-red-400'
-                              }`}>
-                                {a.status === 'approved' ? 'Appeal Accepted — Onaylandı' : 'Appeal Rejected — Reddedildi'}
-                              </span>
-                            </div>
-                            {a.case_id && (
-                              <span className="text-[10px] font-mono text-[#5E5CE6]">Ceza #{a.case_id}</span>
-                            )}
-                          </div>
-                          <p className="text-xs text-white/70 leading-relaxed italic">"{a.appeal_reason.slice(0, 200)}{a.appeal_reason.length > 200 ? '...' : ''}"</p>
-                          <span className="text-[10px] text-white/30 font-mono">{formatDate(a.created_at)}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
                 </motion.div>
               )}
 

@@ -8,21 +8,122 @@
 'use strict';
 
 (function initDiscordScraper() {
-    const SUPABASE_URL  = 'https://jxhzhaqqtlynbnntwpyu.supabase.co/rest/v1';
-    const SUPABASE_KEY  = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4aHpoYXFxdGx5bmJubnR3cHl1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk2NjMyMTcsImV4cCI6MjA5NTIzOTIxN30.BrmuT-QX_BkgV6SSlpNThfqSGmUDw0UffUW11agaBzI';
+    const SUPABASE_URL       = 'https://jxhzhaqqtlynbnntwpyu.supabase.co/rest/v1';
+    const SUPABASE_STORAGE_URL = 'https://jxhzhaqqtlynbnntwpyu.supabase.co/storage/v1';
+    const SUPABASE_KEY       = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4aHpoYXFxdGx5bmJubnR3cHl1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk2NjMyMTcsImV4cCI6MjA5NTIzOTIxN30.BrmuT-QX_BkgV6SSlpNThfqSGmUDw0UffUW11agaBzI';
 
-    const DISPUTE_CHANNEL_ID = '1445465527223980042';
-    const SEEN_KEY           = 'lutheus_scraped_msg_ids';
+    const DISPUTE_CHANNEL_ID  = '1445465527223980042';
+    const EVIDENCE_CHANNEL_ID  = '1445462327141863657';
+    const TICKET_CHANNEL_ID    = '1445465595435814933'; // #ticket-logs (Hadron)
+    const SEEN_KEY             = 'lutheus_scraped_msg_ids';
+    const SESSION_KEY          = 'lutheusAuthSession';
+
+    // ─── Kullanıcının JWT'sini chrome.storage'dan al (RLS bypass) ───────────
+    // Anon key ile sapphire_cases okuyamıyoruz (authenticated-only RLS).
+    // Bu yüzden giriş yapmış kullanıcının idToken'ını kullanıyoruz.
+    let _cachedAuthToken = null;
+
+    async function getSupabaseAuthToken() {
+        if (_cachedAuthToken) return _cachedAuthToken;
+        if (!isExtensionContextValid()) return SUPABASE_KEY;
+        try {
+            return await new Promise((resolve) => {
+                chrome.storage.local.get([SESSION_KEY], (result) => {
+                    if (chrome.runtime.lastError || !result[SESSION_KEY]) {
+                        console.warn('[Lutheus Scraper] Auth token not found, using anon key');
+                        resolve(SUPABASE_KEY);
+                        return;
+                    }
+                    const session = result[SESSION_KEY];
+                    const token = session.idToken || SUPABASE_KEY;
+                    _cachedAuthToken = token;
+                    console.log('[Lutheus Scraper] Using authenticated token for Supabase requests');
+                    resolve(token);
+                });
+            });
+        } catch (e) {
+            return SUPABASE_KEY;
+        }
+    }
+
+    // Token cache'ini temizle (yeni login sonrası)
+    function invalidateAuthCache() {
+        _cachedAuthToken = null;
+    }
+
+    // ─── Supabase Storage Upload ──────────────────────────────────────
+    // Discord CDN linkleri expire olabiliyor. Bu fonksiyon ile
+    // kanıt görsellerini Supabase Storage'a kaydediyoruz.
+    async function uploadToStorage(discordUrl, caseId, index = 0) {
+        if (!discordUrl) return null;
+        // Zaten storage'da ise olduğu gibi döndür
+        if (discordUrl.includes('supabase.co/storage')) return discordUrl;
+        // 'This content is no longer available' gibi dead link kontrolu
+        // Upload öncesinde GET ile erişilebilirliği test et
+        try {
+            const checkRes = await fetch(discordUrl, { method: 'HEAD' });
+            if (!checkRes.ok) {
+                console.warn(`[Lutheus Scraper] CDN link dead (${checkRes.status}), skipping upload: ${discordUrl.slice(0, 60)}`);
+                return null; // Erişilemeyen link - null döndür, DB'ye boş yaz
+            }
+        } catch (_) {
+            console.warn('[Lutheus Scraper] CDN link not reachable, skipping upload');
+            return null;
+        }
+
+        try {
+            const authToken = await getSupabaseAuthToken();
+            // Dosya uzantısını URL'den al
+            const urlPath = new URL(discordUrl).pathname;
+            const ext = urlPath.split('.').pop()?.split('?')[0]?.toLowerCase() || 'png';
+            const safeExt = ['png','jpg','jpeg','gif','webp','mp4','mov','webm'].includes(ext) ? ext : 'png';
+            const fileName = `proofs/${caseId}_${Date.now()}_${index}.${safeExt}`;
+
+            // Discord CDN'den indir
+            const dlRes = await fetch(discordUrl);
+            if (!dlRes.ok) return null;
+            const blob = await dlRes.blob();
+
+            // Supabase Storage'a yükle
+            const uploadRes = await fetch(
+                `${SUPABASE_STORAGE_URL}/object/case-proofs/${fileName}`,
+                {
+                    method: 'POST',
+                    headers: {
+                        'apikey':        SUPABASE_KEY,
+                        'Authorization': `Bearer ${authToken}`,
+                        'Content-Type':  blob.type || 'image/png',
+                        'x-upsert':      'true',
+                    },
+                    body: blob,
+                }
+            );
+
+            if (!uploadRes.ok) {
+                const err = await uploadRes.text();
+                console.error('[Lutheus Scraper] Storage upload failed:', uploadRes.status, err.slice(0, 200));
+                return discordUrl; // Upload başarısız ise orijinal URL'yi kullan
+            }
+
+            const publicUrl = `${SUPABASE_STORAGE_URL}/object/public/case-proofs/${fileName}`;
+            console.log(`[Lutheus Scraper] ✓ Uploaded to storage: ${fileName}`);
+            return publicUrl;
+        } catch (err) {
+            console.error('[Lutheus Scraper] Storage upload error:', err);
+            return discordUrl; // Hata durumunda orijinal URL
+        }
+    }
 
     // ─── Supabase UPSERT helper ──────────────────────────────────────────────
     async function supabaseUpsert(table, record, onConflictKey = 'discord_message_id') {
         try {
+            const authToken = await getSupabaseAuthToken();
             const url = `${SUPABASE_URL}/${table}?on_conflict=${onConflictKey}`;
             const res = await fetch(url, {
                 method: 'POST',
                 headers: {
                     'apikey':       SUPABASE_KEY,
-                    'Authorization': `Bearer ${SUPABASE_KEY}`,
+                    'Authorization': `Bearer ${authToken}`,
                     'Content-Type': 'application/json',
                     'Prefer':       'resolution=merge-duplicates,return=minimal',
                 },
@@ -109,6 +210,17 @@
         if (mentionMatch) return mentionMatch[1];
         const rawMatch = String(text).match(/(\d{17,20})/);
         return rawMatch ? rawMatch[1] : null;
+    }
+
+    // Snowflake ID'den mesaj tarihini hassas bir şekilde çekme (Discord Epoch = 2015)
+    function getTimestampFromSnowflake(idStr) {
+        try {
+            const snowflake = BigInt(idStr);
+            const timestampMs = Number((snowflake >> 22n) + 1420070400000n);
+            return new Date(timestampMs);
+        } catch (e) {
+            return new Date();
+        }
     }
 
     // ─── Embed alan değerini bul ─────────────────────────────────────────────
@@ -324,13 +436,15 @@
     // ═══════════════════════════════════════════════════════════════════════
     //  #dispute-logs PARSER (Appeal.gg Embed'leri)
     // ═══════════════════════════════════════════════════════════════════════
-    async function parseDisputeMessage(messageEl) {
+    async function parseDisputeMessage(messageEl, force = false) {
         try {
             const msgId = getMessageId(messageEl);
             if (!msgId) return;
 
-            const alreadySeen = await isAlreadySeen(msgId);
-            if (alreadySeen) return;
+            if (!force) {
+                const alreadySeen = await isAlreadySeen(msgId);
+                if (alreadySeen) return;
+            }
 
             const embedEl = messageEl.querySelector('[class*="embed"]');
             if (!embedEl) return;
@@ -458,6 +572,219 @@
             console.log(`[Lutheus Scraper] dispute-log kaydedildi: ${msgId} | ${status} | user: ${userId}`);
         } catch (error) {
             console.warn('Lutheus Scraper Fail: parseDisputeMessage error', error);
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    //  #ceza-kanıtları PARSER
+    // ═══════════════════════════════════════════════════════════════════════
+    async function parseEvidenceMessage(messageEl, force = false) {
+        try {
+            const msgId = getMessageId(messageEl);
+            if (!msgId) return;
+
+            if (!force) {
+                const alreadySeen = await isAlreadySeen(msgId);
+                if (alreadySeen) return;
+            }
+
+            // ── Mesaj İçerik Metnini Çıkar ─────────────────────────────────
+            // messageEl.innerText tüm Discord UI'ı alıyor (yazar adı, timestamp, vs.).
+            // Sadece gerçek mesaj içeriğini (ceza satırını) almak için message-content div'ini hedefliyoruz.
+            const contentEl = messageEl.querySelector(
+                '[id*="message-content-"], [class*="messageContent_"], [class*="markup_"]'
+            );
+            const rawMessageText = contentEl
+                ? (contentEl.innerText || contentEl.textContent || '').trim()
+                : (messageEl.innerText || messageEl.textContent || '').trim();
+            
+            // Boş satırları ve fazladan boşlukları temizle
+            const messageText = rawMessageText
+                .split('\n')
+                .map(l => l.trim())
+                .filter(Boolean)
+                .join(' ');
+            
+            // ── Kullanıcı ID'lerini Çıkar ──────────────────────────────────────
+            // Sadece mesaj içeriğindeki 17-20 basamaklı Discord ID'leri
+            const rawIds = Array.from(messageText.matchAll(/\b(\d{17,20})\b/g)).map(m => m[0]);
+            const userIds = Array.from(new Set(rawIds));
+            if (userIds.length === 0) return;
+
+            // ── URL Extraction ────────────────────────────────────────────────
+            const allUrls = new Set();
+
+            // 1) Discord attachment anchor links (originalLink_*, imageZoom_*)
+            //    These have the real CDN href even before lazy-load
+            messageEl.querySelectorAll('a[class*="originalLink"], a[class*="imageZoom"], a[class*="imageWrapper"]').forEach(a => {
+                const href = a.href || a.getAttribute('href');
+                if (href && (href.includes('cdn.discordapp.com/attachments/') || href.includes('media.discordapp.net/attachments/'))) {
+                    try {
+                        const u = new URL(href);
+                        u.searchParams.delete('width');
+                        u.searchParams.delete('height');
+                        u.searchParams.delete('ex');
+                        u.searchParams.delete('is');
+                        u.searchParams.delete('hm');
+                        allUrls.add(u.toString());
+                    } catch (_) {
+                        allUrls.add(href);
+                    }
+                }
+            });
+
+            // 2) All other non-discord-channel links
+            messageEl.querySelectorAll('a[href]').forEach(a => {
+                const href = a.href;
+                if (href
+                    && !href.includes('discord.com/channels/')
+                    && !href.includes('discord.com/users/')
+                    && !href.startsWith('data:')
+                ) {
+                    allUrls.add(href);
+                }
+            });
+
+            // 3) img src (already loaded ones)
+            messageEl.querySelectorAll('img[src]').forEach(img => {
+                const src = img.src || img.getAttribute('src');
+                if (src
+                    && !src.startsWith('data:')
+                    && (src.includes('cdn.discordapp.com/attachments/') || src.includes('media.discordapp.net/attachments/'))
+                ) {
+                    try {
+                        const u = new URL(src);
+                        u.searchParams.delete('width');
+                        u.searchParams.delete('height');
+                        allUrls.add(u.toString());
+                    } catch (_) {
+                        allUrls.add(src);
+                    }
+                }
+            });
+
+            // 4) video elements
+            messageEl.querySelectorAll('video').forEach(video => {
+                const src = video.src || video.querySelector('source')?.src;
+                if (src && !src.startsWith('data:')) allUrls.add(src);
+            });
+
+            const urlArray = Array.from(allUrls);
+
+            // 5) Fallback: extract raw https links from text
+            if (urlArray.length === 0) {
+                const allTextLinks = [...messageText.matchAll(/https?:\/\/[^\s<>"']+/gi)].map(m => m[0]);
+                allTextLinks.forEach(l => allUrls.add(l));
+                urlArray.push(...allTextLinks);
+            }
+
+            if (urlArray.length === 0) {
+                // Mesajda hiç link/resim yok — kanıt olarak kaydetme
+                await markAsSeen(msgId);
+                return;
+            }
+
+            const videoUrls = urlArray.filter(url => 
+                url.toLowerCase().match(/\.(mp4|mov|webm|mkv|avi)(\?|$)/) || 
+                url.includes('youtube.com/') || 
+                url.includes('youtu.be/') || 
+                url.includes('streamable.com/')
+            );
+            const imageUrls = urlArray.filter(url => !videoUrls.includes(url));
+
+            const mainProofUrl = imageUrls[0] || null;
+            const mainVideoUrl = videoUrls[0] || null;
+
+            const additionalProofs = [];
+            const maxLen = Math.max(imageUrls.length, videoUrls.length);
+            for (let i = 1; i < maxLen; i++) {
+                const img = imageUrls[i] || null;
+                const vid = videoUrls[i] || null;
+                if (img || vid) {
+                    additionalProofs.push({
+                        proof_url: img,
+                        video_url: vid,
+                        raw_text: null
+                    });
+                }
+            }
+
+            // Get message timestamp from Snowflake ID (100% accurate and DOM-independent)
+            const msgTime = getTimestampFromSnowflake(msgId);
+
+            console.log(`[Lutheus Scraper] #ceza-kanıtları found userIds:`, userIds, `urls:`, urlArray.length, urlArray);
+
+            // ── Authenticated token (RLS bypass) ─────────────────────────────
+            const authToken = await getSupabaseAuthToken();
+
+            // Link evidence to recent cases for each user ID
+            for (const targetUserId of userIds) {
+                try {
+                    // SADECE EN SON 1 DAVA: Her kanıt mesajı her kullanıcı için
+                    // yalnızca o kullanıcının en son cezasına bağlanır.
+                    // limit=1 → tek bir dava, tarih filtresi yok.
+                    // Bu sayede user'ın birden fazla yakın davası varsa hepsine
+                    // yanlışlıkla aynı kanıt bağlanmaz.
+                    const res = await fetch(
+                        `${SUPABASE_URL}/sapphire_cases?punished_user_discord_id=eq.${targetUserId}&order=created_at_sapphire.desc&limit=1`,
+                        { headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${authToken}` } }
+                    );
+                    if (!res.ok) {
+                        console.warn(`[Lutheus Scraper] sapphire_cases fetch failed for ${targetUserId}: ${res.status}`);
+                        continue;
+                    }
+
+                    const recentCases = await res.json();
+                    if (!recentCases || recentCases.length === 0) {
+                        console.log(`[Lutheus Scraper] No cases found for userId ${targetUserId}`);
+                        continue;
+                    }
+
+                    // En son davayı al (limit=1 ile zaten tek case geliyor)
+                    const matchedCase = recentCases[0];
+
+            // ── Storage'a Upload + DB'ye Kaydet ────────────────────────────────────
+            // Discord CDN URL'lerini Supabase Storage'a yükle
+            const storedProofUrl   = await uploadToStorage(mainProofUrl, matchedCase.case_id, 0);
+            const storedVideoUrl   = mainVideoUrl ? await uploadToStorage(mainVideoUrl, matchedCase.case_id, 0) : null;
+
+            // additional_proofs için de upload yap
+            const storedAdditional = [];
+            for (let ai = 0; ai < additionalProofs.length; ai++) {
+                const ap = additionalProofs[ai];
+                const apUrl   = ap.proof_url   ? await uploadToStorage(ap.proof_url,   matchedCase.case_id, ai + 1) : null;
+                const apVideo = ap.video_url   ? await uploadToStorage(ap.video_url,   matchedCase.case_id, ai + 1) : null;
+                if (apUrl || apVideo) {
+                    storedAdditional.push({ proof_url: apUrl, video_url: apVideo, raw_text: ap.raw_text });
+                }
+            }
+
+            // Dead link ise (upload null döndürirse) proof'u kaydetme
+            if (!storedProofUrl && !storedVideoUrl && storedAdditional.length === 0) {
+                console.warn(`[Lutheus Scraper] All URLs dead/unavailable for case #${matchedCase.case_id}, skipping proof insert`);
+                continue;
+            }
+
+            // Temiz raw_text: sadece mesaj içeriği (yazar/timestamp gelmez)
+            const record = {
+                case_id: matchedCase.case_id,
+                proof_url: storedProofUrl,
+                video_url: storedVideoUrl,
+                raw_text: messageText,
+                additional_proofs: storedAdditional.length > 0 ? storedAdditional : null,
+                updated_at: new Date().toISOString()
+            };
+
+            await supabaseUpsert('case_proofs', record, 'case_id');
+            console.log(`[Lutheus Scraper] ✓ Linked evidence to case #${matchedCase.case_id} (user: ${targetUserId}, reason: ${(matchedCase.reason_raw || '').slice(0,40)})`);
+                } catch (err) {
+                    console.error(`[Lutheus Scraper] Error matching cases for user ${targetUserId}:`, err);
+                }
+            }
+
+            await markAsSeen(msgId);
+        } catch (error) {
+            console.warn('Lutheus Scraper Fail: parseEvidenceMessage error', error);
         }
     }
 
@@ -657,15 +984,49 @@
     let currentObserver = null;
     let lastChannelId = null;
 
+    // Rate-limited sequential ticket processor
+    let _ticketScanRunning = false;
+    async function scanTicketMessagesSequential(messageEls) {
+        if (_ticketScanRunning) return; // Önceki tarama devam ediyorsa yeni başlatma
+        _ticketScanRunning = true;
+        const arr = Array.from(messageEls);
+        for (const el of arr) {
+            try {
+                await parseTicketMessage(el);
+            } catch (err) {
+                console.warn('[Lutheus Scraper] Ticket parse error:', err);
+            }
+            // Her mesaj arasında 10 saniye bekle - Hadron rate limit önlemi
+            await new Promise(r => setTimeout(r, 10000));
+            // İptal kontrolü: kanal değiştiyse dur
+            if (getCurrentChannelId() !== TICKET_CHANNEL_ID) {
+                console.log('[Lutheus Scraper] Kanal değişti, ticket tarama durduruldu.');
+                break;
+            }
+        }
+        _ticketScanRunning = false;
+        console.log('[Lutheus Scraper] Ticket tarama tamamlandı.');
+    }
+
     function scanVisibleMessages(channelId) {
         const messageEls = document.querySelectorAll('[class*="message_"],[id*="chat-messages-"]');
-        const isDispute = (channelId === '1445465527223980042');
+        const isDispute  = (channelId === DISPUTE_CHANNEL_ID);
+        const isEvidence = (channelId === EVIDENCE_CHANNEL_ID);
+        const isTicket   = (channelId === TICKET_CHANNEL_ID);
 
-        if (!isDispute) return;
+        if (!isDispute && !isEvidence && !isTicket) return;
+
+        if (isTicket) {
+            // Hadron rate limit: sıralı ve 10 saniye aralıklı tarama
+            console.log(`[Lutheus Scraper] Ticket kanalı: ${messageEls.length} mesaj bulundu, 10sn aralıklı tarama başlıyor...`);
+            scanTicketMessagesSequential(messageEls);
+            return;
+        }
 
         messageEls.forEach((el) => {
             try {
-                if (isDispute) parseDisputeMessage(el);
+                if (isDispute)  parseDisputeMessage(el, true);
+                if (isEvidence) parseEvidenceMessage(el, true);
             } catch (error) {
                 console.warn('Lutheus Scraper Fail: scanVisibleMessages element error:', el?.id, error);
             }
@@ -688,6 +1049,30 @@
         // İlk tarama — sayfada zaten yüklü mesajlar
         scanVisibleMessages(channelId);
 
+        // Queue for new ticket messages to prevent concurrent rate limits from MutationObserver
+        let mutationTicketQueue = [];
+        let mutationTicketProcessing = false;
+
+        async function processMutationTicketQueue() {
+            if (mutationTicketProcessing || mutationTicketQueue.length === 0) return;
+            mutationTicketProcessing = true;
+            while (mutationTicketQueue.length > 0) {
+                const msgEl = mutationTicketQueue.shift();
+                if (getCurrentChannelId() !== TICKET_CHANNEL_ID) {
+                    mutationTicketQueue = [];
+                    break;
+                }
+                try {
+                    await parseTicketMessage(msgEl);
+                } catch (err) {
+                    console.warn('[Lutheus Scraper] Ticket parse error in mutation queue:', err);
+                }
+                // Wait 10 seconds between processed messages
+                await new Promise(r => setTimeout(r, 10000));
+            }
+            mutationTicketProcessing = false;
+        }
+
         currentObserver = new MutationObserver((mutations) => {
             for (const mutation of mutations) {
                 for (const node of mutation.addedNodes) {
@@ -702,6 +1087,11 @@
                         const chId = getCurrentChannelId();
                         if (chId === DISPUTE_CHANNEL_ID) {
                             parseDisputeMessage(msgEl);
+                        } else if (chId === EVIDENCE_CHANNEL_ID) {
+                            parseEvidenceMessage(msgEl);
+                        } else if (chId === TICKET_CHANNEL_ID) {
+                            mutationTicketQueue.push(msgEl);
+                            processMutationTicketQueue();
                         }
                     } catch (error) {
                         console.warn('Lutheus Scraper Fail: MutationObserver message node parsing error:', error);
@@ -721,9 +1111,9 @@
             if (!channelId || channelId === lastChannelId) return;
             lastChannelId = channelId;
 
-            const isDispute = (channelId === '1445465527223980042');
+            const isTarget = (channelId === DISPUTE_CHANNEL_ID || channelId === EVIDENCE_CHANNEL_ID || channelId === TICKET_CHANNEL_ID);
 
-            if (isDispute) {
+            if (isTarget) {
                 console.log(`[Lutheus Scraper] Hedef kanal tespit edildi: ${channelId}`);
                 // DOM tamamen yüklenene kadar bekle
                 setTimeout(() => startObserver(channelId), 1500);

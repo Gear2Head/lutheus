@@ -163,7 +163,7 @@ export const DbRepository = {
     // PURPOSE: Sapphire taramasında görülen Discord avatar linklerini DB'ye kalıcı yazar.
     async saveUserProfilesFromCases(cases, actor = null) {
         const profiles = new Map();
-        const collect = (id, name, avatar, source) => {
+        const collect = (id, name, username, avatar, source) => {
             const discordId = String(id || '').trim();
             if (!/^\d{17,20}$/.test(discordId)) return;
             const previous = profiles.get(discordId) || {};
@@ -174,6 +174,7 @@ export const DbRepository = {
                 identityKey: `discord:${discordId}`,
                 name: name || previous.name || 'Bilinmiyor',
                 displayName: name || previous.displayName || previous.name || 'Bilinmiyor',
+                username: username || previous.username || null,
                 avatar: avatar || previous.avatar || null,
                 source: previous.source || source,
                 updatedAt: new Date().toISOString(),
@@ -182,8 +183,8 @@ export const DbRepository = {
         };
 
         for (const entry of cases || []) {
-            collect(entry.authorId, entry.authorName, entry.authorAvatar, 'sapphire-issuer');
-            collect(entry.userId, entry.user, entry.userAvatar, 'sapphire-target');
+            collect(entry.authorId, entry.authorName, entry.authorUsername, entry.authorAvatar, 'sapphire-issuer');
+            collect(entry.userId, entry.user, entry.userUsername, entry.userAvatar, 'sapphire-target');
         }
 
         if (!profiles.size) return [];

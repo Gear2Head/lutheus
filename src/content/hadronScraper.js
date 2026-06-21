@@ -241,6 +241,158 @@
         }
     }
 
+    async function processDetailedTicketView(ticketId) {
+        try {
+            const guildId = getGuildId();
+            const token = getHadronToken();
+            if (!token) {
+                console.error("[Lutheus Hadron Scraper] Token missing on view page.");
+                if (isExtensionContextValid()) {
+                    chrome.runtime.sendMessage({ action: 'DETAILED_TICKET_SCANNED', ticketId, success: false });
+                }
+                return;
+            }
+
+            console.log(`[Lutheus Hadron Scraper] Starting detailed scan for ticket #${ticketId}`);
+            const data = await fetchTranscriptData(guildId, ticketId, token);
+            if (!data) {
+                console.error("[Lutheus Hadron Scraper] Failed to fetch transcript data from API.");
+                if (isExtensionContextValid()) {
+                    chrome.runtime.sendMessage({ action: 'DETAILED_TICKET_SCANNED', ticketId, success: false });
+                }
+                return;
+            }
+
+            const ownerId = extractOwnerIdFromTranscript(data);
+            const ownerUser = data.entities?.users?.[ownerId];
+            const ownerTag = ownerUser ? ownerUser.username : null;
+
+            const users = data.entities?.users || {};
+            const messages = data.messages || [];
+
+            const modIds = Object.keys(users).filter(id => {
+                if (id === HADRON_BOT_ID) return false;
+                const u = users[id];
+                return u.badge || u.isStaff || (u.roles && u.roles.length > 0);
+            });
+
+            const humanMods = Object.keys(users).filter(id => {
+                return id !== HADRON_BOT_ID && id !== ownerId;
+            });
+
+            const activeModList = modIds.length > 0 ? modIds : humanMods;
+
+            let firstResponderId = null;
+            for (const msg of messages) {
+                const authorId = msg.author;
+                if (activeModList.includes(authorId)) {
+                    firstResponderId = authorId;
+                    break;
+                }
+            }
+
+            let lastMessengerId = null;
+            let lastMessageContent = "";
+            for (let i = messages.length - 1; i >= 0; i--) {
+                const msg = messages[i];
+                if (msg.author && msg.author !== HADRON_BOT_ID) {
+                    lastMessengerId = msg.author;
+                    lastMessageContent = msg.content || "";
+                    break;
+                }
+            }
+
+            let assignedModId = lastMessengerId;
+            const closerUser = users[lastMessengerId];
+            const closerRoles = closerUser?.roles || [];
+            
+            const isSeniorRole = (roleName) => {
+                if (!roleName) return false;
+                const r = roleName.toLowerCase();
+                return r.includes('senior') || r.includes('kidemli') || r.includes('yonetici') || r.includes('admin') || r.includes('kurucu') || r.includes('genel_sorumlu');
+            };
+
+            const isSeniorCloser = closerRoles.some(r => isSeniorRole(r.name)) || 
+                                   isSeniorRole(closerUser?.badge) || 
+                                   (closerUser?.username && isSeniorRole(closerUser.username));
+
+            if (isSeniorCloser) {
+                const tags = lastMessageContent.match(/<@!?(\d+)>/g);
+                let taggedModId = null;
+                if (tags) {
+                    for (const tag of tags) {
+                        const match = tag.match(/<@!?(\d+)>/);
+                        const id = match ? match[1] : null;
+                        if (id && activeModList.includes(id)) {
+                            taggedModId = id;
+                            break;
+                        }
+                    }
+                }
+
+                if (taggedModId) {
+                    assignedModId = taggedModId;
+                    console.log(`[Lutheus Hadron Scraper] Senior mod closer delegated credit to tagged mod: ${assignedModId}`);
+                } else if (firstResponderId) {
+                    assignedModId = firstResponderId;
+                    console.log(`[Lutheus Hadron Scraper] Senior mod closer delegated credit to first responder mod: ${assignedModId}`);
+                }
+            }
+
+            // Scrape Close Reason (Category) from DOM if possible (usually close message embeds have close reason)
+            let closeReason = null;
+            const embedFields = document.querySelectorAll('[class*="embedField"]');
+            embedFields.forEach(f => {
+                const name = f.querySelector('[class*="embedFieldName"]')?.textContent || '';
+                const val = f.querySelector('[class*="embedFieldValue"]')?.textContent || '';
+                if (name.toLowerCase().includes('kapatılma sebebi') || name.toLowerCase().includes('kategori')) {
+                    closeReason = val.trim();
+                }
+            });
+
+            const transcriptJson = {
+                messages: messages.map(msg => ({
+                    id: msg.id,
+                    author: {
+                        id: msg.author,
+                        username: users[msg.author]?.username || 'Bilinmeyen',
+                        avatar: users[msg.author]?.avatar || null,
+                        badge: users[msg.author]?.badge || null,
+                        is_bot: msg.author === HADRON_BOT_ID || !!users[msg.author]?.badge?.includes('bot')
+                    },
+                    content: msg.content,
+                    timestamp: msg.timestamp,
+                    embeds: msg.embeds,
+                    attachments: msg.attachments
+                })),
+                entities: data.entities,
+                channel_name: data.channel_name || `ticket-${ticketId}`
+            };
+
+            const record = {
+                ticket_id: ticketId,
+                ticket_name: data.channel_name || `ticket-${ticketId.padStart(4, '0')}`,
+                user_id: ownerId || null,
+                user_tag: ownerTag || null,
+                category: closeReason || null,
+                assigned_mod_id: assignedModId || null,
+                transcript_json: transcriptJson
+            };
+
+            console.log(`[Lutheus Hadron Scraper] Scraped detailed ticket #${ticketId}. Assigned Mod: ${assignedModId}`);
+
+            const success = await supabaseUpsert('user_tickets', record);
+            if (isExtensionContextValid()) {
+                chrome.runtime.sendMessage({ action: 'DETAILED_TICKET_SCANNED', ticketId, success });
+            }
+        } catch (err) {
+            console.error('[Lutheus Hadron Scraper] processDetailedTicketView error:', err);
+            if (isExtensionContextValid()) {
+                chrome.runtime.sendMessage({ action: 'DETAILED_TICKET_SCANNED', ticketId, success: false });
+            }
+        }
+    }
+
     // ─── Tüm tablo satırlarını tara ──────────────────────────────────────────
     function scanTable() {
         const rows = document.querySelectorAll('table tbody tr');
@@ -248,7 +400,41 @@
             return;
         }
         console.log(`[Lutheus Hadron Scraper] 📋 ${rows.length} satır bulundu.`);
-        rows.forEach(row => processRow(row));
+
+        if (isExtensionContextValid()) {
+            chrome.storage.local.get(['detailedTicketScan'], (res) => {
+                const isDetailed = res && res.detailedTicketScan;
+                if (isDetailed) {
+                    const ticketIds = [];
+                    rows.forEach(row => {
+                        const cells = row.querySelectorAll('td');
+                        if (cells.length >= 4) {
+                            const ticketIdText = cells[0].textContent.trim();
+                            const numMatch = ticketIdText.match(/(\d+)/);
+                            if (numMatch) {
+                                ticketIds.push(numMatch[1]);
+                            }
+                        }
+                    });
+
+                    if (ticketIds.length > 0) {
+                        console.log(`[Lutheus Hadron Scraper] Detailed ticket scan enabled. Queueing ${ticketIds.length} tickets.`);
+                        chrome.runtime.sendMessage({
+                            action: 'START_DETAILED_TICKET_SCAN',
+                            ticketIds: ticketIds
+                        });
+                    }
+                }
+            });
+        }
+
+        // Run processRow sequentially with a delay to prevent API hammering (Rate limit 429)
+        (async () => {
+            for (const row of rows) {
+                await processRow(row);
+                await new Promise(r => setTimeout(r, 1500)); // 1.5 second delay between API calls
+            }
+        })();
     }
 
     // ─── Debounced tarama ────────────────────────────────────────────────────
@@ -286,7 +472,6 @@
             return { stopped: true };
         },
         rescan() {
-            // Session cache'i temizle ve yeniden tara
             const keys = Object.keys(sessionStorage).filter(k => k.startsWith('hadron_v3_'));
             keys.forEach(k => sessionStorage.removeItem(k));
             console.log(`[Lutheus Hadron Scraper] 🔄 ${keys.length} kayıt temizlendi, yeniden taranıyor...`);
@@ -321,9 +506,19 @@
     }
 
     // ─── Başlat ──────────────────────────────────────────────────────────────
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', initObserver);
+    const viewMatch = window.location.pathname.match(/\/transcripts\/view\/(\d+)/);
+    if (viewMatch) {
+        const ticketId = viewMatch[1];
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', () => processDetailedTicketView(ticketId));
+        } else {
+            processDetailedTicketView(ticketId);
+        }
     } else {
-        initObserver();
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initObserver);
+        } else {
+            initObserver();
+        }
     }
 })();

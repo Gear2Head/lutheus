@@ -1,8 +1,8 @@
 import { useEffect, useState, useMemo } from 'react';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 import {
   Ticket, ExternalLink, Loader2, MessageSquare,
-  User, Layers, Filter, Star
+  User, Layers, Filter, Star, X, Clock, Lock, Shield
 } from 'lucide-react';
 import { useToast } from '../contexts/ToastContext';
 import { getTickets, UserTicket } from '../lib/supabase';
@@ -66,6 +66,7 @@ export default function Tickets() {
 
   const [loading, setLoading] = useState(true);
   const [tickets, setTickets] = useState<UserTicket[]>([]);
+  const [selectedTicket, setSelectedTicket] = useState<UserTicket | null>(null);
 
   // Filtre alanları (Hadron ile birebir)
   const [fTicketId,   setFTicketId]   = useState('');
@@ -129,7 +130,13 @@ export default function Tickets() {
       if (rating === 'none') list = list.filter(t => !t.rating);
       else list = list.filter(t => t.rating === Number(rating));
     }
-    return list;
+
+    // En yüksek ID'den en düşük ID'ye doğru sayısal olarak sırala (#12, #8, #7...)
+    const getNumericId = (id: string) => {
+      const match = id.match(/\d+/);
+      return match ? parseInt(match[0], 10) : 0;
+    };
+    return [...list].sort((a, b) => getNumericId(b.ticket_id) - getNumericId(a.ticket_id));
   }, [tickets, activeFilters]);
 
   const applyFilters = () => {
@@ -273,7 +280,8 @@ export default function Tickets() {
                   <motion.div
                     key={ticket.id}
                     layout
-                    className="grid grid-cols-[80px_1fr_1fr_100px_70px_90px_auto] gap-3 px-5 py-3.5 hover:bg-white/[0.025] transition-colors items-center"
+                    onClick={() => setSelectedTicket(ticket)}
+                    className="grid grid-cols-[80px_1fr_1fr_100px_70px_90px_auto] gap-3 px-5 py-3.5 hover:bg-white/[0.025] transition-colors items-center cursor-pointer"
                   >
                     <div>
                       <span className="text-xs font-mono font-bold text-[#5E5CE6]">
@@ -315,6 +323,159 @@ export default function Tickets() {
           )}
         </motion.div>
       )}
+
+      {/* Transcript Drawer */}
+      <AnimatePresence>
+        {selectedTicket && (
+          <>
+            <motion.div
+              key="ticket-backdrop"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-45"
+              onClick={() => setSelectedTicket(null)}
+            />
+            <motion.div
+              key="ticket-drawer"
+              initial={{ x: '100%', opacity: 0 }}
+              animate={{ x: 0, opacity: 1 }}
+              exit={{ x: '100%', opacity: 0 }}
+              transition={{ type: 'spring', stiffness: 340, damping: 32, mass: 0.9 }}
+              className="fixed top-0 right-0 h-full w-full max-w-2xl bg-[#0D0D11]/98 backdrop-blur-2xl border-l border-white/[0.06] z-50 flex flex-col shadow-2xl overflow-hidden"
+            >
+              {/* Header */}
+              <div className="sticky top-0 bg-[#0D0D11]/95 backdrop-blur-xl border-b border-white/[0.04] px-6 py-4 flex items-center justify-between z-10 shrink-0">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#5E5CE6]" />
+                    <span className="text-[10px] font-mono tracking-widest text-[#5E5CE6] font-semibold uppercase">Hadron Transkript Arşivi</span>
+                  </div>
+                  <h3 className="text-base font-bold text-white mt-0.5">
+                    #{selectedTicket.ticket_id} - {selectedTicket.user_tag || selectedTicket.user_id}
+                  </h3>
+                </div>
+                <button
+                  onClick={() => setSelectedTicket(null)}
+                  className="w-8 h-8 flex items-center justify-center rounded-xl bg-white/5 hover:bg-white/10 text-white/60 hover:text-white transition-all cursor-pointer"
+                >
+                  <X size={15} />
+                </button>
+              </div>
+
+              {/* Body Content */}
+              <div className="flex-1 overflow-y-auto p-6 min-h-0 space-y-6">
+                {/* Metadata Card */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-white/[0.02] border border-white/[0.04] p-4 rounded-xl">
+                  <div>
+                    <span className="text-[9px] text-white/40 block uppercase tracking-wider">Kapatılma Sebebi</span>
+                    <span className="text-xs font-semibold text-white/80">{selectedTicket.category || '—'}</span>
+                  </div>
+                  <div>
+                    <span className="text-[9px] text-white/40 block uppercase tracking-wider">Rating</span>
+                    <span className="text-xs font-semibold text-amber-400">{selectedTicket.rating ? '⭐'.repeat(selectedTicket.rating) : 'Puan Yok'}</span>
+                  </div>
+                  <div>
+                    <span className="text-[9px] text-white/40 block uppercase tracking-wider">Mesaj Sayısı</span>
+                    <span className="text-xs font-semibold text-white/80">{selectedTicket.message_count} Mesaj</span>
+                  </div>
+                  <div>
+                    <span className="text-[9px] text-white/40 block uppercase tracking-wider">Kapatan Yetkili</span>
+                    <span className="text-xs font-mono font-semibold text-[#5E5CE6]">{selectedTicket.assigned_mod_id || 'Bilinmiyor'}</span>
+                  </div>
+                </div>
+
+                {/* Chat Messages */}
+                <div className="space-y-4">
+                  <h4 className="text-[11px] font-bold text-white/40 uppercase tracking-wider">Konuşma Geçmişi</h4>
+                  
+                  {(() => {
+                    const tJson = selectedTicket.transcript_json;
+                    let messageList = [];
+                    if (tJson) {
+                      if (Array.isArray(tJson)) {
+                        messageList = tJson;
+                      } else if (typeof tJson === 'object' && Array.isArray((tJson as any).messages)) {
+                        messageList = (tJson as any).messages;
+                      }
+                    }
+
+                    if (messageList.length === 0) {
+                      return (
+                        <div className="p-8 text-center rounded-xl bg-secondary/5 border border-white/[0.03] space-y-3">
+                          <MessageSquare className="w-10 h-10 text-white/20 mx-auto" />
+                          <p className="text-xs text-white/55 max-w-sm mx-auto leading-relaxed">
+                            Bu biletin detaylı konuşma geçmişi taranmamış. Detaylı konuşmaları görmek için uzantıdan <b>'Detaylı Bilet Tarama (Tab Modu)'</b> seçeneğini açarak tarama yapın.
+                          </p>
+                          <a
+                            href={selectedTicket.transcript_url || getHadronTranscriptUrl(selectedTicket.ticket_id)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-[#5E5CE6] text-white hover:bg-[#4F4CD4] transition-all cursor-pointer shadow-lg shadow-[#5E5CE6]/15"
+                          >
+                            <ExternalLink size={12} /> Hadron Üzerinde Görüntüle
+                          </a>
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <div className="rounded-xl border border-white/[0.06] bg-[#1a1b20] overflow-hidden p-4 space-y-4 font-sans text-left">
+                        {messageList.map((msg: any, idx: number) => {
+                          const authorObj = typeof msg.author === 'object' ? msg.author : {};
+                          const authorName = authorObj.username || msg.author_name || 'Bilinmeyen';
+                          const isBot = msg.author_badge === 'BOT' || msg.author_id === '435890325098201108' || authorObj.is_bot;
+                          return (
+                            <div key={idx} className="flex gap-3 hover:bg-white/[0.01] p-1 rounded transition-colors">
+                              <div className="w-8 h-8 rounded-full bg-white/5 flex-shrink-0 flex items-center justify-center text-xs font-bold text-white/60 select-none">
+                                {authorName.slice(0, 2).toUpperCase()}
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-baseline gap-2 flex-wrap">
+                                  <span className={`text-xs font-bold truncate ${isBot ? 'text-blue-400' : 'text-white'}`}>
+                                    {authorName}
+                                  </span>
+                                  {isBot && (
+                                    <span className="text-[8px] bg-blue-500/20 text-blue-400 px-1 py-0.5 rounded font-bold uppercase tracking-wider">BOT</span>
+                                  )}
+                                  <span className="text-[9px] text-white/30 font-mono">
+                                    {msg.timestamp ? new Date(msg.timestamp).toLocaleString('tr-TR') : ''}
+                                  </span>
+                                </div>
+                                <p className="text-xs text-white/80 leading-relaxed mt-1 whitespace-pre-wrap break-words selection:bg-[#5E5CE6]/30">
+                                  {msg.content}
+                                </p>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="sticky bottom-0 bg-[#0D0D11]/95 backdrop-blur-xl border-t border-white/[0.04] px-6 py-4 flex items-center justify-end shrink-0 gap-2">
+                <a
+                  href={selectedTicket.transcript_url || getHadronTranscriptUrl(selectedTicket.ticket_id)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-white/5 border border-white/10 text-white/80 hover:bg-white/10 hover:text-white transition-all cursor-pointer"
+                >
+                  <ExternalLink size={12} /> Hadron'da Aç
+                </a>
+                <button
+                  onClick={() => setSelectedTicket(null)}
+                  className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-white/60 hover:text-white text-xs font-bold transition-all cursor-pointer"
+                >
+                  Kapat
+                </button>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

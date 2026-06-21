@@ -6,6 +6,7 @@ import { LanguageProvider } from './contexts/LanguageContext';
 import AppLayout from './layouts/AppLayout';
 
 // Lazy load all pages for code splitting
+const Tickets = lazy(() => import('./pages/Tickets'));
 const Home = lazy(() => import('./pages/Home'));
 const Cases = lazy(() => import('./pages/Cases'));
 const Staff = lazy(() => import('./pages/Staff'));
@@ -18,7 +19,6 @@ const Announcements = lazy(() => import('./pages/Announcements'));
 const BotSetup = lazy(() => import('./pages/BotSetup'));
 const Settings = lazy(() => import('./pages/Settings'));
 const Appeals = lazy(() => import('./pages/Appeals'));
-const Tickets = lazy(() => import('./pages/Tickets'));
 
 function PageLoader() {
   return (

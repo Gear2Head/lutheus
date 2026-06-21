@@ -1788,7 +1788,8 @@ function bindEvents() {
     // Individual and Batch Channel Scraping Logic
     const channelConfigs = {
         'ticket-logs': { name: 'Hadron Transcripts', url: 'https://dash.hadron.bot/manage/1223431616081166336/transcripts' },
-        'dispute-logs': { name: '#dispute-logs', url: 'https://discord.com/channels/1223431616081166336/1445465527223980042' }
+        'dispute-logs': { name: '#dispute-logs', url: 'https://discord.com/channels/1223431616081166336/1445465527223980042' },
+        'evidence-logs': { name: '#ceza-kanıtları', url: 'https://discord.com/channels/1223431616081166336/1445462327141863657' }
     };
 
     // Scrapes a single channel: opens the tab if missing, prompts user, and runs scrape if tab is already open
@@ -1873,6 +1874,19 @@ function bindEvents() {
             }
         } finally {
             if (scanBtn) scanBtn.disabled = false;
+        }
+    }
+
+    // Initialize detailed ticket scan checkbox
+    const chkDetailed = document.getElementById('chkDetailedTicketScan');
+    if (chkDetailed) {
+        if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+            chrome.storage.local.get(['detailedTicketScan'], (result) => {
+                chkDetailed.checked = !!result.detailedTicketScan;
+            });
+            chkDetailed.addEventListener('change', () => {
+                chrome.storage.local.set({ detailedTicketScan: chkDetailed.checked });
+            });
         }
     }
 

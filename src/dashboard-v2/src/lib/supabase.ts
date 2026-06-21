@@ -88,6 +88,7 @@ export interface UserTicket {
   thread_url: string | null;
   rating: number | null;
   created_at: string | null;
+  transcript_json?: any;
 }
 
 // ---------- Core fetch ----------
@@ -722,7 +723,7 @@ export async function getTickets(options?: {
 }): Promise<UserTicket[]> {
   try {
     const limit = options?.limit ?? 500;
-    let params = `order=closed_at.desc&limit=${limit}`;
+    let params = `order=ticket_id.desc&limit=${limit}`;
     if (options?.userId) params += `&user_id=eq.${encodeURIComponent(options.userId)}`;
     if (options?.user_id) params += `&user_id=eq.${encodeURIComponent(options.user_id)}`;
     if (options?.modId)  params += `&assigned_mod_id=eq.${encodeURIComponent(options.modId)}`;

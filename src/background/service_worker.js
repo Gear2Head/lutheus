@@ -21,6 +21,44 @@ const ROLE_ALIASES = {
     discord_moderator: 'discord_moderatoru'
 };
 
+let detailedScanQueue = [];
+let detailedScanActiveCount = 0;
+const MAX_CONCURRENT_DETAILED_SCANS = 1;
+
+let detailedScanTimeout = null;
+
+function processDetailedScanQueue() {
+    if (detailedScanQueue.length === 0 || detailedScanActiveCount >= MAX_CONCURRENT_DETAILED_SCANS) {
+        return;
+    }
+
+    if (detailedScanTimeout) {
+        clearTimeout(detailedScanTimeout);
+        detailedScanTimeout = null;
+    }
+
+    const ticketId = detailedScanQueue.shift();
+    detailedScanActiveCount++;
+    const url = `https://dash.hadron.bot/manage/1223431616081166336/transcripts/view/${ticketId}`;
+    console.log(`[Lutheus SW] Opening single tab for detailed scan of ticket ${ticketId}, URL: ${url}`);
+    
+    chrome.tabs.create({ url, active: false }, (tab) => {
+        if (chrome.runtime.lastError || !tab) {
+            console.error(`[Lutheus SW] Failed to create tab for ticket ${ticketId}`, chrome.runtime.lastError);
+            detailedScanActiveCount = 0;
+            setTimeout(processDetailedScanQueue, 1000);
+        } else {
+            // Fallback timeout in case the content script crashes or token is missing
+            detailedScanTimeout = setTimeout(() => {
+                console.warn(`[Lutheus SW] Detailed scan fallback trigger for ticket ${ticketId} (timeout reached)`);
+                detailedScanActiveCount = 0;
+                chrome.tabs.remove(tab.id).catch(() => {});
+                setTimeout(processDetailedScanQueue, 5000);
+            }, 10000); // Wait up to 10 seconds for completion, then self-recover
+        }
+    });
+}
+
 const ACTIONS = {
     OPEN_DASHBOARD_AND_SCAN: 'OPEN_DASHBOARD_AND_SCAN',
     RUN_AUTONOMOUS_SCAN: 'RUN_AUTONOMOUS_SCAN',
@@ -447,6 +485,7 @@ async function updateRegistryFromCases(cases) {
                 sapphireAuthorId: authorId,
                 discordUserId: authorId,
                 displayName: authorName,
+                username: entry.authorUsername || directory[authorId]?.username || null,
                 avatar: entry.authorAvatar || directory[authorId]?.avatar || null,
                 role: normalizeRole(roleEntry.role),
                 aliases: Array.from(new Set([...(directory[authorId]?.aliases || []), authorName].filter(Boolean))),
@@ -466,6 +505,7 @@ async function updateRegistryFromCases(cases) {
                 ...previous,
                 id: userId,
                 name: user,
+                username: entry.userUsername || previous.username || null,
                 avatar: entry.userAvatar || previous.avatar || null,
                 role: null,
                 aliases: Array.from(new Set([...(previous.aliases || []), previous.name, user].filter(Boolean))),
@@ -1959,6 +1999,38 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
                     break;
                 }
 
+                case 'START_DETAILED_TICKET_SCAN': {
+                    const ticketIds = request.ticketIds || [];
+                    console.log(`[Lutheus SW] Received request to start detailed scan for ${ticketIds.length} tickets.`);
+                    for (const id of ticketIds) {
+                        if (!detailedScanQueue.includes(id)) {
+                            detailedScanQueue.push(id);
+                        }
+                    }
+                    processDetailedScanQueue();
+                    sendResponse({ success: true, queueLength: detailedScanQueue.length });
+                    break;
+                }
+
+                case 'DETAILED_TICKET_SCANNED': {
+                    console.log(`[Lutheus SW] Ticket ${request.ticketId} scan complete. Success: ${request.success}`);
+                    if (detailedScanTimeout) {
+                        clearTimeout(detailedScanTimeout);
+                        detailedScanTimeout = null;
+                    }
+                    // Only process next queue if we were actually waiting for this tab
+                    if (detailedScanActiveCount > 0) {
+                        detailedScanActiveCount = 0;
+                        if (_sender?.tab?.id) {
+                            chrome.tabs.remove(_sender.tab.id).catch(() => {});
+                        }
+                        // Queue the next scan after 5 seconds to guarantee cooling down Hadron rate limit
+                        setTimeout(processDetailedScanQueue, 5000);
+                    }
+                    sendResponse({ success: true });
+                    break;
+                }
+
                 default:
                     sendResponse({ success: false, error: `Unknown action: ${request.action}` });
             }
@@ -1980,6 +2052,15 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
 
     if (tab.url?.includes('discord.com/channels')) {
         await injectDiscordScripts(tabId);
+    }
+
+    if (tab.url?.includes('dash.hadron.bot')) {
+        try {
+            await chrome.scripting.executeScript({
+                target: { tabId },
+                files: ['src/content/hadronScraper.js']
+            });
+        } catch (_) {}
     }
 });
 

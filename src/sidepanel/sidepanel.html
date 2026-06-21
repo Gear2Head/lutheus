@@ -191,6 +191,15 @@
                             </button>
                         </div>
 
+                        <!-- Detailed Ticket Scan Switch -->
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: -6px; margin-bottom: 2px; padding: 4px 8px; background: rgba(255,255,255,0.02); border-radius: var(--radius-sm); border: 1px solid var(--border-color);">
+                            <span style="font-size: 11px; color: var(--text-secondary);">Detaylı Bilet Tarama (Tab Modu)</span>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="chkDetailedTicketScan">
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+
                         <!-- #dispute-logs -->
                         <div class="discord-channel-row">
                             <div class="channel-info">
@@ -198,6 +207,17 @@
                                 <span class="channel-status offline" id="status-dispute-logs">İNKTİSİZ</span>
                             </div>
                             <button class="btn run-channel-btn" id="btnScan-dispute-logs" data-channel-id="1445465527223980042">
+                                <i class="fa-solid fa-magnifying-glass"></i> Tarı
+                            </button>
+                        </div>
+
+                        <!-- #ceza-kanıtları -->
+                        <div class="discord-channel-row">
+                            <div class="channel-info">
+                                <span class="channel-name">#ceza-kanıtları</span>
+                                <span class="channel-status offline" id="status-evidence-logs">İNKTİSİZ</span>
+                            </div>
+                            <button class="btn run-channel-btn" id="btnScan-evidence-logs" data-channel-id="1445462327141863657">
                                 <i class="fa-solid fa-magnifying-glass"></i> Tarı
                             </button>
                         </div>

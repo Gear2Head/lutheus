@@ -239,10 +239,12 @@ window.GearTech.Scraper = {
                         user: userName,
                         userId: userId,
                         userAvatar: userAvatar,
+                        userUsername: this.extractLegacyUsername(userCol),
                         reason: this.cleanReasonCandidate(reason) || reason,
                         authorName: authorName || 'Unknown',
                         authorId: authorId || '',
                         authorAvatar: authorAvatar,
+                        authorUsername: this.extractLegacyUsername(authorCol),
                         duration: duration || '',
                         createdRaw: createdRaw || '',
                         type: penaltyType,
@@ -354,10 +356,12 @@ window.GearTech.Scraper = {
             user: userName || 'Unknown',
             userId: userId || '',
             userAvatar: userAvatar,
+            userUsername: userCol ? this.extractLegacyUsername(userCol) : null,
             reason: this.cleanReasonCandidate(reason),
             authorName: authorName || 'Unknown',
             authorId: authorId || '',
             authorAvatar: authorAvatar,
+            authorUsername: authorCol ? this.extractLegacyUsername(authorCol) : null,
             duration: duration || '',
             createdRaw: createdRaw || '',
             type: penaltyType, // extracted type
@@ -530,6 +534,13 @@ window.GearTech.Scraper = {
                 .find((line) => !/^\d{17,20}$/.test(line) && !this.isLikelyCaseId(line)) || '';
         }
         return text;
+    },
+
+    extractLegacyUsername: function (col) {
+        if (!col) return null;
+        const text = (col.innerText || col.textContent || '').trim();
+        const match = text.match(/\(@?([a-z0-9_.-]+)\)/i) || text.match(/\b([a-z0-9_.-]+#[0-9]{4})\b/i);
+        return match ? match[1].trim() : null;
     },
 
     buildCaseUrl: function (caseId) {

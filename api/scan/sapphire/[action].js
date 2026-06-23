@@ -202,6 +202,7 @@ function flattenCaseForDb(data) {
         cuk_confidence: null,
         cuk_flags: [],
         cuk_analysis: cukAnalysis,
+        is_public: false,
         is_stale: false,
         stale_reason: null,
         stale_detected_at: null,

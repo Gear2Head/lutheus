@@ -36,6 +36,7 @@ export interface SapphireCase {
   case_url?: string;
   ai_validation_status?: string;
   ai_validation_notes?: string;
+  is_public?: boolean;
 }
 
 export interface StaffProfile {
@@ -204,6 +205,58 @@ export async function updateCaseVerdict(
   }
 }
 
+export async function updateCasePublicStatus(caseId: string, isPublic: boolean): Promise<void> {
+  await supabaseFetch(
+    'sapphire_cases',
+    'PATCH',
+    `case_id=eq.${encodeURIComponent(caseId)}`,
+    { is_public: isPublic },
+  );
+
+  try {
+    const raw = await getLocal<SapphireCase[]>(LOCAL_CASES_KEY);
+    if (raw) {
+      const updated = raw.map((c) => {
+        if (c.case_id === caseId) {
+          return { ...c, is_public: isPublic };
+        }
+        return c;
+      });
+      await setLocal(LOCAL_CASES_KEY, updated);
+      localStorage.setItem(LOCAL_CASES_KEY, JSON.stringify(updated));
+    }
+  } catch (err) {
+    console.warn('[Lutheus] Failed to update local cache for case public status:', err);
+  }
+}
+
+export async function addManualProof(caseId: string, proofUrl: string): Promise<void> {
+  // Try to update existing case_proofs or insert a new one
+  const existing = await getCaseProof(caseId);
+  if (existing) {
+    await supabaseFetch(
+      'case_proofs',
+      'PATCH',
+      `case_id=eq.${encodeURIComponent(caseId)}`,
+      { proof_url: proofUrl }
+    );
+  } else {
+    await supabaseFetch(
+      'case_proofs',
+      'POST',
+      '',
+      {
+        case_id: caseId,
+        proof_url: proofUrl,
+        raw_text: 'Yönetim tarafından manuel girilen kanıt linki',
+        ai_verdict: null,
+        ai_analysis: null
+      }
+    );
+  }
+}
+
+
 export async function bulkUpdateVerdict(
   caseIds: string[],
   verdict: 'valid' | 'invalid',
@@ -236,6 +289,39 @@ export async function bulkUpdateVerdict(
     }
   } catch (err) {
     console.warn('[Lutheus] Failed to update local cache for bulk verdict:', err);
+  }
+}
+
+export async function bulkUpdatePublicStatus(
+  caseIds: string[],
+  isPublic: boolean,
+): Promise<void> {
+  const ids = caseIds.map((id) => `"${id}"`).join(',');
+  await supabaseFetch(
+    'sapphire_cases',
+    'PATCH',
+    `case_id=in.(${ids})`,
+    { is_public: isPublic },
+  );
+
+  try {
+    const raw = await getLocal<SapphireCase[]>(LOCAL_CASES_KEY);
+    if (raw) {
+      const updated = raw.map((c) => {
+        if (c.case_id && caseIds.includes(c.case_id)) {
+          return { ...c, is_public: isPublic };
+        }
+        return c;
+      });
+      await setLocal(LOCAL_CASES_KEY, updated);
+      try {
+        localStorage.setItem(LOCAL_CASES_KEY, JSON.stringify(updated));
+      } catch (error) {
+        console.warn("Supabase silent fail:", error);
+      }
+    }
+  } catch (err) {
+    console.warn('[Lutheus] Failed to update local cache for bulk public status:', err);
   }
 }
 

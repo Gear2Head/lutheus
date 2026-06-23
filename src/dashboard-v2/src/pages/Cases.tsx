@@ -8,7 +8,7 @@ import {
   User, ShieldCheck, Share2, Filter, Zap, ChevronLeft, ChevronRight,
   Eye
 } from 'lucide-react';
-import { getCases, getStaffProfiles, SapphireCase, StaffProfile, bulkUpdateVerdict, updateCaseVerdict, deleteCase } from '../lib/supabase';
+import { getCases, getStaffProfiles, SapphireCase, StaffProfile, bulkUpdateVerdict, updateCaseVerdict, deleteCase, updateCasePublicStatus, bulkUpdatePublicStatus } from '../lib/supabase';
 import ProofDrawer from '../components/ProofDrawer';
 import { validateCase } from '../lib/cukEngine';
 import { useAuth } from '../contexts/AuthContext';
@@ -52,9 +52,19 @@ export default function Cases() {
   const [selectedCase, setSelectedCase] = useState<SapphireCase | null>(null);
   const [proofCaseId, setProofCaseId] = useState<string | null>(null);
   const [selectedProofCase, setSelectedProofCase] = useState<SapphireCase | null>(null);
-  const [confirmBulk, setConfirmBulk] = useState<'valid' | 'invalid' | null>(null);
+  const [confirmBulk, setConfirmBulk] = useState<'valid' | 'invalid' | 'public' | 'private' | null>(null);
   const [bulkLoading, setBulkLoading] = useState(false);
   const [caseUpdating, setCaseUpdating] = useState<string | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ x: number, y: number, caseData: SapphireCase } | null>(null);
+  const [bulkSelectStartDate, setBulkSelectStartDate] = useState('');
+  const [bulkSelectEndDate, setBulkSelectEndDate] = useState('');
+
+  // Close context menu on window click
+  useEffect(() => {
+    const handleClose = () => setContextMenu(null);
+    window.addEventListener('click', handleClose);
+    return () => window.removeEventListener('click', handleClose);
+  }, []);
 
   // Theme states
   const [theme, setTheme] = useState<'midnight' | 'deepspace' | 'sunset' | 'arctic'>(() => {
@@ -243,9 +253,15 @@ export default function Cases() {
     if (!confirmBulk) return;
     setBulkLoading(true);
     try {
-      await bulkUpdateVerdict(Array.from(selectedIds), confirmBulk);
-      const actionName = confirmBulk === 'valid' ? 'doğrulandı' : 'reddedildi';
-      showToast(`${selectedIds.size} adet ceza başarıyla ${actionName}`, 'success');
+      if (confirmBulk === 'public' || confirmBulk === 'private') {
+        const makePublic = confirmBulk === 'public';
+        await bulkUpdatePublicStatus(Array.from(selectedIds), makePublic);
+        showToast(`${selectedIds.size} adet ceza başarıyla ${makePublic ? 'yayınlandı' : 'gizlendi'}`, 'success');
+      } else {
+        await bulkUpdateVerdict(Array.from(selectedIds), confirmBulk);
+        const actionName = confirmBulk === 'valid' ? 'doğrulandı' : 'reddedildi';
+        showToast(`${selectedIds.size} adet ceza başarıyla ${actionName}`, 'success');
+      }
       setSelectedIds(new Set());
       await loadData(true);
     } catch {
@@ -337,7 +353,7 @@ export default function Cases() {
 
   const isFormerStaff = (profile: StaffProfile | undefined): boolean => {
     if (!profile) return false;
-    return profile.role === 'eski_yetkili' || profile.status === 'INACTIVE';
+    return profile.role === 'eski_yetkili';
   };
 
   const totalItems = filtered.length;
@@ -498,8 +514,54 @@ export default function Cases() {
           </div>
         </div>
 
-        {/* Refresh button */}
-        <div className="flex items-center gap-2">
+        {/* Refresh button & date range selection */}
+        <div className="flex items-center gap-3">
+          {isManagementRole(session?.role || '') && (
+            <div className="flex items-center gap-2 bg-[#111112] border border-white/10 rounded-lg p-1">
+              <span className="text-[10px] font-mono text-white/40 uppercase tracking-widest pl-2">Aralık Seç:</span>
+              <input 
+                type="date" 
+                value={bulkSelectStartDate} 
+                onChange={(e) => setBulkSelectStartDate(e.target.value)} 
+                className="bg-black/40 border border-white/5 rounded px-2 py-1 text-[11px] text-white/90 outline-none w-28"
+              />
+              <span className="text-white/30 text-xs">-</span>
+              <input 
+                type="date" 
+                value={bulkSelectEndDate} 
+                onChange={(e) => setBulkSelectEndDate(e.target.value)} 
+                className="bg-black/40 border border-white/5 rounded px-2 py-1 text-[11px] text-white/90 outline-none w-28"
+              />
+              <button 
+                onClick={() => {
+                  if (!bulkSelectStartDate || !bulkSelectEndDate) {
+                    showToast('Lütfen başlangıç ve bitiş tarihlerini seçin.', 'error');
+                    return;
+                  }
+                  const start = new Date(bulkSelectStartDate);
+                  start.setHours(0, 0, 0, 0);
+                  const end = new Date(bulkSelectEndDate);
+                  end.setHours(23, 59, 59, 999);
+
+                  const matched = cases.filter(c => {
+                    const date = parseDateSafe(c.created_at_sapphire);
+                    return date >= start && date <= end;
+                  });
+
+                  if (matched.length === 0) {
+                    showToast('Seçilen tarih aralığında ceza bulunamadı.', 'info');
+                  } else {
+                    setSelectedIds(new Set(matched.map(c => c.case_id)));
+                    showToast(`${matched.length} ceza otomatik olarak seçildi.`, 'success');
+                  }
+                }}
+                className="px-3 py-1 bg-[#5E5CE6]/20 hover:bg-[#5E5CE6]/35 border border-[#5E5CE6]/30 rounded-md text-[11px] text-[#5E5CE6] font-extrabold transition-all cursor-pointer whitespace-nowrap"
+              >
+                Cezaları Seç
+              </button>
+            </div>
+          )}
+
           {refreshing && (
             <span className="text-[11px] font-mono text-[#5E5CE6]">Veriler güncelleniyor...</span>
           )}
@@ -533,6 +595,25 @@ export default function Cases() {
           >
             <ShieldAlert size={13} /> Reddet
           </button>
+          
+          {isManagementRole(session?.role || '') && (
+            <>
+              <div className="w-[1px] h-4 bg-white/10 self-center"></div>
+              <button 
+                className="px-3 py-1.5 rounded-lg text-indigo-400 hover:bg-indigo-500/10 text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+                onClick={() => setConfirmBulk('public')}
+              >
+                <Share2 size={13} /> Yayınla (Public Yap)
+              </button>
+              <button 
+                className="px-3 py-1.5 rounded-lg text-zinc-400 hover:bg-zinc-500/10 text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+                onClick={() => setConfirmBulk('private')}
+              >
+                <X size={13} /> Gizle (Private Yap)
+              </button>
+            </>
+          )}
+
           <button 
             onClick={() => setSelectedIds(new Set())} 
             className="ml-auto text-xs text-white/40 hover:text-white transition-colors cursor-pointer"
@@ -629,7 +710,19 @@ export default function Cases() {
                     const profile = staffMap.get(c.author_discord_id);
                     const name = getModName(c.author_discord_id, c.author_display_name);
                     const avatar = resolveStaffAvatar(profile, c, c.author_discord_id);
-                    const statusClass = c.cuk_verdict === 'valid' ? 'success' : c.cuk_verdict === 'invalid' ? 'danger' : 'neutral';
+                    
+                    // Case validity rules: Hide validity/accuracy status from normal staff unless public or manager
+                    const isManagement = session ? isManagementRole(session.role) : false;
+                    const shouldShowVerdict = c.is_public || isManagement;
+                    
+                    const statusClass = !shouldShowVerdict 
+                      ? 'neutral' 
+                      : c.cuk_verdict === 'valid' 
+                      ? 'success' 
+                      : c.cuk_verdict === 'invalid' 
+                      ? 'danger' 
+                      : 'neutral';
+                      
                     const durationText = c.is_permanent ? 'Kalıcı' : minutesToHuman(Math.floor((c.duration_ms || 0) / 60000));
 
                     return (
@@ -644,11 +737,31 @@ export default function Cases() {
                           backgroundColor: 'rgba(255, 255, 255, 0.03)',
                           transition: { duration: 0.1 }
                         }}
-                        onClick={() => setSelectedCase(c)}
+                        onClick={(e) => {
+                          if (e.ctrlKey) {
+                            toggleSelect(c.case_id);
+                          } else {
+                            setSelectedCase(c);
+                          }
+                        }}
+                        onContextMenu={(e) => {
+                          e.preventDefault();
+                          if (e.ctrlKey) {
+                            toggleSelect(c.case_id);
+                          } else {
+                            setContextMenu({
+                              x: e.clientX,
+                              y: e.clientY,
+                              caseData: c
+                            });
+                          }
+                        }}
                         className={`transition-colors cursor-pointer relative group ${
                           isSelected ? 'bg-white/[0.04]' : ''
                         } ${
-                          c.cuk_verdict === 'invalid' ? 'bg-[#FF453A]/[0.01] hover:bg-[#FF453A]/[0.03]' : ''
+                          selectedIds.has(c.case_id) ? 'bg-[#5E5CE6]/10 border-l border-l-[#5E5CE6]' : ''
+                        } ${
+                          shouldShowVerdict && c.cuk_verdict === 'invalid' ? 'bg-[#FF453A]/[0.01] hover:bg-[#FF453A]/[0.03]' : ''
                         }`}
                       >
                         <td className="py-3.5 px-4 w-12 text-center text-xs font-mono font-bold text-white/30" onClick={(e) => e.stopPropagation()}>
@@ -727,7 +840,7 @@ export default function Cases() {
                         {/* Durum */}
                         <td className="py-3.5 px-4 text-right">
                           <span className={`status-badge ${statusClass}`}>
-                            {c.cuk_verdict === 'valid' ? 'DOĞRU' : c.cuk_verdict === 'invalid' ? 'HATALI' : 'BEKLEYEN'}
+                            {!shouldShowVerdict ? 'GİZLİ' : c.cuk_verdict === 'valid' ? 'DOĞRU' : c.cuk_verdict === 'invalid' ? 'HATALI' : 'BEKLEYEN'}
                           </span>
                         </td>
                         
@@ -823,24 +936,38 @@ export default function Cases() {
                     <div className="p-2 rounded-lg bg-white/5 border border-white/5 text-[#5E5CE6]">
                       <MessageSquare size={16} />
                     </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <a 
-                          href={buildSapphireCaseUrl(selectedCase.guild_id, selectedCase.case_id) || selectedCase.case_url || '#'}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-[13px] font-mono font-bold text-[#5E5CE6] hover:text-[#A259FE] hover:underline cursor-pointer flex items-center gap-1"
-                          title="Sapphire Panelinde Göster"
-                        >
-                          #{selectedCase.case_id}
-                          <ExternalLink size={10} className="opacity-60" />
-                        </a>
-                        <span className={`status-badge ${selectedCase.cuk_verdict === 'valid' ? 'success' : selectedCase.cuk_verdict === 'invalid' ? 'danger' : 'neutral'} scale-90`}>
-                          {selectedCase.cuk_verdict === 'valid' ? 'DOĞRU' : selectedCase.cuk_verdict === 'invalid' ? 'HATALI' : 'BEKLEYEN'}
-                        </span>
-                      </div>
-                      <p className="text-[11px] text-white/40 mt-0.5 tracking-wider font-mono uppercase">{selectedCase.type} • DETAYLAR</p>
-                    </div>
+                    {(() => {
+                      const isManagement = session ? isManagementRole(session.role) : false;
+                      const shouldShowVerdict = selectedCase.is_public || isManagement;
+                      const statusClass = !shouldShowVerdict 
+                        ? 'neutral' 
+                        : selectedCase.cuk_verdict === 'valid' 
+                        ? 'success' 
+                        : selectedCase.cuk_verdict === 'invalid' 
+                        ? 'danger' 
+                        : 'neutral';
+
+                      return (
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <a 
+                              href={buildSapphireCaseUrl(selectedCase.guild_id, selectedCase.case_id) || selectedCase.case_url || '#'}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-[13px] font-mono font-bold text-[#5E5CE6] hover:text-[#A259FE] hover:underline cursor-pointer flex items-center gap-1"
+                              title="Sapphire Panelinde Göster"
+                            >
+                              #{selectedCase.case_id}
+                              <ExternalLink size={10} className="opacity-60" />
+                            </a>
+                            <span className={`status-badge ${statusClass} scale-90`}>
+                              {!shouldShowVerdict ? 'GİZLİ' : selectedCase.cuk_verdict === 'valid' ? 'DOĞRU' : selectedCase.cuk_verdict === 'invalid' ? 'HATALI' : 'BEKLEYEN'}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-white/40 mt-0.5 tracking-wider font-mono uppercase">{selectedCase.type} • DETAYLAR</p>
+                        </div>
+                      );
+                    })()}
                   </div>
                   
                   <button 
@@ -945,10 +1072,18 @@ export default function Cases() {
                   </div>
 
                   {/* Valid Durations Analysis Panel */}
-                  <div className="space-y-2">
-                    <span className="text-[10px] font-bold text-white/40 uppercase tracking-widest block mb-2.5">CUK Süre Karşılaştırması</span>
-                    <ValidDurationsPanel caseData={selectedCase} />
-                  </div>
+                  {(() => {
+                    const isManagement = session ? isManagementRole(session.role) : false;
+                    const shouldShowVerdict = selectedCase.is_public || isManagement;
+                    if (!shouldShowVerdict) return null;
+
+                    return (
+                      <div className="space-y-2">
+                        <span className="text-[10px] font-bold text-white/40 uppercase tracking-widest block mb-2.5">CUK Süre Karşılaştırması</span>
+                        <ValidDurationsPanel caseData={selectedCase} />
+                      </div>
+                    );
+                  })()}
 
                   {/* Additional Metadata Rows */}
                   <div className="space-y-1">
@@ -957,12 +1092,19 @@ export default function Cases() {
                       <DetailMetadataRow label="Sebep" value={selectedCase.reason_raw || '—'} />
                       <DetailMetadataRow label="Süre" value={selectedCase.is_permanent ? 'Kalıcı' : minutesToHuman(Math.floor((selectedCase.duration_ms || 0) / 60000))} />
                       <DetailMetadataRow label="Tarih" value={formatDate(selectedCase.created_at_sapphire)} />
-                      {selectedCase.cuk_analysis && (
-                        <>
-                          <DetailMetadataRow label="CUK Kategori" value={selectedCase.cuk_analysis.category} />
-                          <DetailMetadataRow label="CUK Mesaj" value={selectedCase.cuk_analysis.message} isHighlight={selectedCase.cuk_verdict === 'invalid'} />
-                        </>
-                      )}
+                      {(() => {
+                        const isManagement = session ? isManagementRole(session.role) : false;
+                        const shouldShowVerdict = selectedCase.is_public || isManagement;
+                        if (shouldShowVerdict && selectedCase.cuk_analysis) {
+                          return (
+                            <>
+                              <DetailMetadataRow label="CUK Kategori" value={selectedCase.cuk_analysis.category} />
+                              <DetailMetadataRow label="CUK Mesaj" value={selectedCase.cuk_analysis.message} isHighlight={selectedCase.cuk_verdict === 'invalid'} />
+                            </>
+                          );
+                        }
+                        return null;
+                      })()}
                     </div>
                   </div>
                   </motion.div>
@@ -1057,10 +1199,30 @@ export default function Cases() {
           isOpen={confirmBulk !== null}
           onClose={() => setConfirmBulk(null)}
           onConfirm={handleBulkAction}
-          title={`${selectedIds.size} kayıt toplu ${confirmBulk === 'valid' ? 'onaylanacak' : 'reddedilecek'}`}
-          description="Bu işlem seçili tüm cezaların durumunu değiştirecek ve Supabase'e yazılacak."
-          confirmText={confirmBulk === 'valid' ? 'Onayla' : 'Reddet'}
-          danger={confirmBulk === 'invalid'}
+          title={
+            confirmBulk === 'public'
+              ? `${selectedIds.size} kayıt yayınlanacak (Public yapılacak)`
+              : confirmBulk === 'private'
+              ? `${selectedIds.size} kayıt gizlenecek (Private yapılacak)`
+              : `${selectedIds.size} kayıt toplu ${confirmBulk === 'valid' ? 'onaylanacak' : 'reddedilecek'}`
+          }
+          description={
+            confirmBulk === 'public'
+              ? "Bu işlem seçili tüm cezaların doğruluk durumunun yetkililer tarafından görülmesini sağlayacaktır."
+              : confirmBulk === 'private'
+              ? "Bu işlem seçili tüm cezaların doğruluk durumunu yetkililerden gizleyecektir."
+              : "Bu işlem seçili tüm cezaların durumunu değiştirecek ve Supabase'e yazılacak."
+          }
+          confirmText={
+            confirmBulk === 'public'
+              ? 'Yayınla'
+              : confirmBulk === 'private'
+              ? 'Gizle'
+              : confirmBulk === 'valid'
+              ? 'Onayla'
+              : 'Reddet'
+          }
+          danger={confirmBulk === 'invalid' || confirmBulk === 'private'}
           loading={bulkLoading}
         />,
         document.body
@@ -1136,6 +1298,124 @@ export default function Cases() {
             </>
           )}
         </AnimatePresence>,
+        document.body
+      )}
+
+      {/* ── Discord-Style Glassmorphic Context Menu ── */}
+      {typeof document !== 'undefined' && contextMenu && createPortal(
+        <div 
+          style={{ 
+            position: 'fixed', 
+            top: contextMenu.y, 
+            left: contextMenu.x, 
+            zIndex: 100 
+          }}
+          className="animate-in fade-in zoom-in-95 duration-100 select-none text-left"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="w-56 rounded-xl border border-white/[0.08] bg-[#0A0A0C]/90 backdrop-blur-2xl shadow-2xl p-1.5 flex flex-col gap-0.5">
+            <div className="px-2.5 py-1.5 border-b border-white/[0.05] mb-1">
+              <div className="text-[10px] font-mono text-white/40 uppercase tracking-wider">Ceza Kontrol Paneli</div>
+              <div className="text-xs font-bold text-white truncate mt-0.5">#{contextMenu.caseData.case_id}</div>
+            </div>
+            
+            {/* Management Only Toggles */}
+            {isManagementRole(session?.role || '') && (
+              <>
+                <button
+                  onClick={async () => {
+                    const targetCase = contextMenu.caseData;
+                    const newPublicStatus = !targetCase.is_public;
+                    setContextMenu(null);
+                    try {
+                      await updateCasePublicStatus(targetCase.case_id, newPublicStatus);
+                      setCases((prev) => prev.map((p) => p.case_id === targetCase.case_id ? { ...p, is_public: newPublicStatus } : p));
+                      showToast(
+                        newPublicStatus 
+                          ? `Case #${targetCase.case_id} başarıyla herkese görünür yapıldı!` 
+                          : `Case #${targetCase.case_id} gizlendi!`,
+                        'success'
+                      );
+                    } catch (err: any) {
+                      showToast(`Hata: ${err.message || err}`, 'error');
+                    }
+                  }}
+                  className="w-full px-2.5 py-2 text-left text-xs font-semibold text-white/80 hover:text-white hover:bg-white/[0.06] rounded-lg transition-colors flex items-center justify-between cursor-pointer"
+                >
+                  <span>{contextMenu.caseData.is_public ? 'Gizli Yap (Private)' : 'Yayınla (Public Yap)'}</span>
+                  <Share2 size={12} className="text-white/40" />
+                </button>
+
+                <button
+                  onClick={() => {
+                    const targetCase = contextMenu.caseData;
+                    setContextMenu(null);
+                    handleSingleVerdict(targetCase, 'valid');
+                  }}
+                  className="w-full px-2.5 py-2 text-left text-xs font-semibold text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10 rounded-lg transition-colors flex items-center justify-between cursor-pointer"
+                >
+                  <span>Doğru Olarak İşaretle</span>
+                  <CheckCircle2 size={12} className="text-emerald-400/50" />
+                </button>
+
+                <button
+                  onClick={() => {
+                    const targetCase = contextMenu.caseData;
+                    setContextMenu(null);
+                    handleSingleVerdict(targetCase, 'invalid');
+                  }}
+                  className="w-full px-2.5 py-2 text-left text-xs font-semibold text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-lg transition-colors flex items-center justify-between cursor-pointer"
+                >
+                  <span>Hatalı Olarak İşaretle</span>
+                  <AlertCircle size={12} className="text-red-400/50" />
+                </button>
+
+                <div className="h-[1px] bg-white/[0.05] my-1" />
+              </>
+            )}
+
+            <button
+              onClick={() => {
+                const targetCase = contextMenu.caseData;
+                setContextMenu(null);
+                setProofCaseId(targetCase.case_id);
+                setSelectedProofCase(targetCase);
+              }}
+              className="w-full px-2.5 py-2 text-left text-xs font-semibold text-white/80 hover:text-white hover:bg-white/[0.06] rounded-lg transition-colors flex items-center justify-between cursor-pointer"
+            >
+              <span>Kanıt Ekle / Gör</span>
+              <Eye size={12} className="text-white/40" />
+            </button>
+
+            <button
+              onClick={() => {
+                handleCopy(contextMenu.caseData.case_id);
+                setContextMenu(null);
+              }}
+              className="w-full px-2.5 py-2 text-left text-xs font-semibold text-white/80 hover:text-white hover:bg-white/[0.06] rounded-lg transition-colors flex items-center justify-between cursor-pointer"
+            >
+              <span>ID Kopyala</span>
+              <Copy size={12} className="text-white/40" />
+            </button>
+
+            {isManagementRole(session?.role || '') && (
+              <>
+                <div className="h-[1px] bg-white/[0.05] my-1" />
+                <button
+                  onClick={() => {
+                    const targetCase = contextMenu.caseData;
+                    setContextMenu(null);
+                    handleDeleteCase(targetCase);
+                  }}
+                  className="w-full px-2.5 py-2 text-left text-xs font-bold text-red-500 hover:text-white hover:bg-red-600/20 rounded-lg transition-colors flex items-center justify-between cursor-pointer"
+                >
+                  <span>Sil</span>
+                  <X size={12} className="text-red-500/50" />
+                </button>
+              </>
+            )}
+          </div>
+        </div>,
         document.body
       )}
     </>

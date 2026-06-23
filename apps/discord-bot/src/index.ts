@@ -611,8 +611,7 @@ async function pollStaffMessages() {
         const { data: messages, error } = await supabase
             .from('staff_messages')
             .select('*')
-            .eq('alert_sent', false)
-            .eq('created_by', 'staff');
+            .eq('alert_sent', false);
 
         if (error || !messages || messages.length === 0) return;
 

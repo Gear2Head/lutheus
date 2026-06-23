@@ -6,7 +6,7 @@ import {
   ExternalLink, CheckCircle2, AlertTriangle, Shield, ZoomIn, ZoomOut,
   ChevronLeft, ChevronRight, Play, Video, Maximize2
 } from 'lucide-react';
-import { getCaseProof, CaseProof, SapphireCase, getEmbeddedProofs } from '../lib/supabase';
+import { getCaseProof, CaseProof, SapphireCase, getEmbeddedProofs, addManualProof } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { getGlassClass } from '../lib/theme';
 import { useToast } from '../contexts/ToastContext';
@@ -68,6 +68,40 @@ export default function ProofDrawer({
   const [isZoomed, setIsZoomed] = useState(false);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [lightboxZoom, setLightboxZoom] = useState(1);
+  const [manualProofUrl, setManualProofUrl] = useState('');
+  const [manualProofSubmitting, setManualProofSubmitting] = useState(false);
+
+  const handleManualProofSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!caseId || !manualProofUrl.trim()) return;
+    setManualProofSubmitting(true);
+    try {
+      await addManualProof(caseId, manualProofUrl.trim());
+      showToast('Manuel kanıt başarıyla eklendi.', 'success');
+      setManualProofUrl('');
+      // Reload proof in drawer
+      const data = await getCaseProof(caseId);
+      setProof(data);
+      if (data) {
+        const proofs = [];
+        if (data.proof_url || data.video_url || data.thumbnail_url) {
+          proofs.push({
+            proof_url: data.proof_url,
+            video_url: data.video_url,
+            thumbnail_url: data.thumbnail_url,
+            raw_text: data.raw_text,
+            source_case_id: (data.embedded_from_case_id || caseId) ?? undefined
+          });
+        }
+        setAllProofs(proofs);
+      }
+    } catch (err: any) {
+      showToast(`Hata: ${err.message || err}`, 'error');
+    } finally {
+      setManualProofSubmitting(false);
+    }
+  };
+
 
   // ESC key to close lightbox
   useEffect(() => {
@@ -295,6 +329,29 @@ export default function ProofDrawer({
                   <ExternalLink size={12} />
                   Kanıt Kanalını Aç
                 </a>
+
+                {isManagement && (
+                  <form onSubmit={handleManualProofSubmit} className="pt-4 border-t border-white/[0.06] space-y-2 mt-4 text-left">
+                    <span className="text-[10px] font-bold text-white/40 uppercase tracking-wider block">Manuel Kanıt Ekle</span>
+                    <div className="flex gap-2">
+                      <input
+                        type="url"
+                        placeholder="Resim veya Video URL'si girin..."
+                        value={manualProofUrl}
+                        onChange={(e) => setManualProofUrl(e.target.value)}
+                        required
+                        className="flex-1 px-3 py-1.5 bg-black/40 border border-white/10 rounded-lg text-xs text-white focus:outline-none focus:border-[#5E5CE6]/50 transition-colors"
+                      />
+                      <button
+                        type="submit"
+                        disabled={manualProofSubmitting || !manualProofUrl.trim()}
+                        className="px-3 py-1.5 rounded-lg bg-[#5E5CE6] hover:bg-[#5E5CE6]/90 disabled:opacity-40 text-white text-[11px] font-bold transition-all cursor-pointer whitespace-nowrap active:scale-[0.97]"
+                      >
+                        {manualProofSubmitting ? <Loader2 size={12} className="animate-spin" /> : 'Kanıt Ekle'}
+                      </button>
+                    </div>
+                  </form>
+                )}
               </div>
             ) : (
               <div className="space-y-5">

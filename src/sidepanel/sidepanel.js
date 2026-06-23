@@ -2023,6 +2023,17 @@ async function init() {
         return;
     }
 
+    const isPrivileged = isPrivilegedRole(state.session.role);
+    if (!isPrivileged) {
+        if (typeof chrome !== 'undefined' && chrome.tabs?.create) {
+            chrome.tabs.create({ url: chrome.runtime.getURL('src/dashboard-v2/dist/index.html') });
+            window.close();
+        } else {
+            window.open('/src/dashboard-v2/dist/index.html', '_blank');
+        }
+        return;
+    }
+
     if (appLayout) appLayout.classList.remove('hidden');
     if (sidepanelLoginView) sidepanelLoginView.classList.add('hidden');
 

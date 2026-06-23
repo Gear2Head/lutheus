@@ -1,4 +1,12 @@
 /* Custom resets & variables for login shell */
+:root {
+    --text-primary: #ffffff;
+    --text-secondary: #9898a6;
+    --text-muted: #a1a1aa;
+    --status-valid: #32d74b;
+    --status-invalid: #ff453a;
+}
+
 .login-shell {
     width: 100%;
     min-height: 100vh;
@@ -10,6 +18,7 @@
     background-image: none !important;
     position: relative;
     overflow: hidden;
+    color: #ffffff !important;
 }
 
 /* Decorative background blobs to mimic React blobs */
@@ -240,4 +249,76 @@
 .quote-author {
     font-size: 13px;
     color: var(--text-secondary);
+}
+
+.auth-container p,
+.login-box p,
+h2+p {
+    color: #e2e8f0 !important;
+}
+
+.auth-container .warning-text,
+.auth-container span,
+p span {
+    color: #cbd5e1 !important;
+}
+
+/* --- LUTHEUS YAZI RENKLERINI KESIN ZORLAMA PAKETI --- */
+
+/* "Hoşgeldiniz 👋" Başlığı */
+.welcome-title,
+.login-brand-header h1 {
+    color: #ffffff !important;
+}
+
+/* "Devam etmek için giriş yapın." Alt Başlığı */
+#loginSubtitle,
+.login-brand-header p {
+    color: #94a3b8 !important;
+    /* Slate 400 açık gri tonu */
+}
+
+/* Sol alttaki "Sisteme sadece yetkilendirilmiş..." Açıklama Kutusu ve Yazıları */
+.login-left .login-alert-note {
+    color: #cbd5e1 !important;
+    /* Slate 300 beyazımsı gri */
+    background: rgba(255, 255, 255, 0.03) !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+}
+
+/* Sol üstteki "Lutheus" Logo Yazısı */
+.login-logo-box,
+.login-logo-box span {
+    color: #ffffff !important;
+}
+
+/* Google Butonunun İçindeki Siyah Kalan Yazı */
+.google-btn {
+    color: #e2e8f0 !important;
+}
+
+/* --- SAĞ TARAF KESIN DÜZELTME PAKETI --- */
+
+/* Alıntı kutusunun (Koyu Mor Arka Planlı Panel) kendisi */
+.login-right-content {
+    background: rgba(11, 11, 14, 0.65) !important;
+    /* Biraz daha belirgin koyu arka plan */
+    border: 1px solid rgba(162, 89, 245, 0.3) !important;
+    /* Lutheus moru border */
+    backdrop-filter: blur(120px) !important;
+}
+
+/* "BarisYilmaz'a BIAT EDIN!" Yazısı */
+.login-right-content .quote-text {
+    color: #ffffff !important;
+    /* Tam beyaz yapıp parlatalım */
+    font-size: 18px !important;
+    text-shadow: 0px 0px 10px rgba(162, 89, 254, 0.4) !important;
+    /* Hafif mor parlama efekti */
+}
+
+/* "— Lutheus Discord Yönetim Ekibi" Yazısı */
+.login-right-content .quote-author {
+    color: #cbd5e1 !important;
+    /* Slate 300 beyazımsı gri */
 }

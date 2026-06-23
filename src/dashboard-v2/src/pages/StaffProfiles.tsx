@@ -13,7 +13,7 @@ import {
   SapphireCase, StaffWarning, StaffMessage, getStaffProfiles, StaffProfile, UserTicket
 } from '../lib/supabase';
 import { formatDate } from '../lib/utils';
-import { getRoleColor, getRoleLabel, isManagementKadrosu, ROLE_LABELS } from '../lib/auth';
+import { getRoleColor, getRoleLabel, isManagementKadrosu, isManagementRole, ROLE_LABELS } from '../lib/auth';
 import { calculatePerformanceScore, getReliabilityStatus } from '../lib/cukEngine';
 import { Badge } from '../components/ui/Badge';
 import { buildSapphireCaseUrl } from '../lib/sapphireUrl';
@@ -121,17 +121,20 @@ export default function StaffProfiles() {
 
   // Compute metrics for selected staff
   const metrics = useMemo(() => {
+    const isManagement = session ? isManagementRole(session.role) : false;
+    const visibleCases = cases.filter(c => c.is_public || isManagement);
+
     const total = cases.length;
-    const valid = cases.filter(c => c.cuk_verdict === 'valid').length;
-    const invalid = cases.filter(c => c.cuk_verdict === 'invalid').length;
-    const pending = cases.filter(c => c.cuk_verdict === 'pending' || !c.cuk_verdict).length;
+    const valid = visibleCases.filter(c => c.cuk_verdict === 'valid').length;
+    const invalid = visibleCases.filter(c => c.cuk_verdict === 'invalid').length;
+    const pending = total - (valid + invalid);
     const accuracy = total > 0 ? Math.round((valid / total) * 100) : 100;
     const score = calculatePerformanceScore(valid, invalid, pending);
     const reliability = getReliabilityStatus(accuracy, total);
-    const invalidCases = cases.filter(c => c.cuk_verdict === 'invalid');
+    const invalidCases = visibleCases.filter(c => c.cuk_verdict === 'invalid');
 
     return { total, valid, invalid, pending, accuracy, score, reliability, invalidCases };
-  }, [cases]);
+  }, [cases, session]);
 
   // Save promotion date and comments
   const handleSaveMeta = async () => {
@@ -471,21 +474,33 @@ export default function StaffProfiles() {
                 {/* Right column: Tabs container */}
                 <div className="lg:col-span-2 space-y-6">
                   <div className="flex bg-[#111112] border border-white/10 rounded-xl p-1">
-                    {[
-                      { id: 'overview', label: 'Yönetim & Karne' },
-                      { id: 'cases', label: 'Cezaları' },
-                      { id: 'warnings', label: 'Uyarıları' },
-                      { id: 'messages', label: 'İtiraz & Mesajları' },
-                      { id: 'tickets', label: 'Hadron Biletleri' }
-                    ].map((tab) => (
-                      <button
-                        key={tab.id}
-                        onClick={() => setActiveTab(tab.id as any)}
-                        className={`flex-1 py-2 text-center text-xs font-bold rounded-lg transition-all cursor-pointer ${activeTab === tab.id ? 'bg-white/10 text-white shadow-sm' : 'text-white/40 hover:text-white'}`}
-                      >
-                        {tab.label}
-                      </button>
-                    ))}
+                    {(() => {
+                      const isManager = session ? isManagementRole(session.role) : false;
+                      const isSelf = session?.profile?.discordId === selectedStaff.discord_id;
+                      
+                      const allTabs = [
+                        { id: 'overview', label: 'Yönetim & Karne' },
+                        { id: 'cases', label: 'Cezaları' },
+                        { id: 'warnings', label: 'Uyarıları' },
+                        { id: 'messages', label: 'İtiraz & Mesajları' },
+                        { id: 'tickets', label: 'Hadron Biletleri' }
+                      ];
+
+                      // Non-managers viewing other profiles only see cases and tickets
+                      const visibleTabs = (isManager || isSelf) 
+                        ? allTabs 
+                        : allTabs.filter(t => t.id === 'cases' || t.id === 'tickets');
+
+                      return visibleTabs.map((tab) => (
+                        <button
+                          key={tab.id}
+                          onClick={() => setActiveTab(tab.id as any)}
+                          className={`flex-1 py-2 text-center text-xs font-bold rounded-lg transition-all cursor-pointer ${activeTab === tab.id ? 'bg-white/10 text-white shadow-sm' : 'text-white/40 hover:text-white'}`}
+                        >
+                          {tab.label}
+                        </button>
+                      ));
+                    })()}
                   </div>
 
                   {/* Tab content wrapper */}
@@ -635,9 +650,22 @@ export default function StaffProfiles() {
                                     </div>
                                   </div>
                                   <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-                                    <span className={`status-badge scale-90 ${c.cuk_verdict === 'valid' ? 'success' : c.cuk_verdict === 'invalid' ? 'danger' : 'neutral'}`}>
-                                      {c.cuk_verdict === 'valid' ? 'DOĞRU' : c.cuk_verdict === 'invalid' ? 'HATALI' : 'BEKLEYEN'}
-                                    </span>
+                                    {(() => {
+                                      const isManagement = session ? isManagementRole(session.role) : false;
+                                      const shouldShowVerdict = c.is_public || isManagement;
+                                      const statusClass = !shouldShowVerdict 
+                                        ? 'neutral' 
+                                        : c.cuk_verdict === 'valid' 
+                                        ? 'success' 
+                                        : c.cuk_verdict === 'invalid' 
+                                        ? 'danger' 
+                                        : 'neutral';
+                                      return (
+                                        <span className={`status-badge scale-90 ${statusClass}`}>
+                                          {!shouldShowVerdict ? 'GİZLİ' : c.cuk_verdict === 'valid' ? 'DOĞRU' : c.cuk_verdict === 'invalid' ? 'HATALI' : 'BEKLEYEN'}
+                                        </span>
+                                      );
+                                    })()}
                                     <button
                                       onClick={() => {
                                         const url = buildSapphireCaseUrl(c.guild_id, c.case_id);

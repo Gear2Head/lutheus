@@ -823,19 +823,27 @@ export default function Staff() {
                   <div className="mt-4">
                     <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Son Cezalar</div>
                     <div className="space-y-2">
-                      {selected.recentCases.map((c) => (
-                        <div key={c.case_id} className="flex items-center justify-between p-3 rounded-xl bg-secondary/30 border border-border/50">
-                          <div className="flex-1 min-w-0 mr-3">
-                            <div className="text-xs font-mono text-muted-foreground">#{c.case_id}</div>
-                            <div className="text-xs text-foreground truncate mt-0.5">{c.reason_raw || '—'}</div>
+                      {selected.recentCases.map((c) => {
+                        const isManagement = session ? isManagementRole(session.role) : false;
+                        const shouldShowVerdict = c.is_public || isManagement;
+                        return (
+                          <div key={c.case_id} className="flex items-center justify-between p-3 rounded-xl bg-secondary/30 border border-border/50">
+                            <div className="flex-1 min-w-0 mr-3">
+                              <div className="text-xs font-mono text-muted-foreground">#{c.case_id}</div>
+                              <div className="text-xs text-foreground truncate mt-0.5">{c.reason_raw || '—'}</div>
+                            </div>
+                            {!shouldShowVerdict ? (
+                              <Badge variant="outline" className="text-muted-foreground border-border/50 bg-secondary/20 font-bold">GİZLİ</Badge>
+                            ) : c.cuk_verdict === 'valid' ? (
+                              <Badge variant="success">Dogru</Badge>
+                            ) : c.cuk_verdict === 'invalid' ? (
+                              <Badge variant="destructive">Hatali</Badge>
+                            ) : (
+                              <Badge variant="warning">Bekl.</Badge>
+                            )}
                           </div>
-                          {c.cuk_verdict === 'valid'
-                            ? <Badge variant="success">Dogru</Badge>
-                            : c.cuk_verdict === 'invalid'
-                            ? <Badge variant="destructive">Hatali</Badge>
-                            : <Badge variant="warning">Bekl.</Badge>}
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
                 )}

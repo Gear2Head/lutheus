@@ -833,7 +833,7 @@ export default function Staff() {
                               <div className="text-xs text-foreground truncate mt-0.5">{c.reason_raw || '—'}</div>
                             </div>
                             {!shouldShowVerdict ? (
-                              <Badge variant="outline" className="text-muted-foreground border-border/50 bg-secondary/20 font-bold">GİZLİ</Badge>
+                              <Badge variant="default" className="text-muted-foreground border border-border/50 bg-secondary/20 font-bold">GİZLİ</Badge>
                             ) : c.cuk_verdict === 'valid' ? (
                               <Badge variant="success">Dogru</Badge>
                             ) : c.cuk_verdict === 'invalid' ? (

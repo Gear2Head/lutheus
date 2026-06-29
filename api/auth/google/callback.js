@@ -64,7 +64,7 @@ async function fetchGoogleUser(accessToken) {
 }
 
 async function resolveRole(email) {
-    if (isOwnerIdentity({ email })) return 'kurucu';
+    if (isOwnerIdentity({ email })) return 'kidemli_discord_moderatoru';
     const { data: allowRow } = await supabase
         .from('google_allowlist')
         .select('*')

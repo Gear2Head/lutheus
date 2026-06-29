@@ -51,6 +51,48 @@
         _cachedAuthToken = null;
     }
 
+    function compressImage(blob) {
+        return new Promise((resolve) => {
+            if (!blob.type.startsWith('image/') || blob.type === 'image/gif') {
+                return resolve(blob);
+            }
+            const img = new Image();
+            img.src = URL.createObjectURL(blob);
+            img.onload = () => {
+                URL.revokeObjectURL(img.src);
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                if (!ctx) return resolve(blob);
+
+                const MAX_WIDTH = 1200;
+                const MAX_HEIGHT = 1200;
+                let width = img.width;
+                let height = img.height;
+
+                if (width > height) {
+                    if (width > MAX_WIDTH) {
+                        height *= MAX_WIDTH / width;
+                        width = MAX_WIDTH;
+                    }
+                } else {
+                    if (height > MAX_HEIGHT) {
+                        width *= MAX_HEIGHT / height;
+                        height = MAX_HEIGHT;
+                    }
+                }
+
+                canvas.width = width;
+                canvas.height = height;
+                ctx.drawImage(img, 0, 0, width, height);
+
+                canvas.toBlob((compressedBlob) => {
+                    resolve(compressedBlob || blob);
+                }, 'image/webp', 0.82);
+            };
+            img.onerror = () => resolve(blob);
+        });
+    }
+
     // ─── Supabase Storage Upload ──────────────────────────────────────
     // Discord CDN linkleri expire olabiliyor. Bu fonksiyon ile
     // kanıt görsellerini Supabase Storage'a kaydediyoruz.
@@ -58,6 +100,10 @@
         if (!discordUrl) return null;
         // Zaten storage'da ise olduğu gibi döndür
         if (discordUrl.includes('supabase.co/storage')) return discordUrl;
+        // Only upload Discord attachment/media URLs. Keep other external links (e.g. YouTube, Streamable) as original.
+        if (!discordUrl.includes('discordapp.com/') && !discordUrl.includes('discordapp.net/') && !discordUrl.includes('discord.com/')) {
+            return discordUrl;
+        }
         // 'This content is no longer available' gibi dead link kontrolu
         // Upload öncesinde GET ile erişilebilirliği test et
         try {
@@ -82,11 +128,18 @@
             // Discord CDN'den indir
             const dlRes = await fetch(discordUrl);
             if (!dlRes.ok) return null;
-            const blob = await dlRes.blob();
+            let blob = await dlRes.blob();
+            if (blob.type.startsWith('image/')) {
+                blob = await compressImage(blob);
+            }
+
+            // WebP extension if compressed
+            const finalExt = blob.type === 'image/webp' ? 'webp' : safeExt;
+            const finalFileName = `proofs/${caseId}_${Date.now()}_${index}.${finalExt}`;
 
             // Supabase Storage'a yükle
             const uploadRes = await fetch(
-                `${SUPABASE_STORAGE_URL}/object/case-proofs/${fileName}`,
+                `${SUPABASE_STORAGE_URL}/object/case-proofs/${finalFileName}`,
                 {
                     method: 'POST',
                     headers: {
@@ -623,9 +676,6 @@
                         const u = new URL(href);
                         u.searchParams.delete('width');
                         u.searchParams.delete('height');
-                        u.searchParams.delete('ex');
-                        u.searchParams.delete('is');
-                        u.searchParams.delete('hm');
                         allUrls.add(u.toString());
                     } catch (_) {
                         allUrls.add(href);

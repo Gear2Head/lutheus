@@ -1,0 +1,14 @@
+{
+  "name": "@lutheus/shared",
+  "version": "1.0.0",
+  "description": "Shared CUK rules, normalization, and role configurations for Lutheus",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "typescript": "^5.7.2"
+  }
+}

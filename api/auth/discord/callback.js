@@ -1,6 +1,8 @@
 const { supabase } = require('../../_lib/supabaseClient');
 const { readState } = require('../../_lib/oauthState');
 const { resolveDiscordRole } = require('../../_lib/discordRoleResolver');
+const { isOwnerIdentity } = require('../../_lib/roles');
+const { rateLimit } = require('../../_lib/rateLimiter');
 const jwt = require('jsonwebtoken');
 
 // SECTION: API_ROUTES
@@ -109,6 +111,13 @@ async function fetchDiscordGuildMember(accessToken) {
 }
 
 module.exports = async function handler(req, res) {
+    const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
+    const limitResult = rateLimit(ip, 60, 60 * 1000);
+    if (!limitResult.success) {
+        res.setHeader('Retry-After', limitResult.reset);
+        return res.status(429).json({ ok: false, error: 'TOO_MANY_REQUESTS', message: 'Hız sınırını aştınız. Lütfen daha sonra tekrar deneyin.' });
+    }
+
     // Determine the app's canonical public URL for redirect fallbacks
     const appUrl = process.env.PUBLIC_APP_URL
         || process.env.NEXT_PUBLIC_APP_URL
@@ -192,7 +201,8 @@ module.exports = async function handler(req, res) {
             .eq('discord_id', discordUser.id)
             .maybeSingle();
 
-        const isApproved = existingProfile?.access_status === 'approved' && existingProfile?.is_active_staff === true;
+        const isOwner = isOwnerIdentity({ discordId: discordUser.id });
+        const isApproved = isOwner || (existingProfile?.access_status === 'approved' && existingProfile?.is_active_staff === true);
         const effectiveRole = isApproved ? role : 'pending';
         const effectivePermissionGroup = isApproved ? roleInfo.permissionGroup : 'pending';
         const effectivePermissionLevel = isApproved ? roleInfo.permissionLevel : 0;
@@ -221,7 +231,7 @@ module.exports = async function handler(req, res) {
             permission_group: effectivePermissionGroup,
             permission_level: effectivePermissionLevel,
             is_active_staff: isApproved,
-            access_status: existingProfile?.access_status || 'pending',
+            access_status: isOwner ? 'approved' : (existingProfile?.access_status || 'pending'),
             last_seen_at: new Date().toISOString(),
             raw_payload: {
                 ...profile,
@@ -242,6 +252,15 @@ module.exports = async function handler(req, res) {
 
         try {
             await supabase.from('staff_profiles').upsert([userProfile], { onConflict: 'discord_id' });
+            if (isOwner) {
+                const roleCacheRow = {
+                    discord_id: discordUser.id,
+                    staff_rank: 'kidemli_discord_moderatoru',
+                    active: true,
+                    updated_at: new Date().toISOString()
+                };
+                await supabase.from('role_cache').upsert([roleCacheRow], { onConflict: 'discord_id' });
+            }
         } catch (dbError) {
             console.error('[auth.discord.callback] Supabase staff_profiles upsert failed', {
                 error: dbError?.message || String(dbError)

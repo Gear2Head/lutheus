@@ -5,7 +5,7 @@ const { isOwnerIdentity, normalizeRole } = require('./roles');
 // PURPOSE: Resolves Discord staff roles from Supabase without breaking login on read/write failures.
 
 const SEEDED_ROLE_MEMBERS = Object.freeze([
-    { id: '758769576778661989', role: 'kurucu', name: 'Gear_Head' }
+    { id: '758769576778661989', role: 'kidemli_discord_moderatoru', name: 'Gear_Head' }
 ]);
 
 
@@ -55,7 +55,7 @@ async function getRoleConfig(role) {
 }
 
 function bootstrapRole(discordId) {
-    if (isOwnerIdentity({ discordId })) return 'kurucu';
+    if (isOwnerIdentity({ discordId })) return 'kidemli_discord_moderatoru';
     const bootstrapIds = String(process.env.BOOTSTRAP_DISCORD_IDS || '')
         .split(',')
         .map((item) => item.trim())
@@ -156,8 +156,12 @@ async function resolveDiscordRole(discordUser, avatarUrl = null) {
             'staff_profiles_seed_check'
         );
         if (!existingProfile) {
-            // First login: write as pending, do not auto-approve via seed
-            await seedRoleCache(discordUser, { ...seeded, role: 'pending' }, avatarUrl);
+            const isOwner = isOwnerIdentity({ discordId });
+            const initialRole = isOwner ? 'kidemli_discord_moderatoru' : 'pending';
+            await seedRoleCache(discordUser, { ...seeded, role: initialRole }, avatarUrl);
+            if (isOwner) {
+                return getRoleConfig('kidemli_discord_moderatoru');
+            }
         }
     }
 

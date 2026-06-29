@@ -6,9 +6,9 @@ import {
   Search, RefreshCw, X, CheckCircle2, ShieldAlert, Copy, 
   ExternalLink, MessageSquare, AlertCircle, Info, 
   User, ShieldCheck, Share2, Filter, Zap, ChevronLeft, ChevronRight,
-  Eye
+  Eye, Sparkles
 } from 'lucide-react';
-import { getCases, getStaffProfiles, SapphireCase, StaffProfile, bulkUpdateVerdict, updateCaseVerdict, deleteCase, updateCasePublicStatus, bulkUpdatePublicStatus } from '../lib/supabase';
+import { getCases, getStaffProfiles, SapphireCase, StaffProfile, bulkUpdateVerdict, updateCaseVerdict, deleteCase, updateCasePublicStatus, bulkUpdatePublicStatus, getCaseProof, CaseProof } from '../lib/supabase';
 import ProofDrawer from '../components/ProofDrawer';
 import { validateCase } from '../lib/cukEngine';
 import { useAuth } from '../contexts/AuthContext';
@@ -58,6 +58,11 @@ export default function Cases() {
   const [contextMenu, setContextMenu] = useState<{ x: number, y: number, caseData: SapphireCase } | null>(null);
   const [bulkSelectStartDate, setBulkSelectStartDate] = useState('');
   const [bulkSelectEndDate, setBulkSelectEndDate] = useState('');
+  
+  // AI Sidebar & Weekly scan states
+  const [selectedCaseProof, setSelectedCaseProof] = useState<CaseProof | null>(null);
+  const [loadingSelectedProof, setLoadingSelectedProof] = useState(false);
+  const [aiScanning, setAiScanning] = useState(false);
 
   // Close context menu on window click
   useEffect(() => {
@@ -140,6 +145,71 @@ export default function Cases() {
   };
 
   useEffect(() => { loadData(); }, []);
+
+  // Fetch proof for sidebar dynamically
+  useEffect(() => {
+    if (!selectedCase?.case_id) {
+      setSelectedCaseProof(null);
+      return;
+    }
+    setLoadingSelectedProof(true);
+    getCaseProof(selectedCase.case_id).then(proofData => {
+      setSelectedCaseProof(proofData);
+    }).catch(err => {
+      console.error('Error fetching proof for sidebar:', err);
+    }).finally(() => {
+      setLoadingSelectedProof(false);
+    });
+  }, [selectedCase?.case_id]);
+
+  const runWeeklyAiScan = async () => {
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+    const weeklyCases = cases.filter(c => {
+      const createdDate = new Date(c.created_at_sapphire || '');
+      return createdDate >= sevenDaysAgo;
+    });
+
+    if (weeklyCases.length === 0) {
+      showToast('Son 7 gün içinde atılmış ceza bulunamadı.', 'info');
+      return;
+    }
+
+    setAiScanning(true);
+    showToast(`Haftalık AI Taraması başlatıldı (${weeklyCases.length} ceza)...`, 'info');
+
+    let successCount = 0;
+    let failCount = 0;
+
+    for (const c of weeklyCases) {
+      try {
+        const token = session?.idToken;
+        const baseUrl = (typeof window !== 'undefined' && window.location.protocol === 'chrome-extension:') ? 'https://lutheus.vercel.app' : '';
+        const res = await fetch(`${baseUrl}/api/ai/analyze`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`
+          },
+          body: JSON.stringify({ case_id: c.case_id, force_reanalyze: true })
+        });
+
+        if (res.ok) {
+          successCount++;
+        } else {
+          failCount++;
+        }
+      } catch (err) {
+        failCount++;
+      }
+      await new Promise(resolve => setTimeout(resolve, 800));
+    }
+
+    setAiScanning(false);
+    showToast(`AI Taraması Bitti! Başarılı: ${successCount}, Hatalı: ${failCount}`, 'success');
+    loadData(true);
+  };
 
   const staffMap = useMemo(() => {
     return new Map(staff.map(sp => [sp.discord_id, sp]));
@@ -389,6 +459,18 @@ export default function Cases() {
         </div>
         
         <div className="flex items-center gap-2">
+          {canEdit && (
+            <motion.button
+              disabled={aiScanning}
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={runWeeklyAiScan}
+              className="px-3.5 py-1.5 rounded-lg bg-[#5E5CE6]/15 hover:bg-[#5E5CE6]/25 border border-[#5E5CE6]/35 text-[#5E5CE6] text-[11px] font-black tracking-wide flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+            >
+              <Sparkles size={12} className={aiScanning ? 'animate-pulse' : ''} /> 
+              {aiScanning ? 'AI Taranıyor...' : 'Haftalık AI Taraması'}
+            </motion.button>
+          )}
           {pendingCount > 0 && canEdit && (
             <motion.button
               whileHover={{ scale: 1.02 }}
@@ -963,6 +1045,11 @@ export default function Cases() {
                             <span className={`status-badge ${statusClass} scale-90`}>
                               {!shouldShowVerdict ? 'GİZLİ' : selectedCase.cuk_verdict === 'valid' ? 'DOĞRU' : selectedCase.cuk_verdict === 'invalid' ? 'HATALI' : 'BEKLEYEN'}
                             </span>
+                            {selectedCaseProof?.ai_verdict && (
+                              <span className={`status-badge ${selectedCaseProof.ai_verdict === 'valid' ? 'success' : 'danger'} scale-90 flex items-center gap-1`}>
+                                <Sparkles size={10} /> AI: {selectedCaseProof.ai_verdict === 'valid' ? 'DOĞRU' : 'HATALI'}
+                              </span>
+                            )}
                           </div>
                           <p className="text-[11px] text-white/40 mt-0.5 tracking-wider font-mono uppercase">{selectedCase.type} • DETAYLAR</p>
                         </div>
@@ -1105,6 +1192,18 @@ export default function Cases() {
                         }
                         return null;
                       })()}
+                      
+                      {selectedCaseProof?.ai_analysis && (
+                        <div className="bg-[#5E5CE6]/[0.02] border border-[#5E5CE6]/10 rounded-xl p-3 flex flex-col gap-1.5 relative overflow-hidden">
+                          <div className="absolute top-0 right-0 w-16 h-16 bg-[#5E5CE6]/3 rounded-full filter blur-md pointer-events-none" />
+                          <span className="text-[9px] font-bold text-[#5E5CE6] uppercase tracking-wider flex items-center gap-1">
+                            <Sparkles size={10} /> AI Gerekçesi (Vision OCR)
+                          </span>
+                          <p className="text-[12px] text-white/70 leading-relaxed font-medium">
+                            {selectedCaseProof.ai_analysis}
+                          </p>
+                        </div>
+                      )}
                     </div>
                   </div>
                   </motion.div>

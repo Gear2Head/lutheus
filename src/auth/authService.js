@@ -108,7 +108,7 @@ function roleIdentityKeys(profile) {
 }
 
 async function resolveRole(profile, token = null) {
-    if (isOwnerIdentity(profile)) return ROLES.KURUCU;
+    if (isOwnerIdentity(profile)) return ROLES.KIDEMLI_DISCORD_MODERATORU;
     if (profile.provider === 'google') {
         const allow = await FirebaseRepository.getGoogleAllowlist(profile.email, token);
         if (!allow?.allowed) {
@@ -151,7 +151,7 @@ async function signInWithCustomToken(customToken, oauthProfile = {}) {
     };
     const serverRole = getJwtAppRole(tokenClaims) || oauthProfile.role || null;
     const role = isOwnerIdentity(profile)
-        ? ROLES.KURUCU
+        ? ROLES.KIDEMLI_DISCORD_MODERATORU
         : serverRole
         ? normalizeRole(serverRole)
         : await resolveRole(profile, customToken).catch((error) => {
@@ -213,8 +213,8 @@ export const AuthService = {
         const session = await getStoredSession();
         if (!session) return null;
         if (isOwnerIdentity(session.profile)) {
-            session.role = ROLES.KURUCU;
-            session.profile = { ...(session.profile || {}), role: ROLES.KURUCU, status: 'active' };
+            session.role = ROLES.KIDEMLI_DISCORD_MODERATORU;
+            session.profile = { ...(session.profile || {}), role: ROLES.KIDEMLI_DISCORD_MODERATORU, status: 'active' };
         }
         if (refresh && isSessionExpired(session) && session.refreshToken) {
             return refreshSession(session).catch(async () => {

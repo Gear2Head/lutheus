@@ -9,6 +9,7 @@
     "start": "node dist/index.js"
   },
   "dependencies": {
+    "@lutheus/shared": "*",
     "@supabase/supabase-js": "^2.106.2",
     "discord.js": "^14.26.4",
     "firebase-admin": "^13.0.2",

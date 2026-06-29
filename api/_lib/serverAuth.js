@@ -88,12 +88,10 @@ async function resolveActorFromToken(req) {
 
     let role = null;
     let source = 'none';
-
     if (isOwnerIdentity({ email, discordId })) {
-        role = 'kurucu';
+        role = 'kidemli_discord_moderatoru';
         source = 'ownerIdentity';
     }
-
     // 2. googleAllowlist check
     if (!role && email) {
         const allowRow = await maybeSingleSafe(supabase

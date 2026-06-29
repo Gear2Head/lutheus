@@ -58,6 +58,8 @@ import { CezalarCommand, buildCasesMessage } from './commands/cases.js';
 import { startNotificationBroker } from './services/NotificationBroker.js';
 import { validateCase, parseDuration } from './lib/cukEngine.js';
 
+const FOUNDER_DISCORD_IDS = ['758769576778661989'];
+
 // In-memory cache for dynamic guild configurations to power real-time welcome, automod, reaction roles etc.
 const guildConfigsCache: Record<string, any> = {};
 
@@ -443,22 +445,29 @@ async function syncModeratorProfiles(actor = 'system') {
                     updated_at: new Date().toISOString()
                 }).eq('discord_id', discordId);
 
+                const isOwner = FOUNDER_DISCORD_IDS.includes(discordId);
+                if (isOwner && row.staff_rank !== 'kidemli_discord_moderatoru') {
+                    await supabase.from('role_cache').update({ staff_rank: 'kidemli_discord_moderatoru', active: true }).eq('discord_id', discordId);
+                    row.staff_rank = 'kidemli_discord_moderatoru';
+                }
+
                 const { data: existingProfile } = await supabase.from('staff_profiles').select('*').eq('discord_id', discordId).maybeSingle();
 
-                const accessStatus = existingProfile?.access_status || 'pending';
-                const isApproved = accessStatus === 'approved';
+                const accessStatus = isOwner ? 'approved' : (existingProfile?.access_status || 'pending');
+                const isApproved = isOwner || accessStatus === 'approved';
+                const staffRank = isOwner ? 'kidemli_discord_moderatoru' : row.staff_rank;
 
                 const profileUpdate = {
                     discord_id: discordId,
                     display_name: displayName,
                     username: user.username,
                     avatar_url: avatarUrl,
-                    staff_rank: row.staff_rank,
+                    staff_rank: staffRank,
                     permission_group: isApproved
-                        ? (row.staff_rank === 'admin' ? 'admin' : (row.staff_rank === 'yonetici' ? 'management' : 'moderator'))
+                        ? (staffRank === 'kurucu' ? 'owner' : (staffRank === 'admin' ? 'admin' : (staffRank === 'yonetici' ? 'management' : (staffRank === 'kidemli_discord_moderatoru' ? 'management' : 'moderator'))))
                         : 'pending',
                     permission_level: isApproved
-                        ? (row.staff_rank === 'admin' ? 100 : (row.staff_rank === 'yonetici' ? 80 : 50))
+                        ? (staffRank === 'kurucu' ? 100 : (staffRank === 'admin' ? 100 : (staffRank === 'yonetici' ? 80 : (staffRank === 'kidemli_discord_moderatoru' ? 100 : 50))))
                         : 0,
                     is_active_staff: isApproved,
                     access_status: accessStatus,
@@ -1306,6 +1315,81 @@ async function handleUserXPGain(message: any) {
     }
 }
 
+client.on('guildMemberUpdate', async (oldMember, newMember) => {
+    // Check if roles have changed
+    if (oldMember.roles.cache.size === newMember.roles.cache.size && 
+        oldMember.roles.cache.every(role => newMember.roles.cache.has(role.id))) {
+        return;
+    }
+
+    const discordId = newMember.id;
+    // Check if user is in role_cache table
+    const { data: cachedRow } = await supabase
+        .from('role_cache')
+        .select('*')
+        .eq('discord_id', discordId)
+        .maybeSingle();
+
+    if (!cachedRow) return;
+
+    const roleMappings: Record<string, string> = {
+        'kurucu': 'kurucu',
+        'admin': 'admin',
+        'yönetici': 'yonetici',
+        'yonetici': 'yonetici',
+        'genel sorumlu': 'genel_sorumlu',
+        'genel_sorumlu': 'genel_sorumlu',
+        'discord yöneticisi': 'discord_yoneticisi',
+        'discord_yoneticisi': 'discord_yoneticisi',
+        'kıdemli': 'kidemli_discord_moderatoru',
+        'kidemli': 'kidemli_discord_moderatoru',
+        'kidemli discord moderatörü': 'kidemli_discord_moderatoru',
+        'kidemli_discord_moderatoru': 'kidemli_discord_moderatoru',
+        'senior moderator': 'senior_moderator',
+        'senior_moderator': 'senior_moderator',
+        'moderatör': 'discord_moderatoru',
+        'moderator': 'discord_moderatoru',
+        'destek ekibi': 'discord_destek_ekibi',
+        'destek_ekibi': 'discord_destek_ekibi',
+    };
+
+    let resolvedRank = 'pending';
+    for (const [discordRoleName, rankKey] of Object.entries(roleMappings)) {
+        if (newMember.roles.cache.some(r => r.name.toLowerCase().includes(discordRoleName))) {
+            resolvedRank = rankKey;
+            break;
+        }
+    }
+
+    if (FOUNDER_DISCORD_IDS.includes(discordId)) {
+        resolvedRank = 'kidemli_discord_moderatoru';
+    }
+
+    if (resolvedRank !== 'pending' && resolvedRank !== cachedRow.staff_rank) {
+        console.log(`[RoleSync] Role change detected for ${newMember.user.tag} (${discordId}): ${cachedRow.staff_rank} -> ${resolvedRank}`);
+        
+        await supabase.from('role_cache').update({
+            staff_rank: resolvedRank,
+            updated_at: new Date().toISOString()
+        }).eq('discord_id', discordId);
+
+        const { data: existingProfile } = await supabase.from('staff_profiles').select('*').eq('discord_id', discordId).maybeSingle();
+        if (existingProfile) {
+            const isApproved = existingProfile.access_status === 'approved' || FOUNDER_DISCORD_IDS.includes(discordId);
+            await supabase.from('staff_profiles').update({
+                staff_rank: resolvedRank,
+                permission_group: isApproved
+                    ? (resolvedRank === 'kurucu' ? 'owner' : (resolvedRank === 'admin' ? 'admin' : (resolvedRank === 'yonetici' ? 'management' : (resolvedRank === 'kidemli_discord_moderatoru' ? 'management' : 'moderator'))))
+                    : 'pending',
+                permission_level: isApproved
+                    ? (resolvedRank === 'kurucu' ? 100 : (resolvedRank === 'admin' ? 100 : (resolvedRank === 'yonetici' ? 80 : (resolvedRank === 'kidemli_discord_moderatoru' ? 100 : 50))))
+                    : 0,
+                updated_at: new Date().toISOString()
+            }).eq('discord_id', discordId);
+        }
+    }
+});
+
 // SECTION: BOT_DM_HANDLER
 // PURPOSE: Discord DM kanallarından gelen yetkili sorgularını işler. Groq AI ile CUK denetimi,
 // Pointtrain sorgulama ve kota yönetimini sağlar.
@@ -1329,13 +1413,14 @@ async function handleDmMessage(message: any): Promise<void> {
         .eq('discord_id', discordId)
         .maybeSingle();
 
-    if (profileErr || !staffProfile || !staffProfile.is_active_staff || staffProfile.access_status !== 'approved') {
+    const isOwner = FOUNDER_DISCORD_IDS.includes(discordId);
+    if (!isOwner && (profileErr || !staffProfile || !staffProfile.is_active_staff || staffProfile.access_status !== 'approved')) {
         // Yetkili değil veya aktif değil → sessiz kal
         return;
     }
 
-    const role = normalizeRole(staffProfile.staff_rank || 'pending');
-    const displayName = staffProfile.display_name || message.author.username;
+    const role = isOwner ? 'kurucu' : normalizeRole(staffProfile?.staff_rank || 'pending');
+    const displayName = staffProfile?.display_name || message.author.username;
     const content = message.content?.trim() || '';
     const attachments = Array.from(message.attachments?.values() || []);
     const imageAttachment = attachments.find((a: any) => a.contentType?.startsWith('image/')) as any;
@@ -1641,7 +1726,8 @@ client.on('interactionCreate', async (interaction) => {
                     .maybeSingle();
                 
                 const approverRank = approverProfile ? approverProfile.staff_rank : 'pending';
-                const isAuthorized = approverProfile && approverProfile.access_status === 'approved' && isUstYonetim(approverRank);
+                const isOwner = FOUNDER_DISCORD_IDS.includes(interaction.user.id);
+                const isAuthorized = isOwner || (approverProfile && approverProfile.access_status === 'approved' && isUstYonetim(approverRank));
                 
                 if (!isAuthorized) {
                     await interaction.reply({ content: '❌ Bu işlemi yapmaya yetkiniz yok!', ephemeral: true });
@@ -1749,7 +1835,8 @@ client.on('interactionCreate', async (interaction) => {
                     .maybeSingle();
                 
                 const approverRank = approverProfile ? approverProfile.staff_rank : 'pending';
-                const isAuthorized = approverProfile && approverProfile.access_status === 'approved' && isUstYonetim(approverRank);
+                const isOwner = FOUNDER_DISCORD_IDS.includes(interaction.user.id);
+                const isAuthorized = isOwner || (approverProfile && approverProfile.access_status === 'approved' && isUstYonetim(approverRank));
                 
                 if (!isAuthorized) {
                     await interaction.reply({ content: '❌ Bu işlemi yapmaya yetkiniz yok!', ephemeral: true });
@@ -2221,7 +2308,8 @@ client.on('interactionCreate', async (interaction) => {
                     .maybeSingle();
                 
                 const approverRank = approverProfile ? approverProfile.staff_rank : 'pending';
-                const isAuthorized = approverProfile && approverProfile.access_status === 'approved' && isUstYonetim(approverRank);
+                const isOwner = FOUNDER_DISCORD_IDS.includes(interaction.user.id);
+                const isAuthorized = isOwner || (approverProfile && approverProfile.access_status === 'approved' && isUstYonetim(approverRank));
                 
                 if (!isAuthorized) {
                     await interaction.reply({ content: '❌ Bu işlemi yapmaya yetkiniz yok!', ephemeral: true });

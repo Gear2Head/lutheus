@@ -1,8 +1,3 @@
-/**
- * Deterministic CUK (Ceza Uygulama Kitapçığı) Engine v2
- * Exact port from public/auth/rolePolicy.js + src/lib/cukEngine.js
- */
-
 export const ROLE_HIERARCHY: Record<string, number> = {
   kurucu: 100,
   admin: 100,
@@ -126,6 +121,14 @@ export function getRuleDetails(reasonRaw: string): {
     return { category: 'Yetkililere Saygısızlık', degree: null, allowedMinutes: [720, 1440, 2880, 0] };
   }
 
+  // 8. Küfür / Hakaret
+  if (match(['cinsellik', 'cinsel', 'fantezi', 'sex', 'nsfw', 'sikerim', 'götünü', 'amını', 'şişe'])) {
+    return { category: 'Küfür/Hakaret', degree: 2, allowedMinutes: [720, 1440, 2880, 0] };
+  }
+  if (match(['küfür', 'argo', 'uygunsuz', 'kelime', 'mesaj', 'içerik', 'amk', 'amınakoyum', 'hassiktir', 'vay amk'])) {
+    return { category: 'Küfür/Hakaret', degree: 1, allowedMinutes: [15, 30, 60, 120, 240, 480, 960, 1920, 0] };
+  }
+
   // 7. Oyunculara Saygısızlık
   if (match(['oyuncu', 'şahsa', 'kişiye', 'üyeye', 'saygısızlık', 'hakaret', 'aptal', 'mal', 'salak', 'beyin yok', 'geri zekâlı', 'aile', 'ailevi', 'anne', 'baba', 'ananı', 'anneniz', 'orospu', 'troll', 'toxic', 'toksik', 'rahatsız', 'kitle', 'topluluk', 'herkes'])) {
     if (match(['aile', 'ailevi', 'anne', 'baba', 'ananı', 'anneniz', 'orospu'])) {
@@ -139,14 +142,6 @@ export function getRuleDetails(reasonRaw: string): {
     }
     // Default Şahsa Edilmiş Hakaret
     return { category: 'Oyunculara Saygısızlık', degree: 1, allowedMinutes: [180, 360, 720, 0] };
-  }
-
-  // 8. Küfür / Hakaret
-  if (match(['cinsellik', 'cinsel', 'fantezi', 'sex', 'nsfw', 'sikerim', 'götünü', 'amını', 'şişe'])) {
-    return { category: 'Küfür/Hakaret', degree: 2, allowedMinutes: [720, 1440, 2880, 0] };
-  }
-  if (match(['küfür', 'argo', 'uygunsuz', 'kelime', 'mesaj', 'içerik', 'amk', 'amınakoyum', 'hassiktir', 'vay amk'])) {
-    return { category: 'Küfür/Hakaret', degree: 1, allowedMinutes: [15, 30, 60, 120, 240, 480, 960, 1920, 0] };
   }
 
   // 9. Sunucu Dinamiği
@@ -239,57 +234,131 @@ export function validateCase(reasonRaw: string, durationMinutes?: number | null)
   };
 }
 
-export function calculatePerformanceScore(validCount: number, invalidCount: number, pendingCount: number): number {
-  return validCount * 2 - invalidCount * 3 - pendingCount;
+export function parseDuration(durationStr: string | null | undefined): number | null {
+  if (durationStr === null || durationStr === undefined || durationStr === '') return null;
+
+  let str = String(durationStr).toLowerCase().trim();
+
+  const index = str.search(/\b(in|kalan)\b/i);
+  if (index !== -1) {
+    str = str.substring(0, index).trim();
+  }
+  str = str.replace(/\s*\(\s*$/, '').trim();
+
+  if (str.includes('süresiz') || str.includes('perma') || str.includes('sonsuz') || str.includes('perm') || str.includes('belirsiz') || str.includes('kalıcı') || str.includes('kalici') || str.includes('permanent')) {
+    return Infinity;
+  }
+
+  const patterns = [
+    { regex: /(\d+)\s*(saniye|sec|seconds?|sn|s)(?![a-zA-ZçğıöşüÇĞIÖŞÜ])/i, multiplier: 1 / 60 },
+    { regex: /(\d+)\s*(dakika|min|minutes?|dk|m)(?![a-zA-ZçğıöşüÇĞIÖŞÜ])/i, multiplier: 1 },
+    { regex: /(\d+)\s*(saat|hours?|hour|sa|h)(?![a-zA-ZçğıöşüÇĞIÖŞÜ])/i, multiplier: 60 },
+    { regex: /(\d+)\s*(gün|gun|days?|day|g|d)(?![a-zA-ZçğıöşüÇĞIÖŞÜ])/i, multiplier: 60 * 24 },
+    { regex: /(\d+)\s*(hafta|weeks?|week|hf|w)(?![a-zA-ZçğıöşüÇĞIÖŞÜ])/i, multiplier: 60 * 24 * 7 },
+    { regex: /(\d+)\s*(ay|months?|month)(?![a-zA-ZçğıöşüÇĞIÖŞÜ])/i, multiplier: 60 * 24 * 30 },
+    { regex: /(\d+)\s*(yıl|yil|sene|years?|year|y)(?![a-zA-ZçğıöşüÇĞIÖŞÜ])/i, multiplier: 60 * 24 * 365 }
+  ];
+
+  let totalMinutes = 0;
+  let found = false;
+
+  for (const { regex, multiplier } of patterns) {
+    const matches = [...str.matchAll(new RegExp(regex.source, 'gi'))];
+    for (const match of matches) {
+      totalMinutes += parseInt(match[1]) * multiplier;
+      found = true;
+    }
+  }
+
+  if (str.includes('99 year') || str.includes('99 yıl') || str.includes('99 sene') || str.includes('99y')) return Infinity;
+
+  return found ? totalMinutes : null;
 }
 
-export function getReliabilityStatus(validCount: number, invalidCount: number): string {
-  const total = validCount + invalidCount;
-  if (total === 0) return 'Bekleyen';
-  const acc = (validCount / total) * 100;
-  if (acc >= 70) return 'Guvenilir';
-  if (acc >= 50) return 'Izlemede';
+export function formatDuration(minutes: number | null | undefined): string {
+  if (minutes === null || minutes === undefined) return 'Belirsiz';
+  if (minutes === Infinity || minutes > 50000000) return 'Süresiz';
+
+  if (minutes < 1) return `${Math.round(minutes * 60)} saniye`;
+  if (minutes < 60) return `${Math.round(minutes)} dakika`;
+  if (minutes < 60 * 24) return `${Math.round(minutes / 60)} saat`;
+  if (minutes < 60 * 24 * 7) return `${Math.round(minutes / (60 * 24))} gün`;
+  if (minutes < 60 * 24 * 30) return `${Math.round(minutes / (60 * 24 * 7))} hafta`;
+  if (minutes < 60 * 24 * 365) return `${Math.round(minutes / (60 * 24 * 30))} ay`;
+  return `${Math.round(minutes / (60 * 24 * 365))} yıl`;
+}
+
+// Role helpers
+export function normalizeRole(role: string): string {
+  return String(role || 'pending').trim().toLowerCase()
+    .replace(/i̇/g, 'i').replace(/ı/g, 'i')
+    .replace(/ğ/g, 'g').replace(/ü/g, 'u')
+    .replace(/ş/g, 's').replace(/ö/g, 'o')
+    .replace(/ç/g, 'c')
+    .replace(/\s+/g, '_');
+}
+
+export const UST_YONETIM_ROLLERI = [
+  'kurucu',
+  'admin',
+  'yonetici',
+  'genel_sorumlu',
+  'discord_yoneticisi',
+  'senior_moderator',
+  'kidemli',
+  'kidemli_discord_moderatoru'
+];
+
+export function isUstYonetim(role: string): boolean {
+  return UST_YONETIM_ROLLERI.includes(normalizeRole(role));
+}
+
+export function getReliabilityStatus(param1: number, param2: number): string {
+  if (param1 <= 100 && param2 > 0 && param1 + param2 !== param2) {
+    if (param1 >= 95) return 'Guvenilir';
+    if (param1 >= 80) return 'Izlemede';
+    return 'Riskli';
+  }
+  const total = param1 + param2;
+  if (total === 0) return 'Izlemede';
+  const validPercent = (param1 / total) * 100;
+  if (validPercent >= 95) return 'Guvenilir';
+  if (validPercent >= 80) return 'Izlemede';
   return 'Riskli';
 }
 
-export type DurationVerdict = 'valid' | 'invalid' | 'pending' | 'manual';
-
-export interface ValidDurationsResult {
-  category: string | null;
-  degree: number | null;
-  allowedMinutes: number[];
-  allowedLabels: string[];
-  minMinutes: number | null;
-  maxMinutes: number | null;
-  isPermanentAllowed: boolean;
-  currentMinutes: number | null;
-  verdict: DurationVerdict;
-  message: string;
+export function calculatePerformanceScore(
+  validOrCounts: number | { valid?: number; invalid?: number; pending?: number },
+  invalid?: number,
+  pending?: number
+): number {
+  let v = 0;
+  let inv = 0;
+  let p = 0;
+  if (typeof validOrCounts === 'object' && validOrCounts !== null) {
+    v = validOrCounts.valid || 0;
+    inv = validOrCounts.invalid || 0;
+    p = validOrCounts.pending || 0;
+  } else {
+    v = Number(validOrCounts || 0);
+    inv = Number(invalid || 0);
+    p = Number(pending || 0);
+  }
+  return (v * 2) - (inv * 3) - (p * 1);
 }
 
-function minutesToLabel(mins: number): string {
-  if (mins === 0 || mins === Infinity || mins > 50000000) return 'Süresiz';
-  if (mins < 60) return `${mins} dk`;
-  if (mins < 60 * 24) return `${Math.round(mins / 60)} saat`;
-  if (mins < 60 * 24 * 7) return `${Math.round(mins / (60 * 24))} gün`;
-  return `${Math.round(mins / (60 * 24 * 7))} hafta`;
-}
+export function getValidDurationsForCase(caseData: any = {}) {
+  const reasonRaw = caseData.reason ?? caseData.reason_raw ?? '';
+  const reason = typeof reasonRaw === 'object' && reasonRaw
+    ? String(reasonRaw.raw || reasonRaw.normalized || '').trim()
+    : String(reasonRaw || '').trim();
+  const duration = caseData.duration ?? caseData.duration_raw ?? '';
+  const durationMinutes = caseData.durationMinutes !== undefined
+    ? caseData.durationMinutes
+    : parseDuration(duration);
 
-export function getValidDurationsForCase(input: {
-  reason_raw?: string;
-  duration_ms?: number | null;
-  is_permanent?: boolean;
-  type?: string;
-}): ValidDurationsResult {
-  const reason = (input.reason_raw || '').trim();
-  const durationMins = input.is_permanent
-    ? 0
-    : input.duration_ms != null
-      ? Math.floor(input.duration_ms / 60000)
-      : 0;
-
-  const result = validateCase(reason, durationMins);
   const rule = getRuleDetails(reason);
+  const result = validateCase(reason, durationMinutes);
 
   if (!rule.category) {
     return {
@@ -300,9 +369,9 @@ export function getValidDurationsForCase(input: {
       minMinutes: null,
       maxMinutes: null,
       isPermanentAllowed: false,
-      currentMinutes: durationMins,
+      currentMinutes: durationMinutes,
       verdict: 'pending',
-      message: result.message,
+      message: result.message
     };
   }
 
@@ -315,23 +384,22 @@ export function getValidDurationsForCase(input: {
       minMinutes: null,
       maxMinutes: null,
       isPermanentAllowed: true,
-      currentMinutes: durationMins,
+      currentMinutes: durationMinutes,
       verdict: 'valid',
-      message: result.message,
+      message: result.message
     };
   }
 
   const allowedMinutes = rule.allowedMinutes.filter((m) => m > 0);
   const isPermanentAllowed = rule.allowedMinutes.includes(0);
   const allowedLabels = [
-    ...allowedMinutes.map(minutesToLabel),
-    ...(isPermanentAllowed ? ['Süresiz / Ban'] : []),
+    ...allowedMinutes.map((m) => formatDuration(m)),
+    ...(isPermanentAllowed ? ['Süresiz / Ban'] : [])
   ];
 
-  let verdict: DurationVerdict = 'manual';
+  let verdict = 'pending';
   if (result.valid) verdict = 'valid';
-  else if (result.score === 0 && result.message.includes('Geçersiz')) verdict = 'invalid';
-  else if (!reason) verdict = 'pending';
+  else verdict = 'invalid';
 
   const finite = allowedMinutes.filter((m) => m > 0);
   return {
@@ -342,8 +410,8 @@ export function getValidDurationsForCase(input: {
     minMinutes: finite.length ? Math.min(...finite) : null,
     maxMinutes: finite.length ? Math.max(...finite) : null,
     isPermanentAllowed,
-    currentMinutes: durationMins,
+    currentMinutes: durationMinutes,
     verdict,
-    message: result.message,
+    message: result.message
   };
 }

@@ -15,8 +15,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="tr">
-      <body className="antialiased min-h-screen bg-[#0b0c10] text-[#f5f5f7]">
+    <html lang="tr" style={{ backgroundColor: "#080a0e" }}>
+      <body className="antialiased min-h-screen" style={{ backgroundColor: "var(--bg)", color: "var(--text-main)" }}>
         <ThemeProvider>
           {children}
         </ThemeProvider>

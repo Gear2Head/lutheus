@@ -1,84 +1,256 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,300;0,14..32,400;0,14..32,500;0,14..32,600;0,14..32,700;1,14..32,400&family=JetBrains+Mono:wght@400;500&display=swap');
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+/* ============================================================
+   DESIGN TOKENS — Lutheus Dashboard
+   Color Palette: 5 colors max
+   1. --bg           Deep near-black base
+   2. --surface      Soft elevated card surface
+   3. --border       Subtle separator
+   4. --accent       Teal/cyan primary accent
+   5. --text-main    High-contrast foreground
+   ============================================================ */
+
 :root {
-  --bg: #050505;
-  --surface: rgba(20, 20, 22, 0.6);
-  --surface-hover: rgba(40, 40, 45, 0.6);
-  --border: rgba(255, 255, 255, 0.06);
-  --text-main: #F5F5F7;
-  --text-muted: rgba(235, 235, 245, 0.5);
-  --accent: #5E5CE6;
-  --success: #32D74B;
-  --warning: #FF9F0A;
-  --danger: #FF453A;
+  /* Backgrounds */
+  --bg: #080a0e;
+  --surface: rgba(16, 20, 28, 0.72);
+  --surface-solid: #10141c;
+  --surface-hover: rgba(22, 28, 38, 0.85);
+  --surface-active: rgba(30, 38, 52, 0.9);
+
+  /* Borders */
+  --border: rgba(255, 255, 255, 0.055);
+  --border-soft: rgba(255, 255, 255, 0.038);
+  --border-accent: rgba(102, 252, 241, 0.22);
+
+  /* Typography */
+  --text-main: #f0f2f5;
+  --text-secondary: rgba(220, 225, 235, 0.7);
+  --text-muted: rgba(180, 190, 205, 0.42);
+
+  /* Accent — teal/cyan */
+  --accent: #66fcf1;
+  --accent-dim: rgba(102, 252, 241, 0.12);
+  --accent-glow: rgba(102, 252, 241, 0.06);
+
+  /* Semantic colors */
+  --success: #34d399;
+  --success-dim: rgba(52, 211, 153, 0.12);
+  --warning: #fbbf24;
+  --warning-dim: rgba(251, 191, 36, 0.12);
+  --danger: #f87171;
+  --danger-dim: rgba(248, 113, 113, 0.12);
+  --info: #60a5fa;
+  --info-dim: rgba(96, 165, 250, 0.12);
+
+  /* Radius */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.45), 0 2px 6px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 10px 40px rgba(0, 0, 0, 0.5), 0 4px 12px rgba(0, 0, 0, 0.3);
+  --shadow-glow: 0 0 20px rgba(102, 252, 241, 0.08);
+}
+
+/* ============================================================
+   BASE
+   ============================================================ */
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html {
+  background-color: var(--bg);
 }
 
 body {
   background-color: var(--bg);
-  background-image: url('/background.png');
-  background-size: cover;
-  background-position: center;
-  background-attachment: fixed;
   color: var(--text-main);
-  font-family: 'Inter', -apple-system, system-ui, sans-serif;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  font-size: 13px;
+  line-height: 1.5;
   margin: 0;
-  overflow: hidden; 
-  font-size: 13px; 
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
 }
 
-/* Base App Background Overlay to dim the background image slightly */
-.bg-overlay {
-  position: absolute;
-  inset: 0;
-  background: radial-gradient(circle at 50% 0%, rgba(94, 92, 230, 0.05) 0%, transparent 50%),
-              radial-gradient(circle at 50% 100%, rgba(50, 215, 75, 0.02) 0%, transparent 50%),
-              rgba(5, 5, 5, 0.7);
-  z-index: -1;
-  pointer-events: none;
-}
+/* ============================================================
+   COMPONENT CLASSES
+   ============================================================ */
 
-.compact-glass {
+/* Glass panel — core elevated surface */
+.glass-panel {
   background: var(--surface);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(16px) saturate(1.4);
+  -webkit-backdrop-filter: blur(16px) saturate(1.4);
   border: 1px solid var(--border);
-  box-shadow: 0 4px 24px -2px rgba(0, 0, 0, 0.2);
+  box-shadow: var(--shadow-sm);
 }
 
-.clean-input {
-  background: transparent;
-  border: none;
-  outline: none;
-  color: var(--text-main);
+.glass-panel-strong {
+  background: rgba(14, 18, 26, 0.85);
+  backdrop-filter: blur(24px) saturate(1.6);
+  -webkit-backdrop-filter: blur(24px) saturate(1.6);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-md);
 }
-.clean-input::placeholder {
+
+/* Accent glow surface */
+.surface-accent {
+  background: var(--accent-dim);
+  border: 1px solid var(--border-accent);
+}
+
+/* ============================================================
+   NAV ITEM PATTERNS
+   ============================================================ */
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  font-weight: 500;
   color: var(--text-muted);
+  transition: background 0.15s ease, color 0.15s ease;
+  cursor: pointer;
+  text-decoration: none;
+  white-space: nowrap;
+  overflow: hidden;
 }
 
-::-webkit-scrollbar { width: 4px; height: 4px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.15); border-radius: 4px; }
-::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.25); }
-.hide-scrollbar::-webkit-scrollbar { display: none; }
-.hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+.nav-item:hover {
+  background: var(--surface-hover);
+  color: var(--text-secondary);
+}
 
-.status-badge {
+.nav-item.active {
+  background: var(--accent-dim);
+  color: var(--accent);
+  font-weight: 600;
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+/* ============================================================
+   STATUS BADGES
+   ============================================================ */
+
+.badge {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
+  gap: 4px;
   padding: 2px 8px;
   border-radius: 6px;
   font-size: 10px;
   font-weight: 600;
+  letter-spacing: 0.4px;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
 }
-.status-badge.success { color: var(--success); background: rgba(50, 215, 75, 0.1); border: 1px solid rgba(50, 215, 75, 0.2); }
-.status-badge.danger { color: var(--danger); background: rgba(255, 69, 58, 0.1); border: 1px solid rgba(255, 69, 58, 0.2); }
-.status-badge.warning { color: var(--warning); background: rgba(255, 159, 10, 0.1); border: 1px solid rgba(255, 159, 10, 0.2); }
-.status-badge.neutral { color: var(--text-muted); background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); }
+
+.badge-success { color: var(--success); background: var(--success-dim); }
+.badge-warning { color: var(--warning); background: var(--warning-dim); }
+.badge-danger  { color: var(--danger);  background: var(--danger-dim); }
+.badge-info    { color: var(--info);    background: var(--info-dim); }
+.badge-accent  { color: var(--accent);  background: var(--accent-dim); }
+.badge-neutral { color: var(--text-muted); background: rgba(255,255,255,0.05); }
+
+/* ============================================================
+   INPUTS
+   ============================================================ */
+
+.input-base {
+  background: rgba(10, 14, 20, 0.6);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-main);
+  font-size: 13px;
+  padding: 8px 12px;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  width: 100%;
+}
+
+.input-base::placeholder { color: var(--text-muted); }
+.input-base:focus {
+  border-color: var(--border-accent);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+
+/* ============================================================
+   SCROLLBARS
+   ============================================================ */
+
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.1); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.18); }
+
+.hide-scrollbar::-webkit-scrollbar { display: none; }
+.hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* ============================================================
+   ANIMATIONS
+   ============================================================ */
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes glow-pulse {
+  0%, 100% { box-shadow: 0 0 12px rgba(102, 252, 241, 0.12); }
+  50%       { box-shadow: 0 0 24px rgba(102, 252, 241, 0.22); }
+}
+
+.animate-fade-in  { animation: fade-in 0.25s ease both; }
+.animate-slide-up { animation: slide-up 0.3s ease both; }
+.animate-glow     { animation: glow-pulse 2.5s ease-in-out infinite; }
+
+/* ============================================================
+   MISC UTILITY
+   ============================================================ */
+
+.text-accent   { color: var(--accent); }
+.text-success  { color: var(--success); }
+.text-warning  { color: var(--warning); }
+.text-danger   { color: var(--danger); }
+.text-info     { color: var(--info); }
+.text-muted-fg { color: var(--text-muted); }
+
+.bg-surface       { background: var(--surface-solid); }
+.bg-surface-hover { background: var(--surface-hover); }
+.border-default   { border-color: var(--border); }
+
+/* Compact text — JetBrains Mono for code-like labels */
+.font-mono-sm {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 0.3px;
+}
+
+/* Section dividers */
+.section-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  padding: 0 12px;
+  margin-bottom: 4px;
+}

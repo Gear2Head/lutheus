@@ -1,7 +1,7 @@
 "use client";
 
 // SECTION: ROUTER_SETUP
-// PURPOSE: Sidebar navigation mimicking Sapphire's side-bar style but using Lutheus themes.
+// PURPOSE: Sidebar navigation — clean modern layout with smooth active states and collapsible mode.
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -21,8 +21,14 @@ import {
   FolderLock,
   ChevronLeft,
   ChevronRight,
-  ClipboardList
+  ClipboardList,
 } from "lucide-react";
+
+interface MenuItem {
+  name: string;
+  tab: string;
+  icon: React.ComponentType<{ className?: string; style?: React.CSSProperties }>;
+}
 
 export function GuildSidebar() {
   const searchParams = useSearchParams();
@@ -31,27 +37,26 @@ export function GuildSidebar() {
 
   const guildId = selectedGuild?.id || "default";
 
-  // Menu lists
-  const primaryMenu = [
-    { name: "Home", tab: "home", icon: Home },
-    { name: "General Settings", tab: "general-settings", icon: Settings },
-    { name: "Commands", tab: "commands", icon: Terminal },
-    { name: "Messages", tab: "messages", icon: MessageSquare },
-    { name: "Custom Branding", tab: "custom-branding", icon: Sparkles },
+  const primaryMenu: MenuItem[] = [
+    { name: "Anasayfa", tab: "home", icon: Home },
+    { name: "Genel Ayarlar", tab: "general-settings", icon: Settings },
+    { name: "Komutlar", tab: "commands", icon: Terminal },
+    { name: "Mesajlar", tab: "messages", icon: MessageSquare },
+    { name: "Marka", tab: "custom-branding", icon: Sparkles },
   ];
 
-  const modulesMenu = [
-    { name: "Auto Moderation", tab: "auto-moderation", icon: ShieldAlert },
-    { name: "Moderation", tab: "moderation", icon: Hammer },
-    { name: "Social Notifications", tab: "social-notifications", icon: Bell },
-    { name: "Join Roles", tab: "join-roles", icon: UserPlus },
-    { name: "Reaction Roles", tab: "reaction-roles", icon: Smile },
-    { name: "Welcome Messages", tab: "welcome-messages", icon: MessageSquare },
-    { name: "Role Connections", tab: "role-connections", icon: FolderLock },
-    { name: "Logging", tab: "logging", icon: ClipboardList },
+  const modulesMenu: MenuItem[] = [
+    { name: "Oto Moderasyon", tab: "auto-moderation", icon: ShieldAlert },
+    { name: "Moderasyon", tab: "moderation", icon: Hammer },
+    { name: "Bildirimler", tab: "social-notifications", icon: Bell },
+    { name: "Katılım Rolleri", tab: "join-roles", icon: UserPlus },
+    { name: "Tepki Rolleri", tab: "reaction-roles", icon: Smile },
+    { name: "Hoş Geldin", tab: "welcome-messages", icon: MessageSquare },
+    { name: "Rol Bağlantıları", tab: "role-connections", icon: FolderLock },
+    { name: "Loglama", tab: "logging", icon: ClipboardList },
   ];
 
-  const renderLink = (item: { name: string; tab: string; icon: React.ComponentType<{ className?: string }> }) => {
+  const renderLink = (item: MenuItem) => {
     const Icon = item.icon;
     const isActive = activeTab === item.tab;
     const href = `/bot/${guildId}?tab=${item.tab}`;
@@ -60,65 +65,121 @@ export function GuildSidebar() {
       <Link
         key={item.name}
         href={href}
-        className={`group flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ${
-          isActive
-            ? "bg-[#66fcf1]/10 text-[#66fcf1] border-l-2 border-l-[#66fcf1] shadow-[inset_4px_0_10px_rgba(102,252,241,0.05)]"
-            : "text-gray-400 hover:text-white hover:bg-[#1f2833]/40"
-        } ${sidebarCollapsed ? "justify-center" : ""}`}
         title={sidebarCollapsed ? item.name : undefined}
+        className="group flex items-center gap-2.5 px-3 py-2 rounded-xl text-[13px] font-medium transition-all duration-150 relative"
+        style={{
+          color: isActive ? "var(--accent)" : "var(--text-muted)",
+          background: isActive ? "var(--accent-dim)" : "transparent",
+          boxShadow: isActive ? "inset 2px 0 0 var(--accent)" : undefined,
+          justifyContent: sidebarCollapsed ? "center" : undefined,
+        }}
+        onMouseEnter={(e) => {
+          if (!isActive) {
+            (e.currentTarget as HTMLAnchorElement).style.background = "var(--surface-hover)";
+            (e.currentTarget as HTMLAnchorElement).style.color = "var(--text-secondary)";
+          }
+        }}
+        onMouseLeave={(e) => {
+          if (!isActive) {
+            (e.currentTarget as HTMLAnchorElement).style.background = "transparent";
+            (e.currentTarget as HTMLAnchorElement).style.color = "var(--text-muted)";
+          }
+        }}
       >
-        <Icon className={`w-5 h-5 flex-shrink-0 ${isActive ? "text-[#66fcf1]" : "text-gray-400 group-hover:text-white"}`} />
-        {!sidebarCollapsed && <span className="truncate">{item.name}</span>}
+        <Icon
+          className="w-4 h-4 shrink-0"
+          style={{ color: isActive ? "var(--accent)" : undefined }}
+        />
+        {!sidebarCollapsed && (
+          <span className="truncate">{item.name}</span>
+        )}
       </Link>
     );
   };
 
   return (
     <aside
-      className={`fixed top-16 left-0 bottom-0 bg-[#0b0c10] border-r border-[#2f3e46] flex flex-col z-30 transition-all duration-300 ${
-        sidebarCollapsed ? "w-16" : "w-64"
-      }`}
+      className="fixed top-14 left-0 bottom-0 flex flex-col z-30 transition-all duration-300"
+      style={{
+        width: sidebarCollapsed ? "56px" : "228px",
+        background: "rgba(8, 10, 14, 0.94)",
+        backdropFilter: "blur(16px)",
+        WebkitBackdropFilter: "blur(16px)",
+        borderRight: "1px solid var(--border)",
+      }}
     >
-      <div className="flex-1 overflow-y-auto px-3 py-4 space-y-7">
-        {/* Primary Settings */}
-        <div className="space-y-1">
+      <div className="flex-1 overflow-y-auto px-2.5 py-4 space-y-6 hide-scrollbar">
+
+        {/* Primary */}
+        <div className="space-y-0.5">
           {!sidebarCollapsed && (
-            <h5 className="px-4 text-[10px] font-bold text-gray-500 tracking-wider uppercase mb-2">
-              Ana Panel
-            </h5>
+            <p className="section-label mb-2">Ana Panel</p>
           )}
           {primaryMenu.map(renderLink)}
         </div>
 
-        {/* Modules Section */}
-        <div className="space-y-1">
+        {/* Divider */}
+        <div style={{ height: "1px", background: "var(--border-soft)", margin: "0 4px" }} />
+
+        {/* Modules */}
+        <div className="space-y-0.5">
           {!sidebarCollapsed && (
-            <h5 className="px-4 text-[10px] font-bold text-gray-500 tracking-wider uppercase mb-2">
-              Modüller
-            </h5>
+            <p className="section-label mb-2">Modüller</p>
           )}
           {modulesMenu.map(renderLink)}
         </div>
       </div>
 
-      {/* Collapse button and Return home */}
-      <div className="p-3 border-t border-[#2f3e46] flex flex-col gap-2">
+      {/* Footer */}
+      <div
+        className="p-2.5 flex flex-col gap-1.5"
+        style={{ borderTop: "1px solid var(--border)" }}
+      >
+        {/* Return Home */}
         <Link
           href="/"
-          className={`flex items-center gap-3 px-4 py-2 text-xs font-semibold text-gray-500 hover:text-[#66fcf1] transition-colors rounded-xl ${
-            sidebarCollapsed ? "justify-center" : ""
-          }`}
-          title="Ana Sayfaya Dön"
+          title="Ana Menüye Dön"
+          className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-[12px] font-medium transition-all duration-150"
+          style={{
+            color: "var(--text-muted)",
+            justifyContent: sidebarCollapsed ? "center" : undefined,
+          }}
+          onMouseEnter={(e) => {
+            (e.currentTarget as HTMLAnchorElement).style.background = "var(--surface-hover)";
+            (e.currentTarget as HTMLAnchorElement).style.color = "var(--danger)";
+          }}
+          onMouseLeave={(e) => {
+            (e.currentTarget as HTMLAnchorElement).style.background = "transparent";
+            (e.currentTarget as HTMLAnchorElement).style.color = "var(--text-muted)";
+          }}
         >
-          <LogOut className="w-4.5 h-4.5" />
+          <LogOut className="w-4 h-4 shrink-0" />
           {!sidebarCollapsed && <span>Ana Menü</span>}
         </Link>
 
+        {/* Collapse Toggle */}
         <button
           onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-          className="flex items-center justify-center w-full py-2 bg-[#1f2833]/40 hover:bg-[#1f2833] rounded-xl text-gray-400 hover:text-[#66fcf1] border border-[#2f3e46]/50 transition-colors"
+          className="flex items-center justify-center w-full py-2 rounded-xl transition-all duration-150"
+          style={{
+            background: "var(--surface-solid)",
+            border: "1px solid var(--border)",
+            color: "var(--text-muted)",
+          }}
+          onMouseEnter={(e) => {
+            (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border-accent)";
+            (e.currentTarget as HTMLButtonElement).style.color = "var(--accent)";
+          }}
+          onMouseLeave={(e) => {
+            (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border)";
+            (e.currentTarget as HTMLButtonElement).style.color = "var(--text-muted)";
+          }}
         >
-          {sidebarCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
+          {sidebarCollapsed ? (
+            <ChevronRight className="w-3.5 h-3.5" />
+          ) : (
+            <ChevronLeft className="w-3.5 h-3.5" />
+          )}
         </button>
       </div>
     </aside>

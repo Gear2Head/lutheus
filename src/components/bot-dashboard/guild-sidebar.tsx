@@ -1,8 +1,5 @@
 "use client";
 
-// SECTION: ROUTER_SETUP
-// PURPOSE: Sidebar navigation mimicking Sapphire's side-bar style but using Lutheus themes.
-
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useBotDashboardStore } from "@/store/bot-dashboard-store";
@@ -17,108 +14,218 @@ import {
   Bell,
   UserPlus,
   Smile,
-  LogOut,
   FolderLock,
+  ClipboardList,
+  LogOut,
   ChevronLeft,
   ChevronRight,
-  ClipboardList
+  LayoutGrid,
 } from "lucide-react";
+
+interface MenuItem {
+  name: string;
+  tab: string;
+  icon: React.ComponentType<{ className?: string; style?: React.CSSProperties }>;
+}
+
+interface NavGroup {
+  label: string;
+  items: MenuItem[];
+}
 
 export function GuildSidebar() {
   const searchParams = useSearchParams();
   const activeTab = searchParams.get("tab") || "home";
   const { selectedGuild, sidebarCollapsed, setSidebarCollapsed } = useBotDashboardStore();
-
   const guildId = selectedGuild?.id || "default";
 
-  // Menu lists
-  const primaryMenu = [
-    { name: "Home", tab: "home", icon: Home },
-    { name: "General Settings", tab: "general-settings", icon: Settings },
-    { name: "Commands", tab: "commands", icon: Terminal },
-    { name: "Messages", tab: "messages", icon: MessageSquare },
-    { name: "Custom Branding", tab: "custom-branding", icon: Sparkles },
+  const navGroups: NavGroup[] = [
+    {
+      label: "Genel",
+      items: [
+        { name: "Anasayfa",      tab: "home",             icon: Home },
+        { name: "Genel Ayarlar", tab: "general-settings", icon: Settings },
+        { name: "Komutlar",      tab: "commands",          icon: Terminal },
+        { name: "Mesajlar",      tab: "messages",          icon: MessageSquare },
+        { name: "Marka",         tab: "custom-branding",   icon: Sparkles },
+      ],
+    },
+    {
+      label: "Modüller",
+      items: [
+        { name: "Oto Moderasyon",   tab: "auto-moderation",      icon: ShieldAlert },
+        { name: "Moderasyon",       tab: "moderation",            icon: Hammer },
+        { name: "Bildirimler",      tab: "social-notifications",  icon: Bell },
+        { name: "Katılım Rolleri",  tab: "join-roles",            icon: UserPlus },
+        { name: "Tepki Rolleri",    tab: "reaction-roles",        icon: Smile },
+        { name: "Hoş Geldin",       tab: "welcome-messages",      icon: MessageSquare },
+        { name: "Rol Bağlantıları", tab: "role-connections",      icon: FolderLock },
+        { name: "Loglama",          tab: "logging",               icon: ClipboardList },
+      ],
+    },
+    {
+      label: "Sistem",
+      items: [
+        { name: "Tüm Sunucular", tab: "__servers__", icon: LayoutGrid },
+      ],
+    },
   ];
 
-  const modulesMenu = [
-    { name: "Auto Moderation", tab: "auto-moderation", icon: ShieldAlert },
-    { name: "Moderation", tab: "moderation", icon: Hammer },
-    { name: "Social Notifications", tab: "social-notifications", icon: Bell },
-    { name: "Join Roles", tab: "join-roles", icon: UserPlus },
-    { name: "Reaction Roles", tab: "reaction-roles", icon: Smile },
-    { name: "Welcome Messages", tab: "welcome-messages", icon: MessageSquare },
-    { name: "Role Connections", tab: "role-connections", icon: FolderLock },
-    { name: "Logging", tab: "logging", icon: ClipboardList },
-  ];
-
-  const renderLink = (item: { name: string; tab: string; icon: React.ComponentType<{ className?: string }> }) => {
+  const renderLink = (item: MenuItem) => {
     const Icon = item.icon;
     const isActive = activeTab === item.tab;
-    const href = `/bot/${guildId}?tab=${item.tab}`;
+    const href = item.tab === "__servers__" ? "/bot" : `/bot/${guildId}?tab=${item.tab}`;
 
     return (
       <Link
-        key={item.name}
+        key={item.tab}
         href={href}
-        className={`group flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ${
-          isActive
-            ? "bg-[#66fcf1]/10 text-[#66fcf1] border-l-2 border-l-[#66fcf1] shadow-[inset_4px_0_10px_rgba(102,252,241,0.05)]"
-            : "text-gray-400 hover:text-white hover:bg-[#1f2833]/40"
-        } ${sidebarCollapsed ? "justify-center" : ""}`}
         title={sidebarCollapsed ? item.name : undefined}
+        className={`nav-item${isActive ? " active" : ""}`}
+        style={{
+          justifyContent: sidebarCollapsed ? "center" : undefined,
+          paddingInline: sidebarCollapsed ? "0" : undefined,
+          width: sidebarCollapsed ? "40px" : undefined,
+          height: "36px",
+        }}
+        onMouseEnter={(e) => {
+          if (!isActive) {
+            (e.currentTarget as HTMLAnchorElement).style.background = "var(--surface-hover)";
+            (e.currentTarget as HTMLAnchorElement).style.color = "var(--text-primary)";
+          }
+        }}
+        onMouseLeave={(e) => {
+          if (!isActive) {
+            (e.currentTarget as HTMLAnchorElement).style.background = "";
+            (e.currentTarget as HTMLAnchorElement).style.color = "";
+          }
+        }}
       >
-        <Icon className={`w-5 h-5 flex-shrink-0 ${isActive ? "text-[#66fcf1]" : "text-gray-400 group-hover:text-white"}`} />
-        {!sidebarCollapsed && <span className="truncate">{item.name}</span>}
+        <Icon
+          className="nav-icon w-[15px] h-[15px] shrink-0"
+          style={{ color: isActive ? "var(--accent)" : "var(--text-muted)" }}
+        />
+        {!sidebarCollapsed && (
+          <span className="truncate text-[13px]">{item.name}</span>
+        )}
       </Link>
     );
   };
 
   return (
     <aside
-      className={`fixed top-16 left-0 bottom-0 bg-[#0b0c10] border-r border-[#2f3e46] flex flex-col z-30 transition-all duration-300 ${
-        sidebarCollapsed ? "w-16" : "w-64"
-      }`}
+      className="fixed left-0 bottom-0 flex flex-col z-30 transition-[width] duration-250"
+      style={{
+        top: "var(--topbar-h)",
+        width: sidebarCollapsed ? "var(--sidebar-w-collapsed)" : "var(--sidebar-w)",
+        background: "rgba(9,9,11,0.96)",
+        backdropFilter: "blur(20px)",
+        WebkitBackdropFilter: "blur(20px)",
+        borderRight: "1px solid var(--border)",
+      }}
     >
-      <div className="flex-1 overflow-y-auto px-3 py-4 space-y-7">
-        {/* Primary Settings */}
-        <div className="space-y-1">
-          {!sidebarCollapsed && (
-            <h5 className="px-4 text-[10px] font-bold text-gray-500 tracking-wider uppercase mb-2">
-              Ana Panel
-            </h5>
-          )}
-          {primaryMenu.map(renderLink)}
-        </div>
+      {/* ── Scrollable nav area ── */}
+      <nav
+        className="flex-1 overflow-y-auto hide-scrollbar"
+        style={{ padding: "12px 10px 8px" }}
+      >
+        {navGroups.map((group, gi) => (
+          <div key={group.label} style={{ marginBottom: gi < navGroups.length - 1 ? "18px" : "0" }}>
+            {/* Group label */}
+            {!sidebarCollapsed && (
+              <p className="nav-group-label" style={{ marginBottom: "6px" }}>
+                {group.label}
+              </p>
+            )}
+            {sidebarCollapsed && gi > 0 && (
+              <div className="divider" style={{ marginBottom: "10px" }} />
+            )}
 
-        {/* Modules Section */}
-        <div className="space-y-1">
-          {!sidebarCollapsed && (
-            <h5 className="px-4 text-[10px] font-bold text-gray-500 tracking-wider uppercase mb-2">
-              Modüller
-            </h5>
-          )}
-          {modulesMenu.map(renderLink)}
-        </div>
-      </div>
+            {/* Items */}
+            <div
+              className="flex flex-col"
+              style={{
+                gap: "2px",
+                alignItems: sidebarCollapsed ? "center" : undefined,
+              }}
+            >
+              {group.items.map(renderLink)}
+            </div>
+          </div>
+        ))}
+      </nav>
 
-      {/* Collapse button and Return home */}
-      <div className="p-3 border-t border-[#2f3e46] flex flex-col gap-2">
+      {/* ── Footer ── */}
+      <div
+        style={{
+          borderTop: "1px solid var(--border)",
+          padding: "10px",
+          display: "flex",
+          flexDirection: "column",
+          gap: "4px",
+        }}
+      >
+        {/* Return to main */}
         <Link
           href="/"
-          className={`flex items-center gap-3 px-4 py-2 text-xs font-semibold text-gray-500 hover:text-[#66fcf1] transition-colors rounded-xl ${
-            sidebarCollapsed ? "justify-center" : ""
-          }`}
-          title="Ana Sayfaya Dön"
+          title="Ana Menüye Dön"
+          className="nav-item"
+          style={{
+            justifyContent: sidebarCollapsed ? "center" : undefined,
+            height: "36px",
+          }}
+          onMouseEnter={(e) => {
+            const el = e.currentTarget as HTMLAnchorElement;
+            el.style.background = "var(--danger-dim)";
+            el.style.color = "var(--danger)";
+          }}
+          onMouseLeave={(e) => {
+            const el = e.currentTarget as HTMLAnchorElement;
+            el.style.background = "";
+            el.style.color = "";
+          }}
         >
-          <LogOut className="w-4.5 h-4.5" />
-          {!sidebarCollapsed && <span>Ana Menü</span>}
+          <LogOut
+            className="w-[15px] h-[15px] shrink-0"
+            style={{ color: "var(--text-muted)" }}
+          />
+          {!sidebarCollapsed && (
+            <span className="text-[13px]" style={{ color: "var(--text-secondary)" }}>
+              Ana Menü
+            </span>
+          )}
         </Link>
 
+        {/* Collapse toggle */}
         <button
           onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-          className="flex items-center justify-center w-full py-2 bg-[#1f2833]/40 hover:bg-[#1f2833] rounded-xl text-gray-400 hover:text-[#66fcf1] border border-[#2f3e46]/50 transition-colors"
+          className="flex items-center justify-center rounded-xl transition-colors duration-150 focus:outline-none"
+          style={{
+            height: "34px",
+            background: "var(--surface-02)",
+            border: "1px solid var(--border)",
+            color: "var(--text-muted)",
+            cursor: "pointer",
+          }}
+          onMouseEnter={(e) => {
+            const el = e.currentTarget as HTMLButtonElement;
+            el.style.borderColor = "var(--accent-border)";
+            el.style.color = "var(--accent)";
+            el.style.background = "var(--accent-dim)";
+          }}
+          onMouseLeave={(e) => {
+            const el = e.currentTarget as HTMLButtonElement;
+            el.style.borderColor = "var(--border)";
+            el.style.color = "var(--text-muted)";
+            el.style.background = "var(--surface-02)";
+          }}
+          aria-label={sidebarCollapsed ? "Genişlet" : "Daralt"}
         >
-          {sidebarCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
+          {sidebarCollapsed ? (
+            <ChevronRight className="w-3.5 h-3.5" />
+          ) : (
+            <ChevronLeft className="w-3.5 h-3.5" />
+          )}
         </button>
       </div>
     </aside>

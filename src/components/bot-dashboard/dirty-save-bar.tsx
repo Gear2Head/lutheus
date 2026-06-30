@@ -1,10 +1,7 @@
 "use client";
 
-// SECTION: STATE_STORE
-// PURPOSE: Floating banner at the bottom that appears when changes are pending, allowing the user to save or reset.
-
 import { useBotDashboardStore } from "@/store/bot-dashboard-store";
-import { Loader2, Save, Undo } from "lucide-react";
+import { Loader2, Save, Undo2 } from "lucide-react";
 
 export function DirtySaveBar() {
   const { dirty, isSaving, saveConfig, resetConfigChanges } = useBotDashboardStore();
@@ -12,33 +9,79 @@ export function DirtySaveBar() {
   if (!dirty) return null;
 
   return (
-    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-[#1f2833]/90 backdrop-blur-md border border-[#66fcf1]/30 px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-8 z-50 animate-in slide-in-from-bottom-10 fade-in duration-300 w-[90%] max-w-2xl">
-      <div className="flex-1">
-        <h4 className="text-sm font-semibold text-white">Değişiklikleri Kaydedin!</h4>
-        <p className="text-xs text-[#c5c6c7] font-light mt-0.5">
-          Yapılan değişiklikleri sunucuya kaydetmediniz.
+    <div
+      className="fixed bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-4 z-50 animate-slide-up"
+      style={{
+        background: "rgba(14,14,18,0.96)",
+        backdropFilter: "blur(24px) saturate(1.5)",
+        WebkitBackdropFilter: "blur(24px) saturate(1.5)",
+        border: "1px solid var(--accent-border)",
+        borderRadius: "var(--radius-xl)",
+        boxShadow: "var(--shadow-lg), 0 0 32px rgba(102,252,241,0.06)",
+        padding: "12px 18px",
+        minWidth: "320px",
+        maxWidth: "480px",
+        width: "90%",
+      }}
+    >
+      {/* Warning dot */}
+      <span
+        className="animate-dot-pulse shrink-0"
+        style={{
+          width: "8px",
+          height: "8px",
+          borderRadius: "50%",
+          background: "var(--warning)",
+          boxShadow: "0 0 8px var(--warning)",
+          flexShrink: 0,
+        }}
+      />
+
+      {/* Message */}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <p style={{ fontSize: "13px", fontWeight: 600, color: "var(--text-primary)", margin: 0 }}>
+          Kaydedilmemiş değişiklikler
+        </p>
+        <p style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "2px" }}>
+          Değişiklikler sunucuya uygulanmadı.
         </p>
       </div>
 
-      <div className="flex items-center gap-3">
+      {/* Actions */}
+      <div style={{ display: "flex", alignItems: "center", gap: "8px", flexShrink: 0 }}>
         <button
           onClick={resetConfigChanges}
           disabled={isSaving}
-          className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-gray-400 hover:text-white disabled:opacity-50 transition-colors"
+          className="btn btn-ghost"
+          style={{
+            fontSize: "12px",
+            padding: "7px 14px",
+            height: "34px",
+            borderRadius: "var(--radius-md)",
+            opacity: isSaving ? 0.4 : 1,
+          }}
         >
-          <Undo className="w-3.5 h-3.5" />
+          <Undo2 style={{ width: "13px", height: "13px" }} />
           <span>Vazgeç</span>
         </button>
 
         <button
           onClick={saveConfig}
           disabled={isSaving}
-          className="flex items-center gap-2 px-5 py-2.5 bg-[#66fcf1] text-[#0b0c10] hover:bg-[#45f3ff] disabled:bg-gray-600 disabled:text-gray-400 rounded-xl text-xs font-bold shadow-[0_0_20px_rgba(102,252,241,0.2)] hover:shadow-[0_0_25px_rgba(102,252,241,0.35)] disabled:shadow-none transition-all duration-300"
+          className="btn btn-primary"
+          style={{
+            fontSize: "12px",
+            padding: "7px 16px",
+            height: "34px",
+            borderRadius: "var(--radius-md)",
+            boxShadow: "0 0 18px rgba(102,252,241,0.22)",
+            opacity: isSaving ? 0.7 : 1,
+          }}
         >
           {isSaving ? (
-            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            <Loader2 style={{ width: "13px", height: "13px" }} className="animate-spin" />
           ) : (
-            <Save className="w-3.5 h-3.5" />
+            <Save style={{ width: "13px", height: "13px" }} />
           )}
           <span>Kaydet</span>
         </button>

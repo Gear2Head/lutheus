@@ -1,176 +1,507 @@
 "use client";
 
-// SECTION: DASHBOARD_RENDER
-// PURPOSE: Guild home dashboard presenting key modules, statistics and quick navigations mimicking Sapphire's home experience.
-
-import Link from "next/navigation";
 import { useBotDashboardStore } from "@/store/bot-dashboard-store";
 import {
   MessageSquare,
   Shield,
   FileText,
   UserPlus,
-  Compass,
   Zap,
+  Bot,
+  Wifi,
   HelpCircle,
   ExternalLink,
-  Bot,
-  Wifi
+  ArrowRight,
+  Activity,
+  Hash,
+  Star,
 } from "lucide-react";
 
+/* ── helpers ── */
+const statusStyle = (ready?: boolean) => ({
+  bg:     ready ? "var(--success-dim)"    : "var(--danger-dim)",
+  border: ready ? "var(--success-border)" : "var(--danger-border)",
+  color:  ready ? "var(--success)"        : "var(--danger)",
+  dot:    ready ? "var(--success)"        : "var(--danger)",
+});
+
 export default function GuildDashboardHomePage() {
-  const { selectedGuild, config, channels, roles, commands, runtimeStatus, recentActions, caseStats } = useBotDashboardStore();
+  const {
+    selectedGuild,
+    config,
+    channels,
+    roles,
+    commands,
+    runtimeStatus,
+    recentActions,
+    caseStats,
+  } = useBotDashboardStore();
 
   const activeModulesCount = config
     ? Object.values(config.modules).filter(Boolean).length
     : 0;
 
   const quickStats = [
-    { name: "Aktif Modüller", value: `${activeModulesCount} / 8`, desc: "Etkinleştirilmiş özellikler", icon: Zap, color: "text-[#66fcf1]" },
-    { name: "Roller", value: roles.length.toString(), desc: "Sunucudaki toplam rol sayısı", icon: Shield, color: "text-purple-400" },
-    { name: "Kanallar", value: channels.length.toString(), desc: "Okunan toplam kanal sayısı", icon: Compass, color: "text-blue-400" },
-    { name: "Komutlar", value: commands.length.toString(), desc: "Kullanılabilir slash komutlar", icon: Bot, color: "text-emerald-400" },
+    {
+      name:      "Aktif Modüller",
+      value:     `${activeModulesCount}`,
+      sub:       `/ 8 özellik`,
+      icon:      Zap,
+      color:     "var(--accent)",
+      colorDim:  "var(--accent-dim)",
+    },
+    {
+      name:      "Roller",
+      value:     roles.length.toString(),
+      sub:       "sunucu rolü",
+      icon:      Star,
+      color:     "var(--purple)",
+      colorDim:  "var(--purple-dim)",
+    },
+    {
+      name:      "Kanallar",
+      value:     channels.length.toString(),
+      sub:       "okunan kanal",
+      icon:      Hash,
+      color:     "var(--info)",
+      colorDim:  "var(--info-dim)",
+    },
+    {
+      name:      "Komutlar",
+      value:     commands.length.toString(),
+      sub:       "slash komut",
+      icon:      Bot,
+      color:     "var(--success)",
+      colorDim:  "var(--success-dim)",
+    },
   ];
 
   const controlCards = [
     {
-      name: "Custom Messages",
-      desc: "Sunucunuza özel otomatik mesaj tetikleyicileri ve embed şablonları oluşturun.",
-      href: "messages",
-      icon: MessageSquare,
-      status: config?.modules.welcomeMessages ? "Aktif" : "Pasif",
+      name:   "Özel Mesajlar",
+      desc:   "Sunucuya özel mesaj tetikleyicileri ve embed şablonları oluşturun.",
+      tab:    "messages",
+      icon:   MessageSquare,
+      active: config?.modules.welcomeMessages ?? false,
     },
     {
-      name: "Moderation Cases",
-      desc: "Yapay zeka ve moderatörler tarafından verilen cezaları, uyarıları ve geçmişi inceleyin.",
-      href: "moderation",
-      icon: Shield,
-      status: config?.modules.moderation ? "Aktif" : "Pasif",
+      name:   "Moderasyon",
+      desc:   "Yapay zeka ve moderatörler tarafından verilen cezaları inceleyin.",
+      tab:    "moderation",
+      icon:   Shield,
+      active: config?.modules.moderation ?? false,
     },
     {
-      name: "User Reports",
-      desc: "Sunucu üyelerinin şüpheli durumlar hakkında yetkililere gönderdiği rapor kayıtları.",
-      href: "logging",
-      icon: FileText,
-      status: config?.modules.logging ? "Aktif" : "Pasif",
+      name:   "Kullanıcı Raporları",
+      desc:   "Şüpheli durumlar için gönderilen rapor kayıtlarını görüntüleyin.",
+      tab:    "logging",
+      icon:   FileText,
+      active: config?.modules.logging ?? false,
     },
     {
-      name: "Role Greetings",
-      desc: "Sunucuya yeni katılan kullanıcılara veya botlara otomatik rol atama kuralları.",
-      href: "join-roles",
-      icon: UserPlus,
-      status: config?.modules.joinRoles ? "Aktif" : "Pasif",
+      name:   "Katılım Rolleri",
+      desc:   "Sunucuya katılan kullanıcılara otomatik rol atama kuralları.",
+      tab:    "join-roles",
+      icon:   UserPlus,
+      active: config?.modules.joinRoles ?? false,
     },
   ];
 
+  const ss = statusStyle(runtimeStatus?.ready);
+
   return (
-    <div className="space-y-10">
-      {/* Welcome Banner */}
-      <div className="relative bg-gradient-to-r from-[#1f2833]/80 to-[#1f2833]/20 border border-[#2f3e46] p-8 rounded-3xl overflow-hidden shadow-xl">
-        <div className="absolute top-0 right-0 w-64 h-64 bg-[#66fcf1]/5 rounded-full blur-[60px] pointer-events-none" />
-        <h1 className="text-3xl font-extrabold text-white">
-          Hoş geldin, <span className="text-[#66fcf1]">{selectedGuild?.name || "Yönetici"}</span>!
-        </h1>
-        <p className="text-sm text-[#c5c6c7] font-light mt-2 max-w-xl">
-          Lutheus AI Moderasyon Dashboard'una başarıyla bağlandınız. Sunucunuzu optimize etmek için sol menüden özellikleri özelleştirebilirsiniz.
-        </p>
+    <div style={{ display: "flex", flexDirection: "column", gap: "28px" }}>
+
+      {/* ── Welcome banner ── */}
+      <div
+        className="relative overflow-hidden"
+        style={{
+          background: "var(--surface)",
+          border: "1px solid var(--border)",
+          borderRadius: "var(--radius-xl)",
+          padding: "28px 32px",
+        }}
+      >
+        {/* subtle accent glow top-right */}
+        <div
+          className="absolute pointer-events-none"
+          style={{
+            inset: 0,
+            background:
+              "radial-gradient(ellipse 55% 70% at 100% 0%, rgba(102,252,241,0.05) 0%, transparent 65%)",
+          }}
+        />
+
+        <div
+          className="relative flex flex-col sm:flex-row sm:items-start justify-between"
+          style={{ gap: "20px" }}
+        >
+          {/* Text side */}
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "12px" }}>
+              <span className="badge badge-accent">Dashboard</span>
+              <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>v2.0</span>
+            </div>
+
+            <h1
+              style={{
+                fontSize: "22px",
+                fontWeight: 700,
+                color: "var(--text-primary)",
+                lineHeight: 1.25,
+                margin: 0,
+              }}
+            >
+              Hoş geldin,{" "}
+              <span style={{ color: "var(--accent)" }}>
+                {selectedGuild?.name || "Yönetici"}
+              </span>
+            </h1>
+            <p
+              style={{
+                fontSize: "13px",
+                color: "var(--text-muted)",
+                marginTop: "8px",
+                maxWidth: "420px",
+                lineHeight: 1.6,
+              }}
+            >
+              Lutheus AI Moderasyon paneline bağlandınız. Sol menüden özellikleri yapılandırabilirsiniz.
+            </p>
+          </div>
+
+          {/* Status chip */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "10px",
+              padding: "12px 18px",
+              borderRadius: "var(--radius-lg)",
+              background: ss.bg,
+              border: `1px solid ${ss.border}`,
+              flexShrink: 0,
+            }}
+          >
+            <span
+              className="animate-dot-pulse"
+              style={{
+                width: "8px",
+                height: "8px",
+                borderRadius: "50%",
+                background: ss.dot,
+                boxShadow: `0 0 8px ${ss.dot}80`,
+                flexShrink: 0,
+              }}
+            />
+            <div>
+              <p style={{ fontSize: "12.5px", fontWeight: 700, color: ss.color, lineHeight: 1.2 }}>
+                {runtimeStatus?.ready ? "Online" : "Offline"}
+              </p>
+              <p style={{ fontSize: "10.5px", color: "var(--text-muted)", marginTop: "2px" }}>
+                {runtimeStatus?.latency_ms ? `${runtimeStatus.latency_ms}ms` : "Gateway"}
+              </p>
+            </div>
+          </div>
+        </div>
       </div>
 
-      {/* Grid Stats */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-5">
+      {/* ── Stats grid ── */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+          gap: "14px",
+        }}
+      >
         {quickStats.map((s) => {
           const Icon = s.icon;
           return (
-            <div key={s.name} className="bg-[#1f2833]/40 border border-[#2f3e46] p-5 rounded-2xl flex flex-col gap-2">
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-gray-400 font-medium">{s.name}</span>
-                <Icon className={`w-5 h-5 ${s.color}`} />
+            <div
+              key={s.name}
+              className="stat-card"
+              style={{ padding: "20px" }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  marginBottom: "14px",
+                }}
+              >
+                <span
+                  style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-muted)", letterSpacing: "0.2px" }}
+                >
+                  {s.name}
+                </span>
+                <div
+                  style={{
+                    width: "30px",
+                    height: "30px",
+                    borderRadius: "var(--radius-sm)",
+                    background: s.colorDim,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    flexShrink: 0,
+                  }}
+                >
+                  <Icon style={{ width: "14px", height: "14px", color: s.color }} />
+                </div>
               </div>
-              <h2 className="text-2xl font-bold text-white mt-1">{s.value}</h2>
-              <span className="text-[10px] text-gray-500 font-light mt-0.5">{s.desc}</span>
+              <p
+                style={{
+                  fontSize: "28px",
+                  fontWeight: 700,
+                  color: "var(--text-primary)",
+                  lineHeight: 1,
+                  margin: 0,
+                }}
+              >
+                {s.value}
+              </p>
+              <p style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "5px" }}>
+                {s.sub}
+              </p>
             </div>
           );
         })}
       </div>
 
-      {/* SECTION: BOT_RUNTIME_STATUS */}
-      <div className="grid md:grid-cols-3 gap-5">
-        <div className="glass-panel p-5 rounded-2xl">
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-muted-foreground font-medium">Gateway</span>
-            <Wifi className={`w-5 h-5 ${runtimeStatus?.ready ? "text-emerald-400" : "text-red-400"}`} />
+      {/* ── Runtime status row ── */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+          gap: "14px",
+        }}
+      >
+        {/* Gateway */}
+        <div
+          style={{
+            background: "var(--surface)",
+            border: "1px solid var(--border)",
+            borderRadius: "var(--radius-lg)",
+            padding: "18px 20px",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "10px" }}>
+            <span style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-muted)" }}>Gateway</span>
+            <Wifi style={{ width: "14px", height: "14px", color: runtimeStatus?.ready ? "var(--success)" : "var(--danger)" }} />
           </div>
-          <h2 className="text-2xl font-bold text-white mt-2">{runtimeStatus?.ready ? "Online" : "Offline"}</h2>
-          <p className="text-[10px] text-muted-foreground mt-1">
-            {runtimeStatus?.latency_ms ? `${runtimeStatus.latency_ms} ms latency` : "Heartbeat bekleniyor"}
+          <p style={{ fontSize: "18px", fontWeight: 700, color: "var(--text-primary)", margin: 0 }}>
+            {runtimeStatus?.ready ? "Online" : "Offline"}
+          </p>
+          <p style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "4px" }}>
+            {runtimeStatus?.latency_ms ? `${runtimeStatus.latency_ms} ms gecikme` : "Bekleniyor"}
           </p>
         </div>
-        <div className="glass-panel p-5 rounded-2xl">
-          <span className="text-xs text-muted-foreground font-medium">Toplam Case</span>
-          <h2 className="text-2xl font-bold text-white mt-2">{caseStats?.total ?? 0}</h2>
-          <p className="text-[10px] text-muted-foreground mt-1">{caseStats?.invalidRecent?.length ?? 0} son hatali CUK kaydi</p>
+
+        {/* Total cases */}
+        <div
+          style={{
+            background: "var(--surface)",
+            border: "1px solid var(--border)",
+            borderRadius: "var(--radius-lg)",
+            padding: "18px 20px",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "10px" }}>
+            <span style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-muted)" }}>Toplam Case</span>
+            <Shield style={{ width: "14px", height: "14px", color: "var(--warning)" }} />
+          </div>
+          <p style={{ fontSize: "18px", fontWeight: 700, color: "var(--text-primary)", margin: 0 }}>
+            {caseStats?.total ?? 0}
+          </p>
+          <p style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "4px" }}>
+            {caseStats?.invalidRecent?.length ?? 0} hatalı CUK kaydı
+          </p>
         </div>
-        <div className="glass-panel p-5 rounded-2xl">
-          <span className="text-xs text-muted-foreground font-medium">Son Aksiyon</span>
-          <h2 className="text-sm font-bold text-white mt-2">{recentActions[0]?.action || "Kayit yok"}</h2>
-          <p className="text-[10px] text-muted-foreground mt-1">{recentActions[0]?.status || "Dashboard aksiyonu bekleniyor"}</p>
+
+        {/* Last action */}
+        <div
+          style={{
+            background: "var(--surface)",
+            border: "1px solid var(--border)",
+            borderRadius: "var(--radius-lg)",
+            padding: "18px 20px",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "10px" }}>
+            <span style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-muted)" }}>Son Aksiyon</span>
+            <Activity style={{ width: "14px", height: "14px", color: "var(--info)" }} />
+          </div>
+          <p
+            style={{
+              fontSize: "13.5px",
+              fontWeight: 600,
+              color: "var(--text-primary)",
+              margin: 0,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {recentActions[0]?.action || "Kayıt yok"}
+          </p>
+          <p style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "4px" }}>
+            {recentActions[0]?.status || "Aksiyon bekleniyor"}
+          </p>
         </div>
       </div>
 
-      {/* Module Overview Section */}
-      <div className="space-y-5">
-        <div className="flex items-center justify-between">
-          <h3 className="text-xl font-bold text-white">Sık Kullanılan Kontrol Kartları</h3>
-          <span className="text-xs text-[#66fcf1] font-light">hızlı yönlendirme</span>
+      {/* ── Quick-access control cards ── */}
+      <div>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            marginBottom: "16px",
+          }}
+        >
+          <h3 style={{ fontSize: "15px", fontWeight: 700, color: "var(--text-primary)", margin: 0 }}>
+            Hızlı Kontrol
+          </h3>
+          <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>sık kullanılan</span>
         </div>
 
-        <div className="grid md:grid-cols-2 gap-6">
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+            gap: "14px",
+          }}
+        >
           {controlCards.map((c) => {
             const Icon = c.icon;
+            const isActive = c.active;
             return (
               <a
                 key={c.name}
-                href={`/bot/${selectedGuild?.id}?tab=${c.href}`}
-                className="group p-6 bg-[#1f2833]/40 hover:bg-[#1f2833]/80 border border-[#2f3e46] hover:border-[#66fcf1]/40 rounded-2xl transition-all duration-300 flex items-start gap-5 hover:-translate-y-0.5"
+                href={`/bot/${selectedGuild?.id}?tab=${c.tab}`}
+                className="group card card-hover"
+                style={{
+                  display: "flex",
+                  alignItems: "flex-start",
+                  gap: "16px",
+                  padding: "20px",
+                  textDecoration: "none",
+                }}
               >
-                <div className="p-3 bg-[#1c2331] rounded-xl text-[#66fcf1] border border-[#2f3e46] group-hover:border-[#66fcf1]/30 transition-colors">
-                  <Icon className="w-6 h-6" />
+                {/* Icon badge */}
+                <div
+                  style={{
+                    width: "38px",
+                    height: "38px",
+                    borderRadius: "var(--radius-md)",
+                    background: "var(--accent-dim)",
+                    border: "1px solid var(--accent-border)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    flexShrink: 0,
+                    marginTop: "2px",
+                  }}
+                >
+                  <Icon style={{ width: "16px", height: "16px", color: "var(--accent)" }} />
                 </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between gap-2">
-                    <h4 className="text-base font-bold text-white group-hover:text-[#66fcf1] transition-colors truncate">
-                      {c.name}
-                    </h4>
+
+                {/* Text */}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "5px" }}>
                     <span
-                      className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ${
-                        c.status === "Aktif"
-                          ? "bg-emerald-500/10 text-emerald-400"
-                          : "bg-gray-500/10 text-gray-400"
-                      }`}
+                      style={{
+                        fontSize: "13.5px",
+                        fontWeight: 600,
+                        color: "var(--text-primary)",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
                     >
-                      {c.status}
+                      {c.name}
+                    </span>
+                    <span
+                      className="badge"
+                      style={{
+                        flexShrink: 0,
+                        color: isActive ? "var(--success)" : "var(--text-muted)",
+                        background: isActive ? "var(--success-dim)" : "rgba(255,255,255,0.05)",
+                      }}
+                    >
+                      {isActive ? "Aktif" : "Pasif"}
                     </span>
                   </div>
-                  <p className="text-xs text-[#c5c6c7] font-light mt-2 leading-relaxed">
+                  <p
+                    style={{
+                      fontSize: "12px",
+                      color: "var(--text-muted)",
+                      lineHeight: 1.55,
+                      margin: 0,
+                    }}
+                  >
                     {c.desc}
                   </p>
                 </div>
+
+                {/* Arrow */}
+                <ArrowRight
+                  style={{
+                    width: "15px",
+                    height: "15px",
+                    color: "var(--accent)",
+                    flexShrink: 0,
+                    marginTop: "2px",
+                    opacity: 0,
+                    transition: "opacity 0.15s, transform 0.15s",
+                  }}
+                  className="group-hover:opacity-100"
+                />
               </a>
             );
           })}
         </div>
       </div>
 
-      {/* Support & Community Section */}
-      <div className="bg-[#1f2833]/30 border border-[#2f3e46]/60 p-6 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-6">
-        <div className="flex items-start gap-4">
-          <div className="p-2.5 bg-purple-500/10 rounded-xl text-purple-400 border border-purple-500/20">
-            <HelpCircle className="w-5 h-5" />
+      {/* ── Support banner ── */}
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "space-between",
+          flexWrap: "wrap",
+          gap: "16px",
+          background: "var(--surface)",
+          border: "1px solid var(--border)",
+          borderRadius: "var(--radius-xl)",
+          padding: "22px 28px",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
+          <div
+            style={{
+              width: "38px",
+              height: "38px",
+              borderRadius: "var(--radius-md)",
+              background: "var(--purple-dim)",
+              border: "1px solid var(--purple-border)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              flexShrink: 0,
+            }}
+          >
+            <HelpCircle style={{ width: "16px", height: "16px", color: "var(--purple)" }} />
           </div>
           <div>
-            <h4 className="text-sm font-bold text-white">Yardım veya Desteğe mi İhtiyacınız Var?</h4>
-            <p className="text-xs text-[#c5c6c7] font-light mt-1">
-              Topluluk Discord sunucumuza katılarak güncellemelere göz atabilir ve destek ekibimizden yardım alabilirsiniz.
+            <p style={{ fontSize: "13.5px", fontWeight: 600, color: "var(--text-primary)", margin: 0 }}>
+              Yardıma mı ihtiyacınız var?
+            </p>
+            <p style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "3px", maxWidth: "340px", lineHeight: 1.5 }}>
+              Topluluğumuza katılın ve destek ekibimizden yardım alın.
             </p>
           </div>
         </div>
@@ -179,10 +510,30 @@ export default function GuildDashboardHomePage() {
           href="https://discord.gg/sapphire"
           target="_blank"
           rel="noopener noreferrer"
-          className="flex items-center justify-center gap-2 px-5 py-2.5 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-xs font-bold transition-all shadow-[0_0_15px_rgba(168,85,247,0.15)] shrink-0"
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "7px",
+            padding: "9px 18px",
+            borderRadius: "var(--radius-md)",
+            fontSize: "12.5px",
+            fontWeight: 600,
+            background: "var(--purple-dim)",
+            color: "var(--purple)",
+            border: "1px solid var(--purple-border)",
+            textDecoration: "none",
+            transition: "background 0.15s",
+            flexShrink: 0,
+          }}
+          onMouseEnter={(e) => {
+            (e.currentTarget as HTMLAnchorElement).style.background = "rgba(168,85,247,0.18)";
+          }}
+          onMouseLeave={(e) => {
+            (e.currentTarget as HTMLAnchorElement).style.background = "var(--purple-dim)";
+          }}
         >
           <span>Destek Sunucusu</span>
-          <ExternalLink className="w-3.5 h-3.5" />
+          <ExternalLink style={{ width: "13px", height: "13px" }} />
         </a>
       </div>
     </div>

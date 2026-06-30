@@ -1,13 +1,10 @@
 "use client";
 
-// SECTION: APP_BOOTSTRAP
-// PURPOSE: Topbar header — modern soft design with refined typography and glass surface.
-
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { getStoredSession, LutheusSession } from "@/lib/auth/session";
 import { GuildSwitcher } from "./guild-switcher";
-import { User, LogOut, ChevronDown } from "lucide-react";
+import { Bell, LogOut, User, ChevronDown, Settings } from "lucide-react";
 
 export function GuildTopbar() {
   const [session, setSession] = useState<LutheusSession | null>(null);
@@ -24,68 +21,95 @@ export function GuildTopbar() {
 
   return (
     <header
-      className="fixed top-0 left-0 right-0 h-14 z-40 flex items-center justify-between px-5"
+      className="fixed top-0 left-0 right-0 z-40 flex items-center justify-between"
       style={{
-        background: "rgba(8, 10, 14, 0.88)",
-        backdropFilter: "blur(20px) saturate(1.5)",
-        WebkitBackdropFilter: "blur(20px) saturate(1.5)",
+        height: "var(--topbar-h)",
+        paddingInline: "20px",
+        background: "rgba(9,9,11,0.92)",
+        backdropFilter: "blur(24px) saturate(1.6)",
+        WebkitBackdropFilter: "blur(24px) saturate(1.6)",
         borderBottom: "1px solid var(--border)",
       }}
     >
-      {/* Left: Logo + Guild Switcher */}
-      <div className="flex items-center gap-4">
-        {/* Logo */}
-        <Link href="/" className="flex items-center gap-2.5 shrink-0 group">
-          <div className="w-7 h-7 rounded-lg overflow-hidden flex items-center justify-center bg-[var(--accent-dim)] border border-[var(--border-accent)]">
+      {/* ── Left: wordmark + guild switcher ── */}
+      <div className="flex items-center gap-3">
+        <Link
+          href="/"
+          className="flex items-center gap-2.5 shrink-0 group"
+          style={{ textDecoration: "none" }}
+        >
+          <div
+            className="w-7 h-7 rounded-lg overflow-hidden flex items-center justify-center shrink-0"
+            style={{
+              background: "var(--accent-dim)",
+              border: "1px solid var(--accent-border)",
+            }}
+          >
             <img
               src="/dashboard/icon128.png"
-              className="w-5 h-5 object-contain"
+              className="w-4.5 h-4.5 object-contain"
               alt="Lutheus"
             />
           </div>
           <span
-            className="text-[13px] font-semibold tracking-wide hidden sm:block"
-            style={{ color: "var(--text-main)" }}
+            className="text-[13px] font-bold tracking-tight hidden sm:block"
+            style={{ color: "var(--text-primary)" }}
           >
             Lutheus
           </span>
-          <span
-            className="text-[11px] font-medium hidden md:block"
-            style={{ color: "var(--text-muted)" }}
-          >
-            / Manage
-          </span>
         </Link>
 
-        {/* Divider */}
+        {/* vertical rule */}
         <div
-          className="hidden sm:block w-px h-5"
-          style={{ background: "var(--border)" }}
+          className="hidden sm:block h-4 w-px"
+          style={{ background: "var(--border-strong)" }}
         />
 
-        {/* Guild Picker */}
         <GuildSwitcher />
       </div>
 
-      {/* Right: User */}
-      <div className="flex items-center gap-3">
+      {/* ── Right: actions + user ── */}
+      <div className="flex items-center gap-1.5">
+        {/* Notifications bell */}
+        <button
+          className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors duration-150"
+          style={{ color: "var(--text-muted)" }}
+          onMouseEnter={(e) => {
+            const el = e.currentTarget as HTMLButtonElement;
+            el.style.background = "var(--surface-hover)";
+            el.style.color = "var(--text-primary)";
+          }}
+          onMouseLeave={(e) => {
+            const el = e.currentTarget as HTMLButtonElement;
+            el.style.background = "transparent";
+            el.style.color = "var(--text-muted)";
+          }}
+          aria-label="Bildirimler"
+        >
+          <Bell className="w-4 h-4" />
+        </button>
+
         {session ? (
           <div className="relative">
             <button
               onClick={() => setDropdownOpen((v) => !v)}
-              className="flex items-center gap-2.5 px-3 py-1.5 rounded-xl transition-all duration-150"
+              className="flex items-center gap-2 rounded-xl px-2.5 py-1.5 transition-colors duration-150 focus:outline-none"
               style={{
-                background: dropdownOpen ? "var(--surface-hover)" : "transparent",
-                border: "1px solid transparent",
+                background: dropdownOpen ? "var(--surface-active)" : "transparent",
+                border: `1px solid ${dropdownOpen ? "var(--border-strong)" : "transparent"}`,
               }}
               onMouseEnter={(e) => {
-                (e.currentTarget as HTMLButtonElement).style.background = "var(--surface-hover)";
-                (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border)";
+                const el = e.currentTarget as HTMLButtonElement;
+                if (!dropdownOpen) {
+                  el.style.background = "var(--surface-hover)";
+                  el.style.borderColor = "var(--border)";
+                }
               }}
               onMouseLeave={(e) => {
+                const el = e.currentTarget as HTMLButtonElement;
                 if (!dropdownOpen) {
-                  (e.currentTarget as HTMLButtonElement).style.background = "transparent";
-                  (e.currentTarget as HTMLButtonElement).style.borderColor = "transparent";
+                  el.style.background = "transparent";
+                  el.style.borderColor = "transparent";
                 }
               }}
             >
@@ -94,29 +118,31 @@ export function GuildTopbar() {
                 <img
                   src={session.user.photoURL}
                   alt="Profil"
-                  className="w-6 h-6 rounded-full object-cover"
-                  style={{ border: "1.5px solid var(--border-accent)" }}
+                  className="w-6 h-6 rounded-full object-cover shrink-0"
+                  style={{ border: "1.5px solid var(--accent-border)" }}
                 />
               ) : (
                 <div
-                  className="w-6 h-6 rounded-full flex items-center justify-center"
-                  style={{
-                    background: "var(--accent-dim)",
-                    border: "1.5px solid var(--border-accent)",
-                  }}
+                  className="w-6 h-6 rounded-full flex items-center justify-center shrink-0"
+                  style={{ background: "var(--accent-dim)", border: "1.5px solid var(--accent-border)" }}
                 >
                   <User className="w-3.5 h-3.5" style={{ color: "var(--accent)" }} />
                 </div>
               )}
 
-              {/* Name */}
-              <div className="text-left hidden md:block">
-                <p className="text-[12px] font-semibold leading-tight" style={{ color: "var(--text-main)" }}>
-                  {session.user?.displayName || "Kullanıcı"}
-                </p>
-                <p className="text-[10px] font-medium leading-tight" style={{ color: "var(--accent)" }}>
+              <div className="hidden md:flex flex-col items-start leading-none">
+                <span
+                  className="text-[12px] font-semibold"
+                  style={{ color: "var(--text-primary)" }}
+                >
+                  {session.user?.displayName?.split(" ")[0] || "Kullanıcı"}
+                </span>
+                <span
+                  className="text-[10px] font-medium mt-0.5"
+                  style={{ color: "var(--accent)" }}
+                >
                   Yönetici
-                </p>
+                </span>
               </div>
 
               <ChevronDown
@@ -128,50 +154,92 @@ export function GuildTopbar() {
               />
             </button>
 
-            {/* Dropdown */}
             {dropdownOpen && (
               <>
+                <div className="fixed inset-0 z-40" onClick={() => setDropdownOpen(false)} />
                 <div
-                  className="fixed inset-0 z-40"
-                  onClick={() => setDropdownOpen(false)}
-                />
-                <div
-                  className="absolute right-0 mt-2 w-56 rounded-2xl overflow-hidden z-50 animate-fade-in"
+                  className="absolute right-0 mt-2 w-56 overflow-hidden z-50 animate-fade-in"
                   style={{
-                    background: "rgba(12, 16, 24, 0.95)",
+                    background: "rgba(14,14,18,0.97)",
                     backdropFilter: "blur(20px)",
-                    border: "1px solid var(--border)",
+                    border: "1px solid var(--border-strong)",
+                    borderRadius: "var(--radius-lg)",
                     boxShadow: "var(--shadow-lg)",
                   }}
                 >
-                  {/* User info */}
+                  {/* User header */}
                   <div
-                    className="px-4 py-3"
+                    className="flex items-center gap-3 px-4 py-3.5"
                     style={{ borderBottom: "1px solid var(--border)" }}
                   >
-                    <p className="text-[12px] font-semibold" style={{ color: "var(--text-main)" }}>
-                      {session.user?.displayName || "Kullanıcı"}
-                    </p>
-                    <p className="text-[11px] mt-0.5 truncate" style={{ color: "var(--text-muted)" }}>
-                      {session.user?.email || "oturum aktif"}
-                    </p>
+                    {session.user?.photoURL ? (
+                      <img
+                        src={session.user.photoURL}
+                        alt="Profil"
+                        className="w-8 h-8 rounded-full object-cover shrink-0"
+                        style={{ border: "1.5px solid var(--accent-border)" }}
+                      />
+                    ) : (
+                      <div
+                        className="w-8 h-8 rounded-full flex items-center justify-center shrink-0"
+                        style={{ background: "var(--accent-dim)" }}
+                      >
+                        <User className="w-4 h-4" style={{ color: "var(--accent)" }} />
+                      </div>
+                    )}
+                    <div className="min-w-0">
+                      <p
+                        className="text-[12.5px] font-semibold truncate"
+                        style={{ color: "var(--text-primary)" }}
+                      >
+                        {session.user?.displayName || "Kullanıcı"}
+                      </p>
+                      <p
+                        className="text-[11px] truncate mt-0.5"
+                        style={{ color: "var(--text-muted)" }}
+                      >
+                        {session.user?.email || "oturum aktif"}
+                      </p>
+                    </div>
                   </div>
 
-                  {/* Logout */}
-                  <button
-                    onClick={handleLogout}
-                    className="w-full flex items-center gap-2.5 px-4 py-2.5 text-left transition-colors duration-150"
-                    style={{ color: "var(--danger)" }}
-                    onMouseEnter={(e) =>
-                      ((e.currentTarget as HTMLButtonElement).style.background = "var(--danger-dim)")
-                    }
-                    onMouseLeave={(e) =>
-                      ((e.currentTarget as HTMLButtonElement).style.background = "transparent")
-                    }
-                  >
-                    <LogOut className="w-3.5 h-3.5 shrink-0" />
-                    <span className="text-[12px] font-semibold">Oturumu Kapat</span>
-                  </button>
+                  {/* Menu items */}
+                  <div className="py-1">
+                    <button
+                      className="w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors duration-120"
+                      style={{ color: "var(--text-secondary)" }}
+                      onMouseEnter={(e) => {
+                        const el = e.currentTarget as HTMLButtonElement;
+                        el.style.background = "var(--surface-hover)";
+                        el.style.color = "var(--text-primary)";
+                      }}
+                      onMouseLeave={(e) => {
+                        const el = e.currentTarget as HTMLButtonElement;
+                        el.style.background = "transparent";
+                        el.style.color = "var(--text-secondary)";
+                      }}
+                    >
+                      <Settings className="w-3.5 h-3.5 shrink-0" />
+                      <span className="text-[12.5px] font-medium">Profil Ayarları</span>
+                    </button>
+
+                    <div style={{ height: "1px", background: "var(--border-soft)", margin: "4px 0" }} />
+
+                    <button
+                      onClick={handleLogout}
+                      className="w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors duration-120"
+                      style={{ color: "var(--danger)" }}
+                      onMouseEnter={(e) => {
+                        (e.currentTarget as HTMLButtonElement).style.background = "var(--danger-dim)";
+                      }}
+                      onMouseLeave={(e) => {
+                        (e.currentTarget as HTMLButtonElement).style.background = "transparent";
+                      }}
+                    >
+                      <LogOut className="w-3.5 h-3.5 shrink-0" />
+                      <span className="text-[12.5px] font-semibold">Oturumu Kapat</span>
+                    </button>
+                  </div>
                 </div>
               </>
             )}
@@ -179,12 +247,8 @@ export function GuildTopbar() {
         ) : (
           <a
             href="/auth/login.html"
-            className="flex items-center gap-2 px-4 py-2 rounded-xl text-[12px] font-semibold transition-all duration-150"
-            style={{
-              background: "var(--accent-dim)",
-              color: "var(--accent)",
-              border: "1px solid var(--border-accent)",
-            }}
+            className="btn btn-primary text-[12px] px-4 py-1.5"
+            style={{ borderRadius: "var(--radius-md)" }}
           >
             Giriş Yap
           </a>

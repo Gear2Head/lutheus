@@ -1,8 +1,5 @@
 "use client";
 
-// SECTION: USER_PROFILE
-// PURPOSE: Compact guild switcher with polished dropdown, refined borders and smooth transitions.
-
 import { useState, useRef, useEffect } from "react";
 import { useBotDashboardStore } from "@/store/bot-dashboard-store";
 import { ChevronDown, Plus, Shield, Check } from "lucide-react";
@@ -13,11 +10,11 @@ export function GuildSwitcher() {
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
         setIsOpen(false);
       }
-    }
+    };
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
@@ -26,16 +23,33 @@ export function GuildSwitcher() {
 
   return (
     <div className="relative" ref={dropdownRef}>
+      {/* ── Trigger ── */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-2.5 px-3 py-1.5 rounded-xl transition-all duration-150 focus:outline-none"
+        className="flex items-center gap-2 focus:outline-none transition-all duration-150"
         style={{
-          background: isOpen ? "var(--surface-hover)" : "var(--surface-solid)",
-          border: isOpen ? "1px solid var(--border-accent)" : "1px solid var(--border)",
-          maxWidth: "210px",
+          height: "34px",
+          paddingInline: "10px",
+          background: isOpen ? "var(--surface-active)" : "var(--surface-02)",
+          border: `1px solid ${isOpen ? "var(--border-strong)" : "var(--border)"}`,
+          borderRadius: "var(--radius-md)",
+          maxWidth: "220px",
+          cursor: "pointer",
+        }}
+        onMouseEnter={(e) => {
+          if (!isOpen) {
+            (e.currentTarget as HTMLButtonElement).style.background = "var(--surface-hover)";
+            (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border-strong)";
+          }
+        }}
+        onMouseLeave={(e) => {
+          if (!isOpen) {
+            (e.currentTarget as HTMLButtonElement).style.background = "var(--surface-02)";
+            (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border)";
+          }
         }}
       >
-        {/* Guild Icon */}
+        {/* Guild icon */}
         {selectedGuild?.iconUrl ? (
           <img
             src={selectedGuild.iconUrl}
@@ -51,80 +65,106 @@ export function GuildSwitcher() {
           </div>
         )}
 
-        {/* Guild Name */}
-        <div className="truncate flex-1 text-left hidden sm:block">
-          <span
-            className="text-[12px] font-semibold truncate block"
-            style={{ color: "var(--text-main)" }}
-          >
-            {selectedGuild?.name || "Sunucu Seçin"}
-          </span>
-        </div>
+        {/* Name */}
+        <span
+          className="hidden sm:block truncate flex-1 text-left"
+          style={{
+            fontSize: "12.5px",
+            fontWeight: 600,
+            color: "var(--text-primary)",
+            maxWidth: "140px",
+          }}
+        >
+          {selectedGuild?.name || "Sunucu Seçin"}
+        </span>
 
         <ChevronDown
-          className="w-3.5 h-3.5 shrink-0 transition-transform duration-200"
+          className="shrink-0 transition-transform duration-200"
           style={{
+            width: "13px",
+            height: "13px",
             color: "var(--text-muted)",
             transform: isOpen ? "rotate(180deg)" : "rotate(0deg)",
           }}
         />
       </button>
 
+      {/* ── Dropdown ── */}
       {isOpen && (
         <>
+          <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />
           <div
-            className="fixed inset-0 z-40"
-            onClick={() => setIsOpen(false)}
-          />
-          <div
-            className="absolute left-0 mt-2 w-56 rounded-2xl overflow-hidden z-50 animate-fade-in"
+            className="absolute left-0 mt-2 overflow-hidden z-50 animate-fade-in"
             style={{
-              background: "rgba(10, 14, 20, 0.96)",
+              width: "230px",
+              background: "rgba(14,14,18,0.97)",
               backdropFilter: "blur(20px)",
-              border: "1px solid var(--border)",
+              border: "1px solid var(--border-strong)",
+              borderRadius: "var(--radius-lg)",
               boxShadow: "var(--shadow-lg)",
             }}
           >
             {/* Header */}
             <div
-              className="px-3 py-2"
-              style={{ borderBottom: "1px solid var(--border)" }}
+              style={{
+                padding: "10px 14px 8px",
+                borderBottom: "1px solid var(--border)",
+              }}
             >
-              <p className="text-[10px] font-bold tracking-wider uppercase" style={{ color: "var(--text-muted)" }}>
+              <p
+                style={{
+                  fontSize: "10px",
+                  fontWeight: 700,
+                  letterSpacing: "0.7px",
+                  textTransform: "uppercase",
+                  color: "var(--text-muted)",
+                  margin: 0,
+                }}
+              >
                 Sunucularınız
               </p>
             </div>
 
-            {/* Guild List */}
-            <div className="max-h-60 overflow-y-auto hide-scrollbar">
+            {/* List */}
+            <div
+              className="hide-scrollbar"
+              style={{ maxHeight: "240px", overflowY: "auto" }}
+            >
               {manageableGuilds.length === 0 ? (
-                <div className="px-4 py-4 text-[12px] text-center" style={{ color: "var(--text-muted)" }}>
+                <div
+                  style={{
+                    padding: "18px 14px",
+                    fontSize: "12.5px",
+                    color: "var(--text-muted)",
+                    textAlign: "center",
+                  }}
+                >
                   Yönetilebilir sunucu bulunamadı.
                 </div>
               ) : (
                 manageableGuilds.map((g) => {
-                  const isSelected = selectedGuild?.id === g.id;
+                  const isSel = selectedGuild?.id === g.id;
                   return (
                     <button
                       key={g.id}
-                      onClick={() => {
-                        selectGuild(g.id);
-                        setIsOpen(false);
-                      }}
-                      className="w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors duration-150"
+                      onClick={() => { selectGuild(g.id); setIsOpen(false); }}
+                      className="w-full flex items-center gap-3 text-left transition-colors duration-120 focus:outline-none"
                       style={{
-                        background: isSelected ? "var(--accent-dim)" : "transparent",
+                        padding: "9px 14px",
+                        background: isSel ? "var(--accent-dim)" : "transparent",
                         borderBottom: "1px solid var(--border-soft)",
+                        cursor: "pointer",
                       }}
                       onMouseEnter={(e) => {
-                        if (!isSelected)
+                        if (!isSel)
                           (e.currentTarget as HTMLButtonElement).style.background = "var(--surface-hover)";
                       }}
                       onMouseLeave={(e) => {
-                        if (!isSelected)
+                        if (!isSel)
                           (e.currentTarget as HTMLButtonElement).style.background = "transparent";
                       }}
                     >
+                      {/* Icon */}
                       {g.iconUrl ? (
                         <img
                           src={g.iconUrl}
@@ -133,28 +173,48 @@ export function GuildSwitcher() {
                         />
                       ) : (
                         <div
-                          className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 text-[11px] font-bold"
+                          className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
                           style={{
-                            background: "var(--surface-solid)",
+                            background: "var(--surface-02)",
+                            fontSize: "11px",
+                            fontWeight: 700,
                             color: "var(--text-secondary)",
                           }}
                         >
                           {g.name.substring(0, 2).toUpperCase()}
                         </div>
                       )}
-                      <div className="flex-1 min-w-0">
+
+                      {/* Info */}
+                      <div style={{ flex: 1, minWidth: 0 }}>
                         <p
-                          className="text-[12px] font-semibold truncate"
-                          style={{ color: isSelected ? "var(--accent)" : "var(--text-main)" }}
+                          style={{
+                            fontSize: "12.5px",
+                            fontWeight: 600,
+                            color: isSel ? "var(--accent)" : "var(--text-primary)",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                            margin: 0,
+                          }}
                         >
                           {g.name}
                         </p>
-                        <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>
+                        <p
+                          style={{
+                            fontSize: "10.5px",
+                            color: "var(--text-muted)",
+                            marginTop: "1px",
+                          }}
+                        >
                           {g.botInstalled ? "Bot Ekli" : "Kurulum Bekliyor"}
                         </p>
                       </div>
-                      {isSelected && (
-                        <Check className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--accent)" }} />
+
+                      {isSel && (
+                        <Check
+                          style={{ width: "13px", height: "13px", color: "var(--accent)", flexShrink: 0 }}
+                        />
                       )}
                     </button>
                   );
@@ -162,15 +222,19 @@ export function GuildSwitcher() {
               )}
             </div>
 
-            {/* Add Server */}
+            {/* Add server */}
             <a
               href={`https://discord.com/oauth2/authorize?client_id=${process.env.NEXT_PUBLIC_DISCORD_CLIENT_ID || "1500551629768888542"}&permissions=8&scope=bot%20applications.commands`}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center justify-center gap-2 w-full px-4 py-3 text-[12px] font-semibold transition-colors duration-150"
+              className="flex items-center justify-center gap-2 transition-colors duration-120"
               style={{
                 borderTop: "1px solid var(--border)",
+                padding: "11px 14px",
+                fontSize: "12.5px",
+                fontWeight: 600,
                 color: "var(--accent)",
+                textDecoration: "none",
               }}
               onMouseEnter={(e) => {
                 (e.currentTarget as HTMLAnchorElement).style.background = "var(--accent-dim)";
@@ -179,7 +243,7 @@ export function GuildSwitcher() {
                 (e.currentTarget as HTMLAnchorElement).style.background = "transparent";
               }}
             >
-              <Plus className="w-3.5 h-3.5" />
+              <Plus style={{ width: "13px", height: "13px" }} />
               <span>Yeni Sunucu Ekle</span>
             </a>
           </div>

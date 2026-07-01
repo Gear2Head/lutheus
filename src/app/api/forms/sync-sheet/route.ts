@@ -75,7 +75,13 @@ export async function POST(req: Request) {
             experience: row[13],
             regret: row[14],
             availability: row[15],
-            timeWindows: row[16]
+            timeWindows: row[16],
+            chatControversy: row[17],
+            tenseUserScenario: row[18],
+            minecraftScenario: row[19],
+            unacceptableBehaviors: row[20],
+            additionalInfo: row[21],
+            infoConsent: row[22]
           };
 
           records.push({

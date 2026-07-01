@@ -31,42 +31,42 @@ function getStatusClasses(status: string) {
   const norm = (status || '').toLowerCase();
   if (norm.includes('yeni')) {
     return {
-      bg: 'bg-blue-500/10 border-blue-500/20',
+      bg: 'bg-gradient-to-r from-blue-500/10 to-indigo-500/10 border-blue-500/20',
       text: 'text-blue-400',
       dot: 'bg-blue-500'
     };
   }
   if (norm.includes('incele')) {
     return {
-      bg: 'bg-amber-500/10 border-amber-500/20',
-      text: 'text-amber-400',
-      dot: 'bg-amber-500'
+      bg: 'bg-gradient-to-r from-cyan-500/10 to-blue-500/10 border-cyan-500/25',
+      text: 'text-cyan-300',
+      dot: 'bg-cyan-400'
     };
   }
   if (norm.includes('spam')) {
     return {
-      bg: 'bg-orange-500/10 border-orange-500/20',
+      bg: 'bg-gradient-to-r from-orange-500/10 to-amber-500/10 border-orange-500/20',
       text: 'text-orange-400',
       dot: 'bg-orange-500'
     };
   }
   if (norm.includes('blacklist') || norm.includes('kara')) {
     return {
-      bg: 'bg-red-500/10 border-red-500/20',
-      text: 'text-red-400',
-      dot: 'bg-red-500'
+      bg: 'blacklist-shimmer border-zinc-800/80',
+      text: 'text-zinc-300 font-bold',
+      dot: 'bg-zinc-400'
     };
   }
   if (norm.includes('basarili') || norm.includes('onay')) {
     return {
-      bg: 'bg-emerald-500/10 border-emerald-500/20',
+      bg: 'bg-gradient-to-r from-emerald-500/10 to-teal-500/10 border-emerald-500/20',
       text: 'text-emerald-400',
       dot: 'bg-emerald-500'
     };
   }
   if (norm.includes('basarisiz') || norm.includes('red')) {
     return {
-      bg: 'bg-rose-500/10 border-rose-500/20',
+      bg: 'bg-gradient-to-r from-rose-500/10 to-red-500/10 border-rose-500/20',
       text: 'text-rose-400',
       dot: 'bg-rose-500'
     };
@@ -279,6 +279,18 @@ export default function Applications() {
       transition={{ duration: 0.3 }}
       className="p-6 md:p-8 w-full space-y-6 md:space-y-8 select-none text-left"
     >
+      <style>{`
+        @keyframes blacklist-glimmer {
+          0% { background-position: -200% 0; }
+          100% { background-position: 200% 0; }
+        }
+        .blacklist-shimmer {
+          background: linear-gradient(120deg, #020202 30%, #1e1e24 50%, #020202 70%) !important;
+          background-size: 200% 100% !important;
+          animation: blacklist-glimmer 2.5s infinite linear !important;
+          border: 1px solid rgba(255,255,255,0.06) !important;
+        }
+      `}</style>
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
@@ -734,6 +746,53 @@ export default function Applications() {
                         <div className="p-3.5 rounded-xl bg-white/[0.02] border border-white/[0.04] text-white/85">
                           {selectedApp.raw_answers?.timeWindows || 'Belirtilmemiş'}
                         </div>
+                      </div>
+                    </div>
+
+                    <h4 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5 border-b border-white/[0.04] pb-1.5 pt-4">
+                      <Shield size={13} className="text-primary" />
+                      Senaryo ve Durum Analizleri
+                    </h4>
+
+                    <div>
+                      <div className="font-bold text-white/40 mb-1">Genel Sohbette Tartışmalı/Hassas Konu Yönetimi</div>
+                      <div className="p-3.5 rounded-xl bg-white/[0.02] border border-white/[0.04] text-white/80 leading-relaxed whitespace-pre-line">
+                        {selectedApp.raw_answers?.chatControversy || 'Belirtilmemiş'}
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="font-bold text-white/40 mb-1">Aşırı Gergin Kullanıcıya Karşı Yaklaşım</div>
+                      <div className="p-3.5 rounded-xl bg-white/[0.02] border border-white/[0.04] text-white/80 leading-relaxed whitespace-pre-line">
+                        {selectedApp.raw_answers?.tenseUserScenario || 'Belirtilmemiş'}
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="font-bold text-white/40 mb-1">Minecraft Sunucusu Genel Sohbet Senaryosu</div>
+                      <div className="p-3.5 rounded-xl bg-white/[0.02] border border-white/[0.04] text-white/80 leading-relaxed whitespace-pre-line">
+                        {selectedApp.raw_answers?.minecraftScenario || 'Belirtilmemiş'}
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="font-bold text-white/40 mb-1">Asla Müsamaha Gösterilmeyecek İlk 3 Davranış</div>
+                      <div className="p-3.5 rounded-xl bg-white/[0.02] border border-white/[0.04] text-white/80 leading-relaxed whitespace-pre-line">
+                        {selectedApp.raw_answers?.unacceptableBehaviors || 'Belirtilmemiş'}
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="font-bold text-white/40 mb-1">Son Olarak Eklemek İstenenler</div>
+                      <div className="p-3.5 rounded-xl bg-white/[0.02] border border-white/[0.04] text-white/80 leading-relaxed whitespace-pre-line">
+                        {selectedApp.raw_answers?.additionalInfo || 'Belirtilmemiş'}
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="font-bold text-white/40 mb-1">Başvuru Bilgilendirmesi & Onay</div>
+                      <div className="p-3.5 rounded-xl bg-white/[0.02] border border-white/[0.04] text-white/80 leading-relaxed whitespace-pre-line">
+                        {selectedApp.raw_answers?.infoConsent || 'Belirtilmemiş'}
                       </div>
                     </div>
                   </div>

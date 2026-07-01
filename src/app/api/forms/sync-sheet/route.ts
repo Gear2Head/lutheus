@@ -15,10 +15,10 @@ export async function POST(req: Request) {
     const spreadsheetId = matches[1];
 
     const sheetsToSync = [
-      { name: "Başvurular", defaultStatus: "Yeni Başasvuru" },
+      { name: "Başvurular", defaultStatus: "Yeni Başvuru" },
       { name: "Spam", defaultStatus: "Spam" },
       { name: "BlackList", defaultStatus: "BlackList" },
-      { name: "Arşiv", defaultStatus: "Arşiv", gid: "1162013761" }
+      { name: "Arşiv", defaultStatus: "Arşiv", gid: "401941768" }
     ];
 
     let totalSynced = 0;

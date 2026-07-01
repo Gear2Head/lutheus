@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   FileText, CheckCircle2, XCircle, Clock, Loader2,
-  ChevronDown, X, User, Shield, Info, Filter, RefreshCw, AlertTriangle, Link2, Download
+  ChevronDown, X, User, Shield, Info, Filter, RefreshCw, AlertTriangle, Link2, Download, Copy
 } from 'lucide-react';
 import { useToast } from '../contexts/ToastContext';
 import { getStaffApplications, updateStaffApplicationStatus, StaffApplication, supabaseFetch, upsertStaffApplication } from '../lib/supabase';
@@ -154,6 +154,17 @@ export default function Applications() {
     } finally {
       setUpdatingId(null);
     }
+  };
+
+  const copyToClipboard = (text: string, label: string) => {
+    navigator.clipboard.writeText(text);
+    showToast(`${label} kopyalandı!`, 'success');
+  };
+
+  const extractDiscordId = (tag: string): string => {
+    if (!tag) return '';
+    const match = tag.match(/\d{17,20}/);
+    return match ? match[0] : tag;
   };
 
   // Google Sheets Sync Logic via Next.js Backend (Avoids CORS issues)
@@ -529,7 +540,6 @@ export default function Applications() {
               onClick={() => setSelectedApp(null)}
             />
 
-            {/* Drawer */}
             <motion.div
               initial={{ x: '100%' }}
               animate={{ x: 0 }}
@@ -537,16 +547,25 @@ export default function Applications() {
               transition={{ type: 'spring', stiffness: 350, damping: 35 }}
               className="fixed top-0 right-0 h-full w-full max-w-[550px] bg-[#0D0D11] border-l border-white/[0.08] z-50 flex flex-col shadow-2xl overflow-hidden"
             >
-              {/* Header */}
               <div className="px-6 py-4 border-b border-white/[0.04] bg-[#0D0D11]/90 backdrop-blur flex items-center justify-between">
                 <div>
                   <div className="flex items-center gap-1.5">
                     <span className="w-1.5 h-1.5 rounded-full bg-[#5E5CE6]" />
                     <span className="text-[10px] font-mono tracking-widest text-[#5E5CE6] font-bold uppercase">Başvuru Bilgisi</span>
                   </div>
-                  <h3 className="text-base font-bold text-white mt-0.5">
-                    {selectedApp.full_name || 'Bilinmeyen Aday'} ({selectedApp.applicant_id})
-                  </h3>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <h3 className="text-base font-bold text-white">
+                      {selectedApp.full_name || 'Bilinmeyen Aday'}
+                    </h3>
+                    <span className="text-xs font-mono text-white/40">({selectedApp.applicant_id})</span>
+                    <button
+                      onClick={() => copyToClipboard(selectedApp.applicant_id, 'Başvuru ID')}
+                      className="p-1 rounded bg-white/5 hover:bg-white/10 text-white/40 hover:text-white transition-all cursor-pointer"
+                      title="Başvuru ID Kopyala"
+                    >
+                      <Copy size={11} />
+                    </button>
+                  </div>
                 </div>
                 <button
                   onClick={() => setSelectedApp(null)}
@@ -592,27 +611,63 @@ export default function Applications() {
 
                 {/* Candidate Overview Fields */}
                 <div className="grid grid-cols-2 gap-3.5">
-                  <div className="p-3.5 rounded-xl bg-white/[0.02] border border-white/[0.04]">
-                    <div className="text-[9px] font-bold text-white/30 uppercase tracking-wider">Discord Bilgisi</div>
-                    <div className="text-xs font-semibold text-white mt-1 flex items-center gap-1.5">
-                      <User size={12} className="text-white/40" />
-                      {selectedApp.discord_tag}
+                  <div className="p-3.5 rounded-xl bg-white/[0.02] border border-white/[0.04] flex flex-col justify-between min-h-[72px]">
+                    <div>
+                      <div className="text-[9px] font-bold text-white/30 uppercase tracking-wider">Discord Bilgisi</div>
+                      <div className="text-xs font-semibold text-white mt-1.5 flex items-center gap-1.5 truncate">
+                        <User size={12} className="text-white/40 shrink-0" />
+                        <span className="truncate">{selectedApp.discord_tag}</span>
+                      </div>
+                    </div>
+                    <div className="flex gap-1.5 mt-2">
+                      <button
+                        onClick={() => copyToClipboard(selectedApp.discord_tag || '', 'Discord Tag')}
+                        className="flex items-center gap-1 h-5 px-1.5 rounded bg-white/5 hover:bg-white/10 text-[9px] font-bold text-white/60 hover:text-white transition-all cursor-pointer"
+                      >
+                        <Copy size={9} />
+                        Tag
+                      </button>
+                      {extractDiscordId(selectedApp.discord_tag || '') && extractDiscordId(selectedApp.discord_tag || '') !== selectedApp.discord_tag && (
+                        <button
+                          onClick={() => copyToClipboard(extractDiscordId(selectedApp.discord_tag || ''), 'Discord ID')}
+                          className="flex items-center gap-1 h-5 px-1.5 rounded bg-white/5 hover:bg-white/10 text-[9px] font-bold text-white/60 hover:text-white transition-all cursor-pointer"
+                        >
+                          <Copy size={9} />
+                          ID
+                        </button>
+                      )}
                     </div>
                   </div>
-                  <div className="p-3.5 rounded-xl bg-white/[0.02] border border-white/[0.04]">
-                    <div className="text-[9px] font-bold text-white/30 uppercase tracking-wider">Doğum Tarihi</div>
-                    <div className="text-xs font-semibold text-white mt-1">
-                      {selectedApp.raw_answers?.birthDate || 'Belirtilmemiş'}
+
+                  <div className="p-3.5 rounded-xl bg-white/[0.02] border border-white/[0.04] flex flex-col justify-between min-h-[72px]">
+                    <div>
+                      <div className="text-[9px] font-bold text-white/30 uppercase tracking-wider">Aday Adı</div>
+                      <div className="text-xs font-semibold text-white mt-1.5 truncate">
+                        {selectedApp.full_name || 'Belirtilmemiş'}
+                      </div>
                     </div>
+                    {selectedApp.full_name && (
+                      <div className="flex mt-2">
+                        <button
+                          onClick={() => copyToClipboard(selectedApp.full_name || '', 'Aday Adı')}
+                          className="flex items-center gap-1 h-5 px-1.5 rounded bg-white/5 hover:bg-white/10 text-[9px] font-bold text-white/60 hover:text-white transition-all cursor-pointer"
+                        >
+                          <Copy size={9} />
+                          Ad Kopyala
+                        </button>
+                      </div>
+                    )}
                   </div>
+
                   <div className="p-3.5 rounded-xl bg-white/[0.02] border border-white/[0.04]">
-                    <div className="text-[9px] font-bold text-white/30 uppercase tracking-wider">Mikrofon Kalitesi</div>
+                    <div className="text-[9px] font-bold text-white/30 uppercase tracking-wider font-semibold">Mikrofon Kalitesi</div>
                     <div className="text-xs font-semibold text-white mt-1">
                       {selectedApp.raw_answers?.micQuality || 'Belirtilmemiş'}
                     </div>
                   </div>
+
                   <div className="p-3.5 rounded-xl bg-white/[0.02] border border-white/[0.04]">
-                    <div className="text-[9px] font-bold text-white/30 uppercase tracking-wider">Kullanım Süresi</div>
+                    <div className="text-[9px] font-bold text-white/30 uppercase tracking-wider font-semibold">Kullanım Süresi</div>
                     <div className="text-xs font-semibold text-white mt-1">
                       {selectedApp.raw_answers?.discordUsage || 'Belirtilmemiş'}
                     </div>

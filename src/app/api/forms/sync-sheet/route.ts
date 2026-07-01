@@ -15,82 +15,99 @@ export async function POST(req: Request) {
     const spreadsheetId = matches[1];
 
     const sheetsToSync = [
-      { name: "Başvurular", defaultStatus: "Yeni Başvuru" },
+      { name: "Başvurular", defaultStatus: "Yeni Başasvuru" },
       { name: "Spam", defaultStatus: "Spam" },
       { name: "BlackList", defaultStatus: "BlackList" },
-      { name: "Arşiv", defaultStatus: "Arşiv" }
+      { name: "Arşiv", defaultStatus: "Arşiv", gid: "1162013761" }
     ];
 
     let totalSynced = 0;
+    const syncLogs: string[] = [];
 
     for (const s of sheetsToSync) {
-      const csvUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(s.name)}`;
-      const response = await fetch(csvUrl);
-      if (!response.ok) {
-        console.warn(`Could not sync sheet ${s.name}: ${response.statusText}`);
-        continue;
-      }
-      const csvText = await response.text();
-      const rows = parseCSV(csvText);
-
-      if (rows.length <= 1) continue;
-
-      const records = [];
-      for (let i = 1; i < rows.length; i++) {
-        const row = rows[i];
-        const id = row[0];
-        const status = row[1] || s.defaultStatus;
-        const dateStr = row[2];
-        const email = row[3];
-        const fullName = row[4];
-        const discordTag = row[6];
-
-        if (!id || !email) continue;
-
-        const rawAnswers = {
-          id: id,
-          email: email,
-          fullName: fullName,
-          birthDate: row[5],
-          discordInfo: discordTag,
-          discordUsage: row[7],
-          penaltyHistory: row[8],
-          micQuality: row[9],
-          motivation: row[10],
-          teamwork: row[11],
-          moderationPurpose: row[12],
-          experience: row[13],
-          regret: row[14],
-          availability: row[15],
-          timeWindows: row[16]
-        };
-
-        records.push({
-          applicant_id: id,
-          status: status,
-          form_type: 'application',
-          full_name: fullName || null,
-          discord_tag: discordTag || null,
-          email: email || null,
-          raw_answers: rawAnswers,
-          created_at: parseSheetDate(dateStr)
-        });
-      }
-
-      if (records.length > 0) {
-        const { error } = await supabase
-          .from('staff_applications')
-          .upsert(records, { onConflict: 'applicant_id' });
-        
-        if (error) {
-          console.error(`Error upserting sheet ${s.name}:`, error);
+      try {
+        let csvUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:csv`;
+        if (s.gid) {
+          csvUrl += `&gid=${s.gid}`;
         } else {
-          totalSynced += records.length;
+          csvUrl += `&sheet=${encodeURIComponent(s.name)}`;
         }
+
+        const response = await fetch(csvUrl);
+        if (!response.ok) {
+          syncLogs.push(`${s.name} fetch failed: HTTP ${response.status} ${response.statusText}`);
+          continue;
+        }
+
+        const csvText = await response.text();
+        const rows = parseCSV(csvText);
+
+        if (rows.length <= 1) {
+          syncLogs.push(`${s.name} is empty or only has headers`);
+          continue;
+        }
+
+        const records = [];
+        for (let i = 1; i < rows.length; i++) {
+          const row = rows[i];
+          const id = row[0];
+          // Set status and clean it up (for Archive sheet, status is row[1])
+          const status = row[1] || s.defaultStatus;
+          const dateStr = row[2];
+          const email = row[3];
+          const fullName = row[4];
+          const discordTag = row[6];
+
+          if (!id || !email) continue;
+
+          const rawAnswers = {
+            id: id,
+            email: email,
+            fullName: fullName,
+            birthDate: row[5],
+            discordInfo: discordTag,
+            discordUsage: row[7],
+            penaltyHistory: row[8],
+            micQuality: row[9],
+            motivation: row[10],
+            teamwork: row[11],
+            moderationPurpose: row[12],
+            experience: row[13],
+            regret: row[14],
+            availability: row[15],
+            timeWindows: row[16]
+          };
+
+          records.push({
+            applicant_id: id,
+            status: status,
+            form_type: 'application',
+            full_name: fullName || null,
+            discord_tag: discordTag || null,
+            email: email || null,
+            raw_answers: rawAnswers,
+            created_at: parseSheetDate(dateStr)
+          });
+        }
+
+        if (records.length > 0) {
+          const { error } = await supabase
+            .from('staff_applications')
+            .upsert(records, { onConflict: 'applicant_id' });
+          
+          if (error) {
+            syncLogs.push(`${s.name} upsert failed: ${error.message}`);
+          } else {
+            totalSynced += records.length;
+            syncLogs.push(`${s.name} successfully synced ${records.length} records`);
+          }
+        }
+      } catch (err: any) {
+        syncLogs.push(`${s.name} catch error: ${err.message || err}`);
       }
     }
 
-    return NextResponse.json({ success: true, totalSynced });
+    return NextResponse.json({ success: true, totalSynced, logs: syncLogs });
   } catch (err: any) {
     console.error('Sync sheet error:', err);
     return NextResponse.json({ error: err.message || 'Internal Server Error' }, { status: 500 });

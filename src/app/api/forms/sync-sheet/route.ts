@@ -91,15 +91,27 @@ export async function POST(req: Request) {
         }
 
         if (records.length > 0) {
+          // Deduplicate records to avoid PostgreSQL "ON CONFLICT DO UPDATE command cannot affect row a second time" error
+          const uniqueRecords = [];
+          const seenIds = new Set();
+          for (let k = records.length - 1; k >= 0; k--) {
+            const rec = records[k];
+            if (!seenIds.has(rec.applicant_id)) {
+              seenIds.add(rec.applicant_id);
+              uniqueRecords.push(rec);
+            }
+          }
+          uniqueRecords.reverse();
+
           const { error } = await supabase
             .from('staff_applications')
-            .upsert(records, { onConflict: 'applicant_id' });
+            .upsert(uniqueRecords, { onConflict: 'applicant_id' });
           
           if (error) {
             syncLogs.push(`${s.name} upsert failed: ${error.message}`);
           } else {
-            totalSynced += records.length;
-            syncLogs.push(`${s.name} successfully synced ${records.length} records`);
+            totalSynced += uniqueRecords.length;
+            syncLogs.push(`${s.name} successfully synced ${uniqueRecords.length} records`);
           }
         }
       } catch (err: any) {

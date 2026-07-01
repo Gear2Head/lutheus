@@ -5,6 +5,7 @@ import {
   ChevronDown, X, User, Shield, Info, Filter, RefreshCw, AlertTriangle, Link2, Download, Copy
 } from 'lucide-react';
 import { useToast } from '../contexts/ToastContext';
+import { useAuth } from '../contexts/AuthContext';
 import { getStaffApplications, updateStaffApplicationStatus, StaffApplication, supabaseFetch, upsertStaffApplication } from '../lib/supabase';
 import { formatDate } from '../lib/utils';
 
@@ -27,8 +28,29 @@ function StatCard({
   );
 }
 
+function normalizeTurkish(str: string): string {
+  if (!str) return '';
+  return str
+    .replace(/İ/g, 'i')
+    .replace(/I/g, 'i')
+    .replace(/ı/g, 'i')
+    .replace(/ş/g, 's')
+    .replace(/Ş/g, 's')
+    .replace(/ğ/g, 'g')
+    .replace(/Ğ/g, 'g')
+    .replace(/ü/g, 'u')
+    .replace(/Ü/g, 'u')
+    .replace(/ö/g, 'o')
+    .replace(/Ö/g, 'o')
+    .replace(/ç/g, 'c')
+    .replace(/Ç/g, 'c')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+}
+
 function getStatusClasses(status: string) {
-  const norm = (status || '').toLowerCase();
+  const norm = normalizeTurkish(status || '');
   
   if (norm.includes('yeni')) {
     return {
@@ -39,9 +61,9 @@ function getStatusClasses(status: string) {
   }
   if (norm.includes('incele')) {
     return {
-      bg: 'bg-gradient-to-r from-cyan-500/20 to-blue-500/20 border-cyan-500/30',
-      text: 'text-cyan-400 font-semibold',
-      dot: 'bg-cyan-400'
+      bg: 'bg-gradient-to-r from-purple-500/20 to-indigo-500/20 border-purple-500/30',
+      text: 'text-purple-400 font-semibold',
+      dot: 'bg-[#A259FE]'
     };
   }
   if (norm.includes('spam')) {
@@ -58,14 +80,14 @@ function getStatusClasses(status: string) {
       dot: 'bg-zinc-400'
     };
   }
-  if (norm.includes('basarili') || norm.includes('başarılı') || norm.includes('onay')) {
+  if (norm.includes('basarili') || norm.includes('onay')) {
     return {
       bg: 'bg-gradient-to-r from-emerald-500/20 to-teal-500/20 border-emerald-500/30',
       text: 'text-emerald-400 font-semibold',
       dot: 'bg-emerald-400'
     };
   }
-  if (norm.includes('basarisiz') || norm.includes('başarısız') || norm.includes('red')) {
+  if (norm.includes('basarisiz') || norm.includes('red')) {
     return {
       bg: 'bg-gradient-to-r from-rose-500/20 to-red-500/20 border-rose-500/30',
       text: 'text-rose-400 font-semibold',
@@ -81,6 +103,7 @@ function getStatusClasses(status: string) {
 
 export default function Applications() {
   const { showToast } = useToast();
+  const { session } = useAuth();
   const [apps, setApps] = useState<StaffApplication[]>([]);
   const [loading, setLoading] = useState(true);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
@@ -93,6 +116,19 @@ export default function Applications() {
   const [scriptUrl, setScriptUrl] = useState(() => localStorage.getItem('lutheus-google-script-url') || '');
   const [syncingSheet, setSyncingSheet] = useState(false);
   const [showSyncConfig, setShowSyncConfig] = useState(false);
+  const [formConfig, setFormConfig] = useState<any>(null);
+
+  const fetchFormConfig = async () => {
+    try {
+      const data = await supabaseFetch<any[]>('custom_forms', 'GET', 'id=eq.yetkili_alim');
+      if (data && data[0]) {
+        setFormConfig(data[0]);
+      }
+    } catch (e) {
+      console.warn('Failed to load formConfig in Applications.tsx:', e);
+    }
+  };
+
 
   const fetchApps = async () => {
     setLoading(true);
@@ -108,33 +144,56 @@ export default function Applications() {
 
   useEffect(() => {
     fetchApps();
+    fetchFormConfig();
   }, []);
+
 
   const stats = useMemo(() => {
     const total = apps.length;
-    const activeNew = apps.filter(a => (a.status || '').toLowerCase().includes('yeni')).length;
-    const reviewing = apps.filter(a => (a.status || '').toLowerCase().includes('incele')).length;
-    const spam = apps.filter(a => (a.status || '').toLowerCase().includes('spam')).length;
-    const blacklist = apps.filter(a => (a.status || '').toLowerCase().includes('blacklist')).length;
+    const activeNew = apps.filter(a => {
+      const s = a.status || '';
+      return normalizeTurkish(s).includes('yeni') || s === 'Yeni Başvuru';
+    }).length;
+    const reviewing = apps.filter(a => {
+      const s = a.status || '';
+      return normalizeTurkish(s).includes('incele') || s === 'İnceleniyor';
+    }).length;
+    const spam = apps.filter(a => {
+      const s = a.status || '';
+      return normalizeTurkish(s).includes('spam') || s === 'Spam';
+    }).length;
+    const blacklist = apps.filter(a => {
+      const s = a.status || '';
+      return normalizeTurkish(s).includes('blacklist') || normalizeTurkish(s).includes('kara') || normalizeTurkish(s).includes('reddedildi') || s === 'BlackList';
+    }).length;
     return { total, activeNew, reviewing, spam, blacklist };
   }, [apps]);
 
   const filteredApps = useMemo(() => {
     return apps.filter(a => {
-      const matchStatus = statusFilter === 'all' || 
-        (statusFilter === 'new' && (a.status || '').toLowerCase().includes('yeni')) ||
-        (statusFilter === 'reviewing' && (a.status || '').toLowerCase().includes('incele')) ||
-        (statusFilter === 'spam' && (a.status || '').toLowerCase().includes('spam')) ||
-        (statusFilter === 'blacklist' && (a.status || '').toLowerCase().includes('blacklist')) ||
-        (statusFilter === 'successful' && (a.status || '').toLowerCase().includes('basarili')) ||
-        (statusFilter === 'failed' && (a.status || '').toLowerCase().includes('basarisiz'));
+      const rawStatus = a.status || '';
+      const normStatus = normalizeTurkish(rawStatus);
+      const isNew = normStatus.includes('yeni') || rawStatus === 'Yeni Başvuru';
+      const isReviewing = normStatus.includes('incele') || rawStatus === 'İnceleniyor';
+      const isSpam = normStatus.includes('spam') || rawStatus === 'Spam';
+      const isBlacklist = normStatus.includes('blacklist') || normStatus.includes('kara') || rawStatus === 'BlackList';
+      const isSuccessful = normStatus.includes('basarili') || normStatus.includes('onay') || rawStatus === 'Başarılı';
+      const isFailed = normStatus.includes('basarisiz') || normStatus.includes('red') || rawStatus === 'Başarısız';
 
-      const searchLower = searchQuery.toLowerCase();
+      const matchStatus = statusFilter === 'all' || 
+        (statusFilter === 'new' && isNew) ||
+        (statusFilter === 'reviewing' && isReviewing) ||
+        (statusFilter === 'spam' && isSpam) ||
+        (statusFilter === 'blacklist' && isBlacklist) ||
+        (statusFilter === 'successful' && isSuccessful) ||
+        (statusFilter === 'failed' && isFailed);
+
+      const searchNorm = normalizeTurkish(searchQuery);
       const matchSearch = !searchQuery || 
-        (a.applicant_id || '').toLowerCase().includes(searchLower) ||
-        (a.full_name || '').toLowerCase().includes(searchLower) ||
-        (a.discord_tag || '').toLowerCase().includes(searchLower) ||
-        (a.email || '').toLowerCase().includes(searchLower);
+        normalizeTurkish(a.applicant_id).includes(searchNorm) ||
+        normalizeTurkish(a.full_name).includes(searchNorm) ||
+        normalizeTurkish(a.discord_tag).includes(searchNorm) ||
+        normalizeTurkish(a.email).includes(searchNorm);
 
       return matchStatus && matchSearch;
     });
@@ -143,7 +202,25 @@ export default function Applications() {
   const handleStatusUpdate = async (applicantId: string, newStatus: string) => {
     setUpdatingId(applicantId);
     try {
-      await updateStaffApplicationStatus(applicantId, newStatus);
+      const executorName = session?.profile?.displayName || session?.profile?.username || 'Web Panel';
+      await updateStaffApplicationStatus(applicantId, newStatus, executorName);
+      
+      // Trigger Discord notification via Apps Script
+      const scriptUrl = localStorage.getItem('lutheus-google-script-url');
+      if (scriptUrl) {
+        fetch(scriptUrl, {
+          method: 'POST',
+          mode: 'no-cors',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'updateStatus',
+            applicantId,
+            status: newStatus,
+            executorName
+          })
+        }).catch(err => console.warn('Discord webhook notification failed:', err));
+      }
+
       showToast(`Başvuru durumu başarıyla güncellendi: ${newStatus}`, 'success');
       
       setApps(prev => prev.map(a => a.applicant_id === applicantId ? { ...a, status: newStatus } : a));
@@ -156,6 +233,23 @@ export default function Applications() {
       setUpdatingId(null);
     }
   };
+
+
+  const handleDeleteApplication = async (applicantId: string) => {
+    if (!window.confirm('Bu başvuruyu veritabanından tamamen silmek istediğinize emin misiniz? Bu işlem geri alınamaz.')) return;
+    setUpdatingId(applicantId);
+    try {
+      await supabaseFetch('staff_applications', 'DELETE', `applicant_id=eq.${applicantId}`);
+      showToast('Başvuru veritabanından kalıcı olarak silindi.', 'success');
+      setApps(prev => prev.filter(a => a.applicant_id !== applicantId));
+      setSelectedApp(null);
+    } catch (err: any) {
+      showToast(`Silme hatası: ${err.message || String(err)}`, 'error');
+    } finally {
+      setUpdatingId(null);
+    }
+  };
+
 
   const copyToClipboard = (text: string, label: string) => {
     navigator.clipboard.writeText(text);
@@ -596,12 +690,12 @@ export default function Applications() {
               {/* Scrollable Body */}
               <div className="flex-1 overflow-y-auto p-6 space-y-5 hide-scrollbar">
                 {/* Status card */}
-                <div className={`p-4 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${getStatusClasses(selectedApp.status).bg} ${getStatusClasses(selectedApp.status).bg.replace('border-', '')}`}>
-                  <div className="flex items-center gap-2.5">
-                    <div className={`w-2 h-2 rounded-full ${getStatusClasses(selectedApp.status).dot}`} />
+                <div className={`p-4.5 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-4 ${getStatusClasses(selectedApp.status).bg} border-white/[0.08]`}>
+                  <div className="flex items-center gap-3">
+                    <div className={`w-2.5 h-2.5 rounded-full ${getStatusClasses(selectedApp.status).dot} shadow-lg`} />
                     <div>
                       <div className={`text-xs font-bold ${getStatusClasses(selectedApp.status).text}`}>
-                        {selectedApp.status}
+                        Durum: {selectedApp.status}
                       </div>
                       <div className="text-[10px] text-white/40 mt-0.5">
                         Başvuru kayıt tarihi: {formatDate(selectedApp.created_at)}
@@ -618,185 +712,240 @@ export default function Applications() {
                           key={st}
                           disabled={updatingId === selectedApp.applicant_id}
                           onClick={() => handleStatusUpdate(selectedApp.applicant_id, st)}
-                          className="h-6 px-2.5 rounded-lg bg-white/5 hover:bg-white/10 text-[10px] text-white/80 font-bold hover:text-white border border-white/[0.04] transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="h-7 px-3.5 rounded-xl bg-white/[0.04] hover:bg-purple-600 border border-white/[0.06] hover:border-purple-500/30 text-[10px] text-white font-bold transition-all cursor-pointer active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           {st === 'İnceleniyor' ? 'Mülakata Al' : st}
                         </button>
                       );
                     })}
+
+                    <button
+                      disabled={updatingId === selectedApp.applicant_id}
+                      onClick={() => handleDeleteApplication(selectedApp.applicant_id)}
+                      className="h-7 px-3.5 rounded-xl bg-rose-500/10 hover:bg-rose-600 border border-rose-500/20 hover:border-rose-600 text-[10px] text-rose-400 hover:text-white font-bold transition-all cursor-pointer active:scale-97 disabled:opacity-50"
+                    >
+                      Sil
+                    </button>
                   </div>
                 </div>
 
+
                 {/* Candidate Overview Fields */}
-                <div className="grid grid-cols-2 gap-3.5">
-                  <div className="p-3.5 rounded-xl bg-white/[0.02] border border-white/[0.04] flex flex-col justify-between min-h-[72px]">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/[0.04] hover:border-white/[0.08] transition-all flex flex-col justify-between space-y-3">
                     <div>
-                      <div className="text-[9px] font-bold text-white/30 uppercase tracking-wider">Discord Bilgisi</div>
-                      <div className="text-xs font-semibold text-white mt-1.5 flex items-center gap-1.5 truncate">
-                        <User size={12} className="text-white/40 shrink-0" />
-                        <span className="truncate">{selectedApp.discord_tag}</span>
+                      <div className="text-[9px] font-bold text-white/30 uppercase tracking-widest font-mono">Discord Bağlantısı</div>
+                      <div className="text-xs font-bold text-white mt-1.5 flex items-center gap-1.5 truncate">
+                        <User size={13} className="text-purple-400 shrink-0" />
+                        <span className="truncate">@{selectedApp.discord_tag}</span>
                       </div>
                     </div>
-                    <div className="flex gap-1.5 mt-2">
+                    <div className="flex gap-2">
                       <button
                         onClick={() => copyToClipboard(selectedApp.discord_tag || '', 'Discord Tag')}
-                        className="flex items-center gap-1 h-5 px-1.5 rounded bg-white/5 hover:bg-white/10 text-[9px] font-bold text-white/60 hover:text-white transition-all cursor-pointer"
+                        className="flex items-center gap-1 h-6 px-2.5 rounded-lg bg-white/[0.04] hover:bg-white/[0.08] text-[10px] font-semibold text-white/60 hover:text-white transition-all cursor-pointer"
                       >
-                        <Copy size={9} />
-                        Tag
+                        <Copy size={9} /> Kullanıcı Adı
                       </button>
                       {extractDiscordId(selectedApp.discord_tag || '') && extractDiscordId(selectedApp.discord_tag || '') !== selectedApp.discord_tag && (
                         <button
                           onClick={() => copyToClipboard(extractDiscordId(selectedApp.discord_tag || ''), 'Discord ID')}
-                          className="flex items-center gap-1 h-5 px-1.5 rounded bg-white/5 hover:bg-white/10 text-[9px] font-bold text-white/60 hover:text-white transition-all cursor-pointer"
+                          className="flex items-center gap-1 h-6 px-2.5 rounded-lg bg-white/[0.04] hover:bg-white/[0.08] text-[10px] font-semibold text-white/60 hover:text-white transition-all cursor-pointer"
                         >
-                          <Copy size={9} />
-                          ID
+                          <Copy size={9} /> ID
                         </button>
                       )}
                     </div>
                   </div>
 
-                  <div className="p-3.5 rounded-xl bg-white/[0.02] border border-white/[0.04] flex flex-col justify-between min-h-[72px]">
+                  <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/[0.04] hover:border-white/[0.08] transition-all flex flex-col justify-between space-y-3">
                     <div>
-                      <div className="text-[9px] font-bold text-white/30 uppercase tracking-wider">Aday Adı</div>
-                      <div className="text-xs font-semibold text-white mt-1.5 truncate">
+                      <div className="text-[9px] font-bold text-white/30 uppercase tracking-widest font-mono">Aday Adı & Soyadı</div>
+                      <div className="text-xs font-bold text-white mt-1.5 truncate">
                         {selectedApp.full_name || 'Belirtilmemiş'}
                       </div>
                     </div>
                     {selectedApp.full_name && (
-                      <div className="flex mt-2">
+                      <div className="flex">
                         <button
                           onClick={() => copyToClipboard(selectedApp.full_name || '', 'Aday Adı')}
-                          className="flex items-center gap-1 h-5 px-1.5 rounded bg-white/5 hover:bg-white/10 text-[9px] font-bold text-white/60 hover:text-white transition-all cursor-pointer"
+                          className="flex items-center gap-1 h-6 px-2.5 rounded-lg bg-white/[0.04] hover:bg-white/[0.08] text-[10px] font-semibold text-white/60 hover:text-white transition-all cursor-pointer"
                         >
-                          <Copy size={9} />
-                          Ad Kopyala
+                          <Copy size={9} /> İsmi Kopyala
                         </button>
                       </div>
                     )}
                   </div>
-
-                  <div className="p-3.5 rounded-xl bg-white/[0.02] border border-white/[0.04]">
-                    <div className="text-[9px] font-bold text-white/30 uppercase tracking-wider font-semibold">Mikrofon Kalitesi</div>
-                    <div className="text-xs font-semibold text-white mt-1">
-                      {selectedApp.raw_answers?.micQuality || 'Belirtilmemiş'}
-                    </div>
-                  </div>
-
-                  <div className="p-3.5 rounded-xl bg-white/[0.02] border border-white/[0.04]">
-                    <div className="text-[9px] font-bold text-white/30 uppercase tracking-wider font-semibold">Kullanım Süresi</div>
-                    <div className="text-xs font-semibold text-white mt-1">
-                      {selectedApp.raw_answers?.discordUsage || 'Belirtilmemiş'}
-                    </div>
-                  </div>
                 </div>
 
-                {/* Candidate Detailed Answers */}
-                <div className="space-y-4 pt-2">
-                  <h4 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5 border-b border-white/[0.04] pb-1.5">
-                    <Shield size={13} className="text-primary" />
-                    Form Detayları
-                  </h4>
+                {/* Dynamic or Static Answers */}
+                <div className="pt-2">
+                  {(() => {
+                    const answersObj = selectedApp.raw_answers || {};
+                    const isDynamic = Object.keys(answersObj).some(k => k.startsWith('field_'));
 
-                  <div className="space-y-4 text-xs">
-                    <div>
-                      <div className="font-bold text-white/40 mb-1">Neden yetkili ekibimize katılmak istiyorsunuz? (Motivasyon)</div>
-                      <div className="p-3.5 rounded-xl bg-white/[0.02] border border-white/[0.04] text-white/80 leading-relaxed whitespace-pre-line">
-                        {selectedApp.raw_answers?.motivation || 'Belirtilmemiş'}
-                      </div>
-                    </div>
+                    if (isDynamic && formConfig) {
+                      return (
+                        <div className="space-y-4">
+                          <h4 className="text-[10px] font-bold text-white/30 uppercase tracking-widest flex items-center gap-1.5 border-b border-white/[0.04] pb-2">
+                            <Shield size={13} className="text-purple-400" />
+                            Adayın Cevap Listesi (Dinamik)
+                          </h4>
+                          <div className="space-y-3">
+                            {formConfig.fields.map((field: any) => {
+                              if (field.type === 'section_break') {
+                                return (
+                                  <div key={field.id} className="pt-3 border-t border-white/[0.04]">
+                                    <div className="text-[10px] font-bold text-purple-400 uppercase tracking-widest">{field.label}</div>
+                                    {field.help_text && <p className="text-[9px] text-white/30 mt-0.5">{field.help_text}</p>}
+                                  </div>
+                                );
+                              }
+                              if (field.type === 'rich_text') {
+                                return (
+                                  <div key={field.id} className="p-4 rounded-2xl bg-white/[0.01] border border-white/[0.02] text-white/50 text-[10px]"
+                                    dangerouslySetInnerHTML={{ __html: field.content || '' }} />
+                                );
+                              }
+                              
+                              const val = answersObj[field.id];
+                              const renderVal = Array.isArray(val) ? val.join(', ') : String(val ?? 'Belirtilmemiş');
 
-                    <div>
-                      <div className="font-bold text-white/40 mb-1">Ekip çalışmasına nasıl katkıda bulunabilirsiniz?</div>
-                      <div className="p-3.5 rounded-xl bg-white/[0.02] border border-white/[0.04] text-white/80 leading-relaxed whitespace-pre-line">
-                        {selectedApp.raw_answers?.teamwork || 'Belirtilmemiş'}
-                      </div>
-                    </div>
+                              return (
+                                <div key={field.id} className="p-4 rounded-2xl bg-white/[0.02] border border-white/[0.04] border-l-4 border-l-purple-600 hover:border-white/[0.08] transition-all space-y-1.5">
+                                  <div className="text-[11px] font-bold text-white/50" dangerouslySetInnerHTML={{ __html: field.label }} />
+                                  <div className="text-xs font-semibold text-white/80 leading-relaxed whitespace-pre-line">
+                                    {renderVal}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    }
 
-                    <div>
-                      <div className="font-bold text-white/40 mb-1">Daha önce ceza geçmişiniz oldu mu? Olduysa detayları nelerdir?</div>
-                      <div className="p-3.5 rounded-xl bg-white/[0.02] border border-white/[0.04] text-white/80 leading-relaxed whitespace-pre-line">
-                        {selectedApp.raw_answers?.penaltyHistory || 'Belirtilmemiş'}
-                      </div>
-                    </div>
+                    // Fallback to static answers for legacy applications
+                    return (
+                      <div className="space-y-3 text-xs">
+                        <h4 className="text-[10px] font-bold text-white/30 uppercase tracking-widest flex items-center gap-1.5 border-b border-white/[0.04] pb-2">
+                          <Shield size={13} className="text-purple-400" />
+                          Adayın Cevap Listesi (Eski Şablon)
+                        </h4>
 
-                    <div>
-                      <div className="font-bold text-white/40 mb-1">Daha önceki moderasyon deneyimleriniz nelerdir?</div>
-                      <div className="p-3.5 rounded-xl bg-white/[0.02] border border-white/[0.04] text-white/80 leading-relaxed whitespace-pre-line">
-                        {selectedApp.raw_answers?.experience || 'Belirtilmemiş'}
-                      </div>
-                    </div>
+                        <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/[0.04] border-l-4 border-l-purple-600 space-y-1.5">
+                          <div className="font-bold text-white/50">Neden yetkili ekibimize katılmak istiyorsunuz? (Motivasyon)</div>
+                          <div className="text-xs font-semibold text-white/80 leading-relaxed whitespace-pre-line">
+                            {answersObj.motivation || 'Belirtilmemiş'}
+                          </div>
+                        </div>
 
-                    <div>
-                      <div className="font-bold text-white/40 mb-1">Geçmişte aldığınız ama pişman olduğunuz bir karar var mı?</div>
-                      <div className="p-3.5 rounded-xl bg-white/[0.02] border border-white/[0.04] text-white/80 leading-relaxed whitespace-pre-line">
-                        {selectedApp.raw_answers?.regret || 'Belirtilmemiş'}
-                      </div>
-                    </div>
+                        <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/[0.04] border-l-4 border-l-purple-600 space-y-1.5">
+                          <div className="font-bold text-white/50">Ekip çalışmasına nasıl katkıda bulunabilirsiniz?</div>
+                          <div className="text-xs font-semibold text-white/80 leading-relaxed whitespace-pre-line">
+                            {answersObj.teamwork || 'Belirtilmemiş'}
+                          </div>
+                        </div>
 
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <div className="font-bold text-white/40 mb-1">Haftalık Aktiflik Süresi</div>
-                        <div className="p-3.5 rounded-xl bg-white/[0.02] border border-white/[0.04] text-white/85">
-                          {selectedApp.raw_answers?.availability || 'Belirtilmemiş'}
+                        <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/[0.04] border-l-4 border-l-purple-600 space-y-1.5">
+                          <div className="font-bold text-white/50">Daha önce ceza geçmişiniz oldu mu? Olduysa detayları nelerdir?</div>
+                          <div className="text-xs font-semibold text-white/80 leading-relaxed whitespace-pre-line">
+                            {answersObj.penaltyHistory || 'Belirtilmemiş'}
+                          </div>
+                        </div>
+
+                        <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/[0.04] border-l-4 border-l-purple-600 space-y-1.5">
+                          <div className="font-bold text-white/50">Daha önceki moderasyon deneyimleriniz nelerdir?</div>
+                          <div className="text-xs font-semibold text-white/80 leading-relaxed whitespace-pre-line">
+                            {answersObj.experience || 'Belirtilmemiş'}
+                          </div>
+                        </div>
+
+                        <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/[0.04] border-l-4 border-l-purple-600 space-y-1.5">
+                          <div className="font-bold text-white/50">Geçmişte aldığınız ama pişman olduğunuz bir karar var mı?</div>
+                          <div className="text-xs font-semibold text-white/80 leading-relaxed whitespace-pre-line">
+                            {answersObj.regret || 'Belirtilmemiş'}
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/[0.04] border-l-4 border-l-purple-600 space-y-1.5">
+                            <div className="font-bold text-white/50">Haftalık Aktiflik Süresi</div>
+                            <div className="text-xs font-semibold text-white/80">
+                              {answersObj.availability || 'Belirtilmemiş'}
+                            </div>
+                          </div>
+                          <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/[0.04] border-l-4 border-l-purple-600 space-y-1.5">
+                            <div className="font-bold text-white/50">Müsait Zaman Aralıkları</div>
+                            <div className="text-xs font-semibold text-white/80">
+                              {answersObj.timeWindows || 'Belirtilmemiş'}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/[0.04] border-l-4 border-l-purple-600 space-y-1.5">
+                          <div className="font-bold text-white/50">Yeni gelen bir üyenin sunucuya ilk adım attığında gördüğü yetkili profili sizce nasıl olmalıdır?</div>
+                          <div className="text-xs font-semibold text-white/80 leading-relaxed whitespace-pre-line">
+                            {answersObj.newMemberProfile || 'Belirtilmemiş'}
+                          </div>
+                        </div>
+
+                        <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/[0.04] border-l-4 border-l-purple-600 space-y-1.5">
+                          <div className="font-bold text-white/50">Stresli veya yoğun dönemlerde nasıl bir iletişim tarzı benimsersiniz?</div>
+                          <div className="text-xs font-semibold text-white/80 leading-relaxed whitespace-pre-line">
+                            {answersObj.stressCommunication || 'Belirtilmemiş'}
+                          </div>
+                        </div>
+
+                        <h4 className="text-[10px] font-bold text-white/30 uppercase tracking-widest flex items-center gap-1.5 border-b border-white/[0.04] pb-2 pt-4">
+                          <Shield size={13} className="text-purple-400" />
+                          Senaryo ve Durum Analizleri (Eski)
+                        </h4>
+
+                        <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/[0.04] border-l-4 border-l-purple-600 space-y-1.5">
+                          <div className="font-bold text-white/50">Genel Sohbette Tartışmalı/Hassas Konu Yönetimi</div>
+                          <div className="text-xs font-semibold text-white/80 leading-relaxed whitespace-pre-line">
+                            {answersObj.chatControversy || 'Belirtilmemiş'}
+                          </div>
+                        </div>
+
+                        <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/[0.04] border-l-4 border-l-purple-600 space-y-1.5">
+                          <div className="font-bold text-white/50">Aşırı Gergin Kullanıcıya Karşı Yaklaşım</div>
+                          <div className="text-xs font-semibold text-white/80 leading-relaxed whitespace-pre-line">
+                            {answersObj.tenseUserScenario || 'Belirtilmemiş'}
+                          </div>
+                        </div>
+
+                        <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/[0.04] border-l-4 border-l-purple-600 space-y-1.5">
+                          <div className="font-bold text-white/50">Minecraft Sunucusu Genel Sohbet Senaryosu</div>
+                          <div className="text-xs font-semibold text-white/80 leading-relaxed whitespace-pre-line">
+                            {answersObj.minecraftScenario || 'Belirtilmemiş'}
+                          </div>
+                        </div>
+
+                        <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/[0.04] border-l-4 border-l-purple-600 space-y-1.5">
+                          <div className="font-bold text-white/50">Asla Müsamaha Gösterilmeyecek İlk 3 Davranış</div>
+                          <div className="text-xs font-semibold text-white/80 leading-relaxed whitespace-pre-line">
+                            {answersObj.unacceptableBehaviors || 'Belirtilmemiş'}
+                          </div>
+                        </div>
+
+                        <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/[0.04] border-l-4 border-l-purple-600 space-y-1.5">
+                          <div className="font-bold text-white/50">Son Olarak Eklemek İstenenler</div>
+                          <div className="text-xs font-semibold text-white/80 leading-relaxed whitespace-pre-line">
+                            {answersObj.additionalInfo || 'Belirtilmemiş'}
+                          </div>
+                        </div>
+
+                        <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/[0.04] border-l-4 border-l-purple-600 space-y-1.5">
+                          <div className="font-bold text-white/50">Başvuru Bilgilendirmesi & Onay</div>
+                          <div className="text-xs font-semibold text-white/80 leading-relaxed whitespace-pre-line">
+                            {answersObj.infoConsent || 'Belirtilmemiş'}
+                          </div>
                         </div>
                       </div>
-                      <div>
-                        <div className="font-bold text-white/40 mb-1">Müsait Zaman Aralıkları</div>
-                        <div className="p-3.5 rounded-xl bg-white/[0.02] border border-white/[0.04] text-white/85">
-                          {selectedApp.raw_answers?.timeWindows || 'Belirtilmemiş'}
-                        </div>
-                      </div>
-                    </div>
-
-                    <h4 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5 border-b border-white/[0.04] pb-1.5 pt-4">
-                      <Shield size={13} className="text-primary" />
-                      Senaryo ve Durum Analizleri
-                    </h4>
-
-                    <div>
-                      <div className="font-bold text-white/40 mb-1">Genel Sohbette Tartışmalı/Hassas Konu Yönetimi</div>
-                      <div className="p-3.5 rounded-xl bg-white/[0.02] border border-white/[0.04] text-white/80 leading-relaxed whitespace-pre-line">
-                        {selectedApp.raw_answers?.chatControversy || 'Belirtilmemiş'}
-                      </div>
-                    </div>
-
-                    <div>
-                      <div className="font-bold text-white/40 mb-1">Aşırı Gergin Kullanıcıya Karşı Yaklaşım</div>
-                      <div className="p-3.5 rounded-xl bg-white/[0.02] border border-white/[0.04] text-white/80 leading-relaxed whitespace-pre-line">
-                        {selectedApp.raw_answers?.tenseUserScenario || 'Belirtilmemiş'}
-                      </div>
-                    </div>
-
-                    <div>
-                      <div className="font-bold text-white/40 mb-1">Minecraft Sunucusu Genel Sohbet Senaryosu</div>
-                      <div className="p-3.5 rounded-xl bg-white/[0.02] border border-white/[0.04] text-white/80 leading-relaxed whitespace-pre-line">
-                        {selectedApp.raw_answers?.minecraftScenario || 'Belirtilmemiş'}
-                      </div>
-                    </div>
-
-                    <div>
-                      <div className="font-bold text-white/40 mb-1">Asla Müsamaha Gösterilmeyecek İlk 3 Davranış</div>
-                      <div className="p-3.5 rounded-xl bg-white/[0.02] border border-white/[0.04] text-white/80 leading-relaxed whitespace-pre-line">
-                        {selectedApp.raw_answers?.unacceptableBehaviors || 'Belirtilmemiş'}
-                      </div>
-                    </div>
-
-                    <div>
-                      <div className="font-bold text-white/40 mb-1">Son Olarak Eklemek İstenenler</div>
-                      <div className="p-3.5 rounded-xl bg-white/[0.02] border border-white/[0.04] text-white/80 leading-relaxed whitespace-pre-line">
-                        {selectedApp.raw_answers?.additionalInfo || 'Belirtilmemiş'}
-                      </div>
-                    </div>
-
-                    <div>
-                      <div className="font-bold text-white/40 mb-1">Başvuru Bilgilendirmesi & Onay</div>
-                      <div className="p-3.5 rounded-xl bg-white/[0.02] border border-white/[0.04] text-white/80 leading-relaxed whitespace-pre-line">
-                        {selectedApp.raw_answers?.infoConsent || 'Belirtilmemiş'}
-                      </div>
-                    </div>
-                  </div>
+                    );
+                  })()}
                 </div>
               </div>
             </motion.div>
@@ -806,3 +955,4 @@ export default function Applications() {
     </motion.div>
   );
 }
+

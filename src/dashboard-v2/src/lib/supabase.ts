@@ -852,7 +852,8 @@ export async function getStaffApplications(limit = 500): Promise<StaffApplicatio
 
 export async function updateStaffApplicationStatus(
   applicantId: string,
-  newStatus: string
+  newStatus: string,
+  executorName?: string
 ): Promise<void> {
   try {
     await supabaseFetch(
@@ -874,7 +875,8 @@ export async function updateStaffApplicationStatus(
         body: JSON.stringify({
           action: 'updateStatus',
           applicantId: applicantId,
-          status: newStatus
+          status: newStatus,
+          executor: executorName || 'Web Panel'
         })
       }).catch(err => console.error("Google Sheets sync status request failed:", err));
     }

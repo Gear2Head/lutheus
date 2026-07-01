@@ -40,6 +40,10 @@ const translations: Record<Language, Record<string, string>> = {
     'nav.appeals': 'Appeals',
     'nav.tickets': 'Tickets',
     'nav.applications': 'Applications',
+    'nav.apply': 'Apply',
+    'nav.ysymExam': 'YSYM Exam',
+    'nav.manageForms': 'Forms',
+    'nav.ysym': 'YSYM Control',
     
     // Home Page
     'home.title': 'Overview',
@@ -269,6 +273,10 @@ const translations: Record<Language, Record<string, string>> = {
     'nav.appeals': 'İtirazlar',
     'nav.tickets': 'Biletler',
     'nav.applications': 'Başvurular',
+    'nav.apply': 'Başvuru Yap',
+    'nav.ysymExam': 'YSYM Sınavı',
+    'nav.manageForms': 'Formlar',
+    'nav.ysym': 'YSYM Kontrol',
     
     // Home Page
     'home.title': 'Genel Bakış',

@@ -2,7 +2,7 @@
 // PURPOSE: CUK Denetim AI sohbet ekranı + Sorgu Geçmişi + Doğrudan DM Mesaj Paneli.
 // Sekme 1: Sohbet (mevcut Groq analiz arayüzü)
 // Sekme 2: Sorgu Geçmişi (bot_ai_query audit_logs tablosundan)
-// Sekme 3: DM Gönder (seçilen yetkili veya rütbeye bot üzerinden DM)
+// Sekme 3: DM Gönder (bot üzerinden seçilen yetkiliye veya rütbeye DM gönder)
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { Card } from '../components/ui/Card';
@@ -12,7 +12,7 @@ import { Skeleton } from '../components/ui/Skeleton';
 import {
   Bot, Image as ImageIcon, Send, Sparkles, X, AlertTriangle,
   History, MessageSquareDot, RefreshCw, CheckCircle, XCircle,
-  Clock, Users, ChevronDown, Shield
+  Clock, Users, ChevronDown, Shield, SendHorizontal
 } from 'lucide-react';
 import { validateCase } from '../lib/cukEngine';
 import { useAuth } from '../contexts/AuthContext';
@@ -152,7 +152,6 @@ export default function AiAgent() {
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
-      // staff-profiles endpoint returns { items: [...] }
       const profiles = (data.items || []).filter((p: any) => p.isActiveStaff !== false);
       setStaffList(profiles.map((p: any) => ({
         discord_id: p.discordId || p.discord_id || '',
@@ -166,7 +165,6 @@ export default function AiAgent() {
     }
   }, [session?.idToken]);
 
-  // ── Image handling (chat tab)
   function parseUserInput(text: string): { reason: string; durationMins: number | null } {
     const hourMatch = text.match(/(\d+)\s*(saat|hour)/i);
     const minuteMatch = text.match(/(\d+)\s*(dakika|dk|min)/i);
@@ -209,7 +207,6 @@ export default function AiAgent() {
     }
   };
 
-  // ── Chat submit
   const handleSubmit = async (e?: React.FormEvent) => {
     e?.preventDefault();
     if ((!input.trim() && !selectedImage) || loading) return;
@@ -248,6 +245,7 @@ export default function AiAgent() {
           response = result.valid
             ? `[${t('ai.engineVerdict')}] ${t('ai.engineVerdictValid')}\n${t('home.status')}: ${result.categoryMatched}\n\n`
             : `[${t('ai.engineVerdict')}] ${t('ai.engineVerdictInvalid')}\n${t('ai.engineVerdictMsg')}: ${result.message}\n\n`;
+
           response += `${t('ai.groqReport')}\n`;
           response += `- ${t('ai.groqSummary')}: ${ai.summary || 'N/A'}\n`;
           response += `- ${t('ai.groqRisks')}: ${ai.riskReasons || 'N/A'}\n`;
@@ -270,7 +268,6 @@ export default function AiAgent() {
     }
   };
 
-  // ── DM Send
   const handleDmSend = async () => {
     if (!dmMessage.trim()) { showToast('Mesaj boş olamaz.', 'error'); return; }
     setDmSending(true);
@@ -302,7 +299,6 @@ export default function AiAgent() {
     }
   };
 
-  // ─── TABS ──────────────────────────────────────────────────────────────────
   const tabs: { id: TabId; label: string; icon: React.ElementType }[] = [
     { id: 'chat', label: 'CUK Analiz', icon: Bot },
     ...(canViewHistory ? [{ id: 'history' as TabId, label: 'Sorgu Geçmişi', icon: History }] : []),
@@ -310,147 +306,218 @@ export default function AiAgent() {
   ];
 
   return (
-    <div onPaste={handlePaste} className="max-w-4xl mx-auto flex flex-col space-y-4 animate-in">
+    <div onPaste={handlePaste} className="p-6 md:p-8 w-full">
+    <div className="max-w-5xl mx-auto flex flex-col space-y-6 animate-in fade-in duration-300">
+      
+      {/* Premium Header with Glowing Accent */}
+      <div className="relative p-6 rounded-3xl overflow-hidden border border-white/[0.06] bg-black/35 backdrop-blur-2xl shadow-[0_0_50px_0_rgba(162,89,254,0.03)] flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="absolute top-0 right-0 w-80 h-32 bg-[#A259FE]/10 rounded-full blur-[100px] pointer-events-none" />
+        
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-[#5E5CE6]/20 to-[#A259FE]/20 border border-[#A259FE]/30 flex items-center justify-center text-[#A259FE] shadow-[0_0_20px_0_rgba(162,89,254,0.15)] animate-pulse">
+            <Bot className="w-6 h-6" />
+          </div>
+          <div>
+            <h2 className="text-xl font-bold tracking-tight text-white flex items-center gap-2">
+              {t('ai.title')}
+              <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded-md bg-[#A259FE]/20 text-[#A259FE] border border-[#A259FE]/30 tracking-wider">CUK v2</span>
+            </h2>
+            <p className="text-xs text-white/50 mt-1">{t('ai.subtitle')}</p>
+          </div>
+        </div>
 
-      {/* Header */}
-      <div className="mb-2">
-        <h2 className="text-2xl font-bold tracking-tight flex items-center gap-3">
-          <Bot className="w-7 h-7 text-primary" /> {t('ai.title')}
-        </h2>
-        <p className="text-sm text-muted-foreground mt-0.5">{t('ai.subtitle')}</p>
-      </div>
-
-      {/* Tab Bar */}
-      <div className="flex gap-1 bg-secondary/50 rounded-xl p-1 w-fit">
-        {tabs.map(({ id, label, icon: Icon }) => (
-          <button
-            key={id}
-            id={`ai-tab-${id}`}
-            onClick={() => setActiveTab(id)}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-              activeTab === id
-                ? 'bg-background text-foreground shadow-sm'
-                : 'text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            <Icon className="w-4 h-4" />
-            {label}
-          </button>
-        ))}
+        {/* Tab Selection Row */}
+        <div className="flex p-1 bg-white/[0.03] border border-white/[0.06] rounded-2xl w-fit">
+          {tabs.map(({ id, label, icon: Icon }) => (
+            <button
+              key={id}
+              id={`ai-tab-${id}`}
+              onClick={() => setActiveTab(id)}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold tracking-wide transition-all cursor-pointer ${
+                activeTab === id
+                  ? 'bg-gradient-to-r from-[#5E5CE6]/30 to-[#A259FE]/30 text-white border border-white/[0.08] shadow-md shadow-[#A259FE]/5'
+                  : 'text-white/60 hover:text-white hover:bg-white/[0.02]'
+              }`}
+            >
+              <Icon className="w-3.5 h-3.5" />
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* ─── TAB: Chat ──────────────────────────────────────────────────── */}
       {activeTab === 'chat' && (
-        <Card className="flex flex-col overflow-hidden bg-card/80 backdrop-blur-xl border border-border/50" style={{ height: 'calc(100vh - 230px)' }}>
-          <div className="flex-1 overflow-y-auto p-5 space-y-5 soft-scroll">
-            {messages.map((m) => (
-              <div key={m.id} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                <div className={`flex gap-3 max-w-[85%] ${m.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
-                  {m.role === 'assistant' && (
-                    <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center shrink-0 border border-primary/30 mt-1">
-                      <Sparkles className="w-4 h-4 text-primary" />
-                    </div>
-                  )}
-                  {m.role === 'user' && (
-                    <div className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center shrink-0 border border-border/50 mt-1 overflow-hidden">
-                      <img src={avatarUrl} alt="" className="w-full h-full object-cover" />
-                    </div>
-                  )}
-                  <div className={`p-4 rounded-2xl whitespace-pre-wrap ${m.role === 'user' ? 'bg-primary text-primary-foreground rounded-tr-sm shadow-md' : 'bg-secondary/50 text-foreground border border-border/50 rounded-tl-sm'}`}>
-                    {m.imageAttached && (
-                      <div className="mb-3 rounded-xl overflow-hidden max-w-sm border border-border/50">
-                        <img src={m.imageAttached} alt="Attached screenshot" className="w-full object-cover max-h-48" />
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 items-start">
+          
+          {/* Chat main area */}
+          <div className="lg:col-span-3 flex flex-col h-[calc(100vh-270px)] min-h-[480px] rounded-3xl border border-white/[0.06] bg-black/25 backdrop-blur-3xl overflow-hidden shadow-2xl">
+            <div className="flex-1 overflow-y-auto p-6 space-y-6 hide-scrollbar">
+              {messages.map((m) => (
+                <div key={m.id} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'} animate-in fade-in duration-200`}>
+                  <div className={`flex gap-3 max-w-[85%] ${m.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
+                    
+                    {m.role === 'assistant' ? (
+                      <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-[#5E5CE6]/10 to-[#A259FE]/10 border border-[#A259FE]/20 flex items-center justify-center shrink-0 shadow-lg text-[#A259FE] mt-1">
+                        <Sparkles className="w-3.5 h-3.5" />
+                      </div>
+                    ) : (
+                      <div className="w-8 h-8 rounded-xl bg-white/5 border border-white/[0.06] flex items-center justify-center shrink-0 mt-1 overflow-hidden">
+                        <img src={avatarUrl} alt="" className="w-full h-full object-cover animate-in fade-in" />
                       </div>
                     )}
-                    <p className="text-sm leading-relaxed">{m.content}</p>
-                    {m.badge && m.role === 'assistant' && (
-                      <div className="mt-3 pt-3 border-t border-border/20 flex items-center gap-2 flex-wrap">
-                        <Badge variant="secondary">{m.badge.source}</Badge>
-                        <Badge variant="secondary">{t('pt.reliability')}: {m.badge.confidence}</Badge>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ))}
-            {loading && (
-              <div className="flex justify-start">
-                <div className="flex gap-3">
-                  <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center shrink-0 border border-primary/30 mt-1">
-                    <Sparkles className="w-4 h-4 text-primary animate-pulse" />
-                  </div>
-                  <div className="p-4 rounded-2xl bg-secondary/50 border border-border/50 rounded-tl-sm flex items-center gap-1.5">
-                    {[0, 150, 300].map((d) => (
-                      <div key={d} className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: `${d}ms` }} />
-                    ))}
-                  </div>
-                </div>
-              </div>
-            )}
-            <div ref={bottomRef} />
-          </div>
 
-          {/* Input area */}
-          <div className="p-4 bg-background border-t border-border/50 space-y-3">
-            {selectedImage && (
-              <div className="flex items-center gap-3 p-3 bg-secondary/40 border border-border/50 rounded-2xl animate-in slide-in-from-bottom-2">
-                <div className="w-14 h-14 rounded-xl overflow-hidden border border-border shrink-0 relative">
-                  <img src={selectedImage} alt="Thumbnail preview" className="w-full h-full object-cover" />
-                  <button type="button" onClick={() => setSelectedImage(null)}
-                    className="absolute top-1 right-1 p-0.5 rounded-full bg-background/80 text-foreground hover:bg-background transition-colors">
-                    <X className="w-3 h-3" />
-                  </button>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-xs font-semibold text-foreground flex items-center gap-1.5">
-                    <Sparkles className="w-3.5 h-3.5 text-primary" /> {t('ai.visionReady')}
+                    <div className="space-y-1.5">
+                      <div className={`p-4 rounded-[22px] whitespace-pre-wrap text-sm leading-relaxed ${
+                        m.role === 'user' 
+                          ? 'bg-gradient-to-br from-[#5E5CE6]/15 to-[#A259FE]/15 text-white border border-[#A259FE]/20 rounded-tr-sm shadow-md' 
+                          : 'bg-white/[0.02] text-white/90 border border-white/[0.06] rounded-tl-sm'
+                      }`}>
+                        {m.imageAttached && (
+                          <div className="mb-3.5 rounded-2xl overflow-hidden max-w-sm border border-white/[0.08] shadow-lg">
+                            <img src={m.imageAttached} alt="Attached screenshot" className="w-full object-cover max-h-56" />
+                          </div>
+                        )}
+                        <p className="font-medium text-xs sm:text-sm tracking-wide">{m.content}</p>
+                      </div>
+
+                      {m.badge && m.role === 'assistant' && (
+                        <div className="flex items-center gap-1.5 flex-wrap px-2">
+                          <span className="text-[9px] font-bold px-2 py-0.5 rounded-md bg-[#A259FE]/10 text-[#A259FE] border border-[#A259FE]/20 tracking-wider">
+                            {m.badge.source}
+                          </span>
+                          <span className="text-[9px] font-bold px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 tracking-wider">
+                            {t('pt.reliability')}: {m.badge.confidence}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
                   </div>
-                  <div className="text-[10px] text-muted-foreground mt-0.5 flex items-center gap-1">
-                    <AlertTriangle className="w-3 h-3 text-amber-500 shrink-0" />
-                    <span className="truncate">{t('ai.imageNotSaved')}</span>
+                </div>
+              ))}
+              {loading && (
+                <div className="flex justify-start">
+                  <div className="flex gap-3">
+                    <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-[#5E5CE6]/10 to-[#A259FE]/10 border border-[#A259FE]/20 flex items-center justify-center shrink-0 text-[#A259FE] mt-1">
+                      <Sparkles className="w-3.5 h-3.5 animate-pulse" />
+                    </div>
+                    <div className="p-4 rounded-[22px] bg-white/[0.02] border border-white/[0.06] rounded-tl-sm flex items-center gap-1">
+                      {[0, 150, 300].map((d) => (
+                        <div key={d} className="w-1.5 h-1.5 rounded-full bg-[#A259FE] animate-bounce" style={{ animationDelay: `${d}ms` }} />
+                      ))}
+                    </div>
                   </div>
                 </div>
+              )}
+              <div ref={bottomRef} />
+            </div>
+
+            {/* Premium Input Workspace */}
+            <div className="p-4 border-t border-white/[0.06] bg-black/45 space-y-3">
+              {selectedImage && (
+                <div className="flex items-center gap-3.5 p-3 rounded-2xl border border-[#A259FE]/20 bg-[#A259FE]/5 animate-in slide-in-from-bottom-2 duration-200">
+                  <div className="w-12 h-12 rounded-xl overflow-hidden border border-white/[0.1] shrink-0 relative shadow-inner">
+                    <img src={selectedImage} alt="Thumbnail preview" className="w-full h-full object-cover" />
+                    <button type="button" onClick={() => setSelectedImage(null)}
+                      className="absolute -top-1.5 -right-1.5 p-1 rounded-full bg-black/80 hover:bg-black text-white transition-colors cursor-pointer border border-white/[0.08]">
+                      <X className="w-2.5 h-2.5" />
+                    </button>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs font-bold text-[#A259FE] flex items-center gap-1.5">
+                      <Sparkles className="w-3.5 h-3.5" /> {t('ai.visionReady')}
+                    </div>
+                    <div className="text-[10px] text-white/40 mt-0.5 flex items-center gap-1 truncate">
+                      <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                      <span className="truncate">{t('ai.imageNotSaved')}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <form onSubmit={handleSubmit} className="relative flex items-center gap-2">
+                <input type="file" ref={fileInputRef} onChange={handleImageChange} accept="image/*" className="hidden" />
+                
+                <button type="button" onClick={() => fileInputRef.current?.click()}
+                  className={`shrink-0 w-11 h-11 flex items-center justify-center transition-all rounded-xl border cursor-pointer ${
+                    selectedImage 
+                      ? 'bg-[#A259FE]/15 text-[#A259FE] border-[#A259FE]/30' 
+                      : 'bg-white/5 border-white/[0.06] text-white/50 hover:text-[#A259FE] hover:bg-white/10'
+                  }`}
+                  title="Görsel veya Kanıt Yükle"
+                >
+                  <ImageIcon className="w-4 h-4" />
+                </button>
+
+                <input value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSubmit(); } }}
+                  onPaste={handlePaste}
+                  placeholder={t('ai.placeholder')}
+                  className="flex-1 h-11 bg-white/5 focus:bg-[#0D0D11]/60 border border-white/[0.06] focus:border-[#A259FE]/40 rounded-xl px-4 text-xs focus:outline-none placeholder:text-white/20 transition-all text-white font-medium" 
+                />
+
+                <button type="submit" disabled={(!input.trim() && !selectedImage) || loading}
+                  className="shrink-0 w-11 h-11 flex items-center justify-center text-white bg-gradient-to-tr from-[#5E5CE6] to-[#A259FE] hover:shadow-[0_0_20px_0_rgba(162,89,254,0.25)] rounded-xl hover:opacity-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none cursor-pointer"
+                >
+                  <SendHorizontal className="w-4 h-4" />
+                </button>
+              </form>
+
+              <div className="text-center text-[9px] text-white/20 font-bold uppercase tracking-widest pt-1">
+                {t('ai.warning')}
               </div>
-            )}
-            <form onSubmit={handleSubmit} className="relative flex items-center gap-2">
-              <input type="file" ref={fileInputRef} onChange={handleImageChange} accept="image/*" className="hidden" />
-              <button type="button" onClick={() => fileInputRef.current?.click()}
-                className={`shrink-0 p-2.5 transition-colors rounded-xl ${selectedImage ? 'bg-primary/10 text-primary hover:bg-primary/20' : 'bg-secondary text-muted-foreground hover:text-primary'}`}>
-                <ImageIcon className="w-4 h-4" />
-              </button>
-              <input value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSubmit(); } }}
-                onPaste={handlePaste}
-                placeholder={t('ai.placeholder')}
-                className="flex-1 h-11 bg-card border border-border/50 rounded-2xl px-4 text-sm focus:outline-none focus:ring-1 focus:ring-primary/50 placeholder:text-muted-foreground" />
-              <button type="submit" disabled={(!input.trim() && !selectedImage) || loading}
-                className="shrink-0 p-2.5 text-primary-foreground bg-primary rounded-xl hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
-                <Send className="w-4 h-4" />
-              </button>
-            </form>
-            <div className="text-center text-[10px] text-muted-foreground font-medium uppercase tracking-wider">
-              {t('ai.warning')}
             </div>
           </div>
-        </Card>
+
+          {/* Quick instructions sidebar */}
+          <div className="space-y-4">
+            <div className="p-5 rounded-3xl border border-white/[0.06] bg-black/20 backdrop-blur-xl space-y-4">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-[#A259FE] flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5" />
+                AI Analiz Kılavuzu
+              </h3>
+              <p className="text-xs text-white/60 leading-relaxed">
+                Ceza analizi yaparken sebep ve süreyi girerek kural ihlallerini doğrulayabilirsiniz.
+              </p>
+              
+              <div className="space-y-2 text-[11px] font-mono text-white/40">
+                <div className="p-2.5 rounded-xl bg-white/[0.02] border border-white/[0.04]">
+                  <div className="text-[9px] text-[#A259FE] font-bold">Örnek Sorgu:</div>
+                  <div className="text-white/80 mt-1 leading-snug">"Yetkiliye saygısızlık — 12 saat"</div>
+                </div>
+                <div className="p-2.5 rounded-xl bg-white/[0.02] border border-white/[0.04]">
+                  <div className="text-[9px] text-[#A259FE] font-bold">Görsel Analizi:</div>
+                  <div className="text-white/80 mt-1 leading-snug">Sol alttaki görsel butonunu kullanarak veya direkt pano üzerinden ekran görüntüsü yapıştırarak (CTRL+V) görsel CUK analizi yaptırabilirsiniz.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
       )}
 
       {/* ─── TAB: Query History ─────────────────────────────────────────── */}
       {activeTab === 'history' && (
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <p className="text-sm text-muted-foreground">Bot DM üzerinden yapılan AI sorgularının geçmişi.</p>
-            <Button variant="outline" size="sm" onClick={loadHistory} disabled={historyLoading} id="ai-history-refresh">
+        <div className="space-y-4">
+          <div className="flex items-center justify-between border-b border-white/[0.05] pb-3">
+            <div>
+              <h3 className="text-sm font-bold text-white">Sorgu Geçmişi</h3>
+              <p className="text-xs text-white/40 mt-1">Discord üzerinden yapılan AI sorgu logları listesi.</p>
+            </div>
+            <Button variant="outline" size="sm" onClick={loadHistory} disabled={historyLoading} id="ai-history-refresh" className="cursor-pointer border-white/[0.08] hover:bg-white/5">
               <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${historyLoading ? 'animate-spin' : ''}`} />
               Yenile
             </Button>
           </div>
 
           {historyLoading ? (
-            <div className="space-y-2">{[...Array(5)].map((_, i) => <Skeleton key={i} className="h-16 rounded-xl" />)}</div>
+            <div className="space-y-3">
+              {[...Array(5)].map((_, i) => <Skeleton key={i} className="h-16 rounded-2xl" />)}
+            </div>
           ) : queryLogs.length === 0 ? (
-            <Card className="p-12 text-center">
-              <History className="w-12 h-12 text-muted-foreground/30 mx-auto mb-3" />
-              <p className="text-sm text-muted-foreground">Henüz sorgu kaydı bulunmuyor.</p>
+            <Card className="p-12 text-center border-white/[0.06] bg-black/15">
+              <History className="w-10 h-10 text-white/10 mx-auto mb-3" />
+              <p className="text-xs text-white/40 font-semibold">Henüz sorgu kaydı bulunmuyor.</p>
             </Card>
           ) : (
             <div className="space-y-2">
@@ -459,36 +526,39 @@ export default function AiAgent() {
                 const isExpanded = expandedLog === log.id;
                 const verdict = meta.response?.valid;
                 return (
-                  <Card key={log.id} className="overflow-hidden border border-border/50 hover:border-primary/20 transition-colors">
+                  <Card key={log.id} className="overflow-hidden border border-white/[0.06] bg-black/15 hover:border-[#A259FE]/20 transition-all rounded-2xl">
                     <button
                       id={`ai-log-${log.id}`}
                       onClick={() => setExpandedLog(isExpanded ? null : log.id)}
-                      className="w-full p-4 flex items-start gap-3 text-left"
+                      className="w-full p-4 flex items-center gap-4 text-left cursor-pointer"
                     >
-                      {/* Verdict indicator */}
-                      <div className={`mt-0.5 shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${
-                        verdict === true ? 'bg-emerald-500/15 text-emerald-500' :
-                        verdict === false ? 'bg-red-500/15 text-red-500' :
-                        'bg-secondary text-muted-foreground'
+                      <div className={`shrink-0 w-8 h-8 rounded-xl flex items-center justify-center ${
+                        verdict === true ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' :
+                        verdict === false ? 'bg-red-500/10 text-red-400 border border-red-500/20' :
+                        'bg-white/5 border border-white/[0.08] text-white/40'
                       }`}>
                         {verdict === true ? <CheckCircle className="w-4 h-4" /> :
                          verdict === false ? <XCircle className="w-4 h-4" /> :
                          <Shield className="w-4 h-4" />}
                       </div>
 
-                      <div className="flex-1 min-w-0">
+                      <div className="flex-1 min-w-0 space-y-1">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-sm font-semibold truncate">{meta.displayName || meta.discordId || 'Bilinmiyor'}</span>
-                          {meta.role && <Badge variant="secondary" className="text-xs">{ROLE_LABELS[meta.role] || meta.role}</Badge>}
-                          {meta.hasImage && <Badge variant="secondary" className="text-xs">📷 Görsel</Badge>}
+                          <span className="text-xs font-bold text-white truncate">{meta.displayName || meta.discordId || 'Bilinmeyen Yetkili'}</span>
+                          {meta.role && (
+                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-white/5 border border-white/[0.08] text-white/60">
+                              {ROLE_LABELS[meta.role] || meta.role}
+                            </span>
+                          )}
+                          {meta.hasImage && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-[#A259FE]/10 text-[#A259FE] border border-[#A259FE]/20">📷 Görsel</span>}
                           {verdict !== undefined && (
-                            <Badge variant={verdict ? 'success' : 'destructive'} className="text-xs">
+                            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${verdict ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-red-500/10 text-red-400 border border-red-500/20'}`}>
                               {verdict ? '✅ Geçerli' : '❌ Geçersiz'}
-                            </Badge>
+                            </span>
                           )}
                         </div>
-                        <p className="text-xs text-muted-foreground mt-1 truncate">{meta.question || '-'}</p>
-                        <div className="flex items-center gap-3 mt-1.5 text-[11px] text-muted-foreground">
+                        <p className="text-xs text-white/60 truncate font-mono">{meta.question || '-'}</p>
+                        <div className="flex items-center gap-3 text-[10px] text-white/30 font-semibold">
                           <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{formatDateTime(log.created_at)}</span>
                           {meta.quotaLimit !== undefined && (
                             <span className="flex items-center gap-1">
@@ -498,46 +568,42 @@ export default function AiAgent() {
                           )}
                         </div>
                       </div>
-                      <ChevronDown className={`w-4 h-4 text-muted-foreground shrink-0 mt-1 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                      <ChevronDown className={`w-4 h-4 text-white/40 shrink-0 transition-transform ${isExpanded ? 'rotate-180 text-white' : ''}`} />
                     </button>
 
                     {isExpanded && (
-                      <div className="px-4 pb-4 pt-0 border-t border-border/50 mt-0 space-y-3 animate-in slide-in-from-top-1">
-                        <div className="grid grid-cols-2 gap-3 mt-3">
-                          <div className="bg-secondary/40 rounded-xl p-3">
-                            <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">Discord ID</div>
-                            <div className="text-sm font-mono">{meta.discordId || '-'}</div>
+                      <div className="px-4 pb-4 border-t border-white/[0.04] bg-white/[0.01] space-y-3.5 pt-3.5 animate-in slide-in-from-top-1 duration-150">
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="bg-white/[0.02] border border-white/[0.04] rounded-2xl p-3">
+                            <div className="text-[9px] font-bold uppercase tracking-wider text-white/30">Discord ID</div>
+                            <div className="text-xs font-mono font-semibold text-white/80 mt-1">{meta.discordId || '-'}</div>
                           </div>
-                          <div className="bg-secondary/40 rounded-xl p-3">
-                            <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">Kategori</div>
-                            <div className="text-sm">{meta.response?.categoryMatched || '-'}</div>
+                          <div className="bg-white/[0.02] border border-white/[0.04] rounded-2xl p-3">
+                            <div className="text-[9px] font-bold uppercase tracking-wider text-white/30">Eşleşen CUK Kategorisi</div>
+                            <div className="text-xs font-bold text-white/80 mt-1">{meta.response?.categoryMatched || '-'}</div>
                           </div>
                         </div>
 
                         {meta.question && (
-                          <div className="bg-secondary/40 rounded-xl p-3">
-                            <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">Soru / Ceza Sebebi</div>
-                            <p className="text-sm whitespace-pre-wrap">{meta.question}</p>
+                          <div className="bg-white/[0.02] border border-white/[0.04] rounded-2xl p-3.5">
+                            <div className="text-[9px] font-bold uppercase tracking-wider text-white/30">Sorgulanan Ceza Sebebi / Metin</div>
+                            <p className="text-xs font-semibold text-white/90 mt-1.5 whitespace-pre-wrap leading-relaxed">{meta.question}</p>
                           </div>
                         )}
 
                         {meta.response?.summary && (
-                          <div className="bg-secondary/40 rounded-xl p-3">
-                            <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">AI Özet</div>
-                            <p className="text-sm">{meta.response.summary}</p>
+                          <div className="bg-white/[0.02] border border-white/[0.04] rounded-2xl p-3.5">
+                            <div className="text-[9px] font-bold uppercase tracking-wider text-white/30">AI Yapay Zeka Özeti</div>
+                            <p className="text-xs font-medium text-white/80 mt-1.5 leading-relaxed">{meta.response.summary}</p>
                           </div>
                         )}
 
                         {meta.response?.recommendedAction && (
-                          <div className="bg-primary/5 border border-primary/20 rounded-xl p-3">
-                            <div className="text-[10px] font-semibold uppercase tracking-wider text-primary mb-1">Önerilen Aksiyon</div>
-                            <p className="text-sm">{meta.response.recommendedAction}</p>
+                          <div className="bg-gradient-to-br from-[#5E5CE6]/10 to-[#A259FE]/10 border border-[#A259FE]/20 rounded-2xl p-3.5">
+                            <div className="text-[9px] font-bold uppercase tracking-wider text-[#A259FE]">Yapay Zeka Önerilen Aksiyon</div>
+                            <p className="text-xs font-bold text-white/95 mt-1.5 leading-relaxed">{meta.response.recommendedAction}</p>
                           </div>
                         )}
-
-                        <div className="flex items-center gap-2 pt-1">
-                          <span className="text-[11px] text-muted-foreground">Kalan Kota: <strong>{meta.quotaRemaining ?? '?'}/{meta.quotaLimit ?? '?'}</strong></span>
-                        </div>
                       </div>
                     )}
                   </Card>
@@ -551,102 +617,116 @@ export default function AiAgent() {
       {/* ─── TAB: DM Gönder ─────────────────────────────────────────────── */}
       {activeTab === 'dm' && canSendDm && (
         <div className="space-y-4">
-          <p className="text-sm text-muted-foreground">Bot üzerinden seçilen yetkili veya rütbeye Discord DM mesajı gönder.</p>
+          <div className="border-b border-white/[0.05] pb-3">
+            <h3 className="text-sm font-bold text-white">DM Gönder</h3>
+            <p className="text-xs text-white/40 mt-1">Sapphire Bot üzerinden yetkililere veya belirli rütbelere direkt mesaj iletin.</p>
+          </div>
 
-          <Card className="p-5 space-y-4">
+          <Card className="p-6 space-y-5 border-white/[0.06] bg-black/15 rounded-3xl">
             {/* Target type selector */}
-            <div>
-              <label className="block text-sm font-medium mb-2">Hedef Türü</label>
+            <div className="space-y-2.5">
+              <label className="block text-xs font-bold uppercase tracking-widest text-white/40">Hedef Türü</label>
               <div className="flex gap-2">
                 <button
                   id="dm-target-role"
                   onClick={() => setDmTarget('role')}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium border transition-colors ${dmTarget === 'role' ? 'bg-primary text-primary-foreground border-primary' : 'bg-secondary border-border/50 text-muted-foreground hover:text-foreground'}`}
+                  className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold border transition-all cursor-pointer ${
+                    dmTarget === 'role' 
+                      ? 'bg-gradient-to-r from-[#5E5CE6]/20 to-[#A259FE]/20 border-[#A259FE]/30 text-white shadow-lg' 
+                      : 'bg-white/5 border-white/[0.06] text-white/60 hover:text-white hover:bg-white/10'
+                  }`}
                 >
-                  <Users className="w-4 h-4" />
-                  Rütbeye Göre
+                  <Users className="w-3.5 h-3.5" />
+                  Rütbeye Göre Toplu
                 </button>
                 <button
                   id="dm-target-user"
                   onClick={() => setDmTarget('user')}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium border transition-colors ${dmTarget === 'user' ? 'bg-primary text-primary-foreground border-primary' : 'bg-secondary border-border/50 text-muted-foreground hover:text-foreground'}`}
+                  className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold border transition-all cursor-pointer ${
+                    dmTarget === 'user' 
+                      ? 'bg-gradient-to-r from-[#5E5CE6]/20 to-[#A259FE]/20 border-[#A259FE]/30 text-white shadow-lg' 
+                      : 'bg-white/5 border-white/[0.06] text-white/60 hover:text-white hover:bg-white/10'
+                  }`}
                 >
-                  <Bot className="w-4 h-4" />
-                  Kullanıcıya Özel
+                  <Bot className="w-3.5 h-3.5" />
+                  Tekil Yetkiliye Özel
                 </button>
               </div>
             </div>
 
-            {/* Role selector */}
-            {dmTarget === 'role' && (
-              <div>
-                <label className="block text-sm font-medium mb-2">Hedef Rütbe</label>
-                <select
-                  id="dm-role-select"
-                  value={dmRole}
-                  onChange={(e) => setDmRole(e.target.value)}
-                  className="w-full h-11 bg-card border border-border/50 rounded-xl px-3 text-sm focus:outline-none focus:ring-1 focus:ring-primary/50"
-                >
-                  <option value="all">Tüm Aktif Yetkililer</option>
-                  {Object.entries(ROLE_LABELS).map(([val, lbl]) => (
-                    <option key={val} value={val}>{lbl}</option>
-                  ))}
-                </select>
-              </div>
-            )}
-
-            {/* User selector */}
-            {dmTarget === 'user' && (
-              <div>
-                <label className="block text-sm font-medium mb-2">Yetkili Seç</label>
-                {staffLoading ? (
-                  <Skeleton className="h-11 rounded-xl" />
-                ) : (
+            {/* Target inputs layout */}
+            <div className="grid grid-cols-1 gap-4">
+              {/* Role selector */}
+              {dmTarget === 'role' && (
+                <div className="space-y-2">
+                  <label className="block text-xs font-bold uppercase tracking-widest text-white/40">Hedef Yetki Sınıfı</label>
                   <select
-                    id="dm-user-select"
-                    value={dmUserId}
-                    onChange={(e) => setDmUserId(e.target.value)}
-                    className="w-full h-11 bg-card border border-border/50 rounded-xl px-3 text-sm focus:outline-none focus:ring-1 focus:ring-primary/50"
+                    id="dm-role-select"
+                    value={dmRole}
+                    onChange={(e) => setDmRole(e.target.value)}
+                    className="w-full h-11 bg-[#0D0D11]/60 border border-white/[0.06] focus:border-[#A259FE]/40 rounded-xl px-3 text-xs text-white outline-none focus:ring-1 focus:ring-[#A259FE]/30 font-semibold"
                   >
-                    <option value="">-- Yetkili seçin --</option>
-                    {staffList.map((s) => (
-                      <option key={s.discord_id} value={s.discord_id}>
-                        {s.display_name} — {ROLE_LABELS[s.staff_rank] || s.staff_rank}
-                      </option>
+                    <option value="all">Tüm Aktif Yetkililer</option>
+                    {Object.entries(ROLE_LABELS).map(([val, lbl]) => (
+                      <option key={val} value={val}>{lbl}</option>
                     ))}
                   </select>
-                )}
-              </div>
-            )}
+                </div>
+              )}
 
-            {/* Message textarea */}
-            <div>
-              <label className="block text-sm font-medium mb-2">Mesaj İçeriği</label>
+              {/* User selector */}
+              {dmTarget === 'user' && (
+                <div className="space-y-2">
+                  <label className="block text-xs font-bold uppercase tracking-widest text-white/40">Hedef Yetkili</label>
+                  {staffLoading ? (
+                    <Skeleton className="h-11 rounded-xl" />
+                  ) : (
+                    <select
+                      id="dm-user-select"
+                      value={dmUserId}
+                      onChange={(e) => setDmUserId(e.target.value)}
+                      className="w-full h-11 bg-[#0D0D11]/60 border border-white/[0.06] focus:border-[#A259FE]/40 rounded-xl px-3 text-xs text-white outline-none focus:ring-1 focus:ring-[#A259FE]/30 font-semibold"
+                    >
+                      <option value="">-- Hedef yetkili seçin --</option>
+                      {staffList.map((s) => (
+                        <option key={s.discord_id} value={s.discord_id}>
+                          {s.display_name} — {ROLE_LABELS[s.staff_rank] || s.staff_rank}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Message content textarea */}
+            <div className="space-y-2">
+              <label className="block text-xs font-bold uppercase tracking-widest text-white/40">Mesaj İçeriği (Markdown Destekler)</label>
               <textarea
                 id="dm-message-input"
                 value={dmMessage}
                 onChange={(e) => setDmMessage(e.target.value)}
-                placeholder="Yetkililere iletilecek mesajı buraya yazın..."
-                rows={5}
-                className="w-full bg-card border border-border/50 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-1 focus:ring-primary/50 placeholder:text-muted-foreground resize-none"
+                placeholder="İletilecek mesaj detaylarını yazın..."
+                rows={6}
+                className="w-full bg-[#0D0D11]/60 border border-white/[0.06] focus:border-[#A259FE]/40 rounded-2xl px-4 py-3 text-xs text-white outline-none focus:ring-1 focus:ring-[#A259FE]/30 placeholder:text-white/20 resize-none font-medium leading-relaxed"
               />
-              <div className="flex items-center justify-between mt-1.5 text-xs text-muted-foreground">
-                <span>Mesaj Discord DM olarak gönderilecek (Embed formatı)</span>
-                <span className={dmMessage.length > 1900 ? 'text-red-500' : ''}>{dmMessage.length}/2000</span>
+              <div className="flex items-center justify-between text-[10px] font-semibold text-white/30">
+                <span>Mesaj bot tarafından Discord DM kutusuna doğrudan iletilir.</span>
+                <span className={dmMessage.length > 1900 ? 'text-red-400 font-bold' : ''}>{dmMessage.length}/2000</span>
               </div>
             </div>
 
-            {/* Send button */}
-            <div className="flex items-center justify-between pt-2 border-t border-border/50">
-              <div className="text-xs text-muted-foreground flex items-center gap-1.5">
-                <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
-                Mesaj, yetkililerin Discord gelen kutusuna gönderilecektir.
+            {/* Send panel footer */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-4 border-t border-white/[0.05]">
+              <div className="text-[10px] font-bold text-white/30 flex items-center gap-2">
+                <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                Duyurular ve acil bildirimler için kullanılması önerilir.
               </div>
               <Button
                 id="dm-send-button"
                 onClick={handleDmSend}
                 disabled={dmSending || !dmMessage.trim() || (dmTarget === 'user' && !dmUserId)}
-                variant="default"
+                className="bg-gradient-to-r from-[#5E5CE6] to-[#A259FE] hover:shadow-[0_0_20px_0_rgba(162,89,254,0.2)] text-white font-bold h-10 px-6 rounded-xl transition-all cursor-pointer disabled:opacity-50"
               >
                 {dmSending ? (
                   <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Gönderiliyor...</>
@@ -658,6 +738,7 @@ export default function AiAgent() {
           </Card>
         </div>
       )}
+    </div>
     </div>
   );
 }

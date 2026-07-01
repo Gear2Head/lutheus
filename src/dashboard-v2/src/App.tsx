@@ -20,6 +20,10 @@ const BotSetup = lazy(() => import('./pages/BotSetup'));
 const Settings = lazy(() => import('./pages/Settings'));
 const Appeals = lazy(() => import('./pages/Appeals'));
 const Applications = lazy(() => import('./pages/Applications'));
+const ApplyForm = lazy(() => import('./pages/ApplyForm'));
+const YsymExam = lazy(() => import('./pages/YsymExam'));
+const ManageForms = lazy(() => import('./pages/ManageForms'));
+const Ysym = lazy(() => import('./pages/Ysym'));
 
 function PageLoader() {
   return (
@@ -44,6 +48,11 @@ export default function App() {
         <AuthProvider>
           <HashRouter>
             <Routes>
+              <Route path="apply" element={<Suspense fallback={<PageLoader />}><ApplyForm /></Suspense>} />
+              <Route path="ysym-exam" element={<Suspense fallback={<PageLoader />}><YsymExam /></Suspense>} />
+              <Route path="basvuru" element={<Suspense fallback={<PageLoader />}><ApplyForm /></Suspense>} />
+              <Route path="ysym-sinavi" element={<Suspense fallback={<PageLoader />}><YsymExam /></Suspense>} />
+
               <Route path="/" element={<AppLayout />}>
                 <Route index element={<Navigate to="/home" replace />} />
                 <Route path="home" element={<Suspense fallback={<PageLoader />}><Home /></Suspense>} />
@@ -60,6 +69,8 @@ export default function App() {
                 <Route path="appeals" element={<Suspense fallback={<PageLoader />}><Appeals /></Suspense>} />
                 <Route path="applications" element={<Suspense fallback={<PageLoader />}><Applications /></Suspense>} />
                 <Route path="tickets" element={<Suspense fallback={<PageLoader />}><Tickets /></Suspense>} />
+                <Route path="manage-forms" element={<Suspense fallback={<PageLoader />}><ManageForms /></Suspense>} />
+                <Route path="ysym" element={<Suspense fallback={<PageLoader />}><Ysym /></Suspense>} />
               </Route>
             </Routes>
           </HashRouter>

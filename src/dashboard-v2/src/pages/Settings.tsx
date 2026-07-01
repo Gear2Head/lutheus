@@ -66,6 +66,8 @@ export default function Settings() {
   });
   const [webhookUrl, setWebhookUrl] = useState('');
   const [botChannelId, setBotChannelId] = useState('');
+  const [groqApiKey, setGroqApiKey] = useState<string>(() => localStorage.getItem('lutheus-custom-groq-key') || '');
+  const [groqKeySaved, setGroqKeySaved] = useState(false);
 
   // Accordion sections state
   const [sections, setSections] = useState({
@@ -132,6 +134,11 @@ export default function Settings() {
     setChromeLocal('settings', settings);
     setChromeLocal('webhookUrl', webhookUrl);
     setChromeLocal('botLogChannelId', botChannelId);
+    if (groqApiKey.trim()) {
+      localStorage.setItem('lutheus-custom-groq-key', groqApiKey.trim());
+    } else {
+      localStorage.removeItem('lutheus-custom-groq-key');
+    }
 
     setTimeout(() => {
       setIsSaving(false);
@@ -697,6 +704,43 @@ export default function Settings() {
                           {t('settings.syncProfiles')}
                         </button>
                       </div>
+                    </div>
+
+                    {/* Groq AI Key */}
+                    <div className="space-y-1.5 pt-2 border-t border-white/[0.03]">
+                      <label className="text-[10px] text-purple-400/80 uppercase tracking-wider font-bold flex items-center gap-1.5">
+                        <span>🤖</span> Groq API Anahtarı (AI Soru Üretici)
+                      </label>
+                      <p className="text-[11px] text-white/30 mb-2">
+                        VITE_GROQ_API_KEY .env değişkeni tanımlı değilse, buraya Groq konsol anahtarınızı girin. <a href="https://console.groq.com/keys" target="_blank" rel="noreferrer" className="text-purple-400 hover:underline">console.groq.com/keys</a>
+                      </p>
+                      <div className="flex gap-2">
+                        <input
+                          type="password"
+                          value={groqApiKey}
+                          onChange={(e) => setGroqApiKey(e.target.value)}
+                          placeholder="gsk_..."
+                          className="flex-1 h-9 bg-[#111112] border border-purple-500/20 rounded-lg px-3 text-[12px] text-white/90 outline-none focus:border-purple-500/50 font-mono"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (groqApiKey.trim()) {
+                              localStorage.setItem('lutheus-custom-groq-key', groqApiKey.trim());
+                              setGroqKeySaved(true);
+                              setTimeout(() => setGroqKeySaved(false), 2000);
+                            }
+                          }}
+                          className="h-9 px-4 rounded-xl bg-purple-600/20 border border-purple-500/30 hover:bg-purple-600/30 text-purple-300 text-xs font-bold transition-all cursor-pointer"
+                        >
+                          {groqKeySaved ? '✓ Kaydedildi' : 'Kaydet'}
+                        </button>
+                      </div>
+                      {(import.meta.env.VITE_GROQ_API_KEY) && (
+                        <p className="text-[10px] text-emerald-400/70 flex items-center gap-1">
+                          <span>●</span> .env içinde Groq API anahtarı mevcut — otomatik kullanılıyor.
+                        </p>
+                      )}
                     </div>
                   </div>
                 </motion.div>

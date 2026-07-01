@@ -13,7 +13,7 @@ import ProofDrawer from '../components/ProofDrawer';
 import { validateCase } from '../lib/cukEngine';
 import { useAuth } from '../contexts/AuthContext';
 import { hasPermission, isManagementRole } from '../lib/auth';
-import { minutesToHuman, relativeTime, parseDateSafe, formatDate, isPenaltyActive } from '../lib/utils';
+import { minutesToHuman, relativeTime, parseDateSafe, formatDate, isPenaltyActive, cn } from '../lib/utils';
 import { useToast } from '../contexts/ToastContext';
 import { resolveStaffName, resolveStaffAvatar } from '../lib/staffDisplay';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -808,17 +808,14 @@ export default function Cases() {
                     const durationText = c.is_permanent ? 'Kalıcı' : minutesToHuman(Math.floor((c.duration_ms || 0) / 60000));
 
                     return (
-                      <motion.tr 
-                        key={c.case_id + index}
-                        initial={{ opacity: 0, y: 8 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -8 }}
-                        transition={{ duration: 0.25, delay: Math.min(index * 0.02, 0.5), ease: 'easeOut' }}
-                        whileHover={{ 
-                          scale: 1.002, 
-                          backgroundColor: 'rgba(255, 255, 255, 0.03)',
-                          transition: { duration: 0.1 }
-                        }}
+                      <tr 
+                        key={c.case_id}
+                        className={cn(
+                          "transition-colors cursor-pointer relative group duration-100",
+                          isSelected ? "bg-white/[0.04]" : "hover:bg-white/[0.03]",
+                          selectedIds.has(c.case_id) ? "bg-[#5E5CE6]/10 border-l border-l-[#5E5CE6]" : "",
+                          shouldShowVerdict && c.cuk_verdict === 'invalid' ? "bg-[#FF453A]/[0.01] hover:bg-[#FF453A]/[0.03]" : ""
+                        )}
                         onClick={(e) => {
                           if (e.ctrlKey) {
                             toggleSelect(c.case_id);
@@ -838,13 +835,6 @@ export default function Cases() {
                             });
                           }
                         }}
-                        className={`transition-colors cursor-pointer relative group ${
-                          isSelected ? 'bg-white/[0.04]' : ''
-                        } ${
-                          selectedIds.has(c.case_id) ? 'bg-[#5E5CE6]/10 border-l border-l-[#5E5CE6]' : ''
-                        } ${
-                          shouldShowVerdict && c.cuk_verdict === 'invalid' ? 'bg-[#FF453A]/[0.01] hover:bg-[#FF453A]/[0.03]' : ''
-                        }`}
                       >
                         <td className="py-3.5 px-4 w-12 text-center text-xs font-mono font-bold text-white/30" onClick={(e) => e.stopPropagation()}>
                           {(currentPage - 1) * pageSize + index + 1}
@@ -939,7 +929,7 @@ export default function Cases() {
                             <Eye size={13} />
                           </button>
                         </td>
-                      </motion.tr>
+                      </tr>
                     );
                   })}
                 </AnimatePresence>

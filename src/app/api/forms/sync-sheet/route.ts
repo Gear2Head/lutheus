@@ -76,12 +76,14 @@ export async function POST(req: Request) {
             regret: row[14],
             availability: row[15],
             timeWindows: row[16],
-            chatControversy: row[17],
-            tenseUserScenario: row[18],
-            minecraftScenario: row[19],
-            unacceptableBehaviors: row[20],
-            additionalInfo: row[21],
-            infoConsent: row[22]
+            newMemberProfile: row[17],
+            stressCommunication: row[18],
+            chatControversy: row[19],
+            tenseUserScenario: row[20],
+            minecraftScenario: row[21],
+            unacceptableBehaviors: row[22],
+            additionalInfo: row[23],
+            infoConsent: row[24]
           };
 
           records.push({

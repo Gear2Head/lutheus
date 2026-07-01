@@ -146,8 +146,12 @@ export default function Access() {
 
   const loadData = async () => {
     setLoading(true);
+    setAllowlist([]);
+    setRoleCache([]);
+    setPendingRequests([]);
     try {
       const { AdminApiClient } = await import('../../../lib/adminApiClient.js') as unknown as { AdminApiClient: AdminApiClientType };
+
       const [alPayload, rcPayload, lg] = await Promise.all([
         AdminApiClient.listGoogleAllowlist().catch(() => []),
         AdminApiClient.listRoleCache().catch(() => []),

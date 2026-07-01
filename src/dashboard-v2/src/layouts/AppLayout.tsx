@@ -3,7 +3,7 @@ import {
   LayoutDashboard, Users, ShieldAlert, Activity, Settings as SettingsIcon,
   LogOut, Zap, BookOpen, Bot, User, ChevronUp, Shield, RefreshCw,
   WifiOff, Wifi, Megaphone, Sliders, ChevronLeft, Bell, Check, UserCheck,
-  Scale, Ticket, FileText
+  Scale, Ticket, FileText, GraduationCap
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import React, { useState, useRef, useEffect } from 'react';
@@ -16,20 +16,52 @@ import Tooltip from '../components/Tooltip';
 import NotificationCenter from '../components/NotificationCenter';
 import { getGlassClass } from '../lib/theme';
 
-const NAV_ITEMS = [
-  { icon: LayoutDashboard, label: 'Home', path: '/home', translationKey: 'nav.home' },
-  { icon: User, label: 'Profilim', path: '/profile', translationKey: 'nav.profile' },
-  { icon: ShieldAlert, label: 'Cases', path: '/cases', translationKey: 'nav.cases' },
-  { icon: Users, label: 'Staff', path: '/staff', translationKey: 'nav.staff' },
-  { icon: UserCheck, label: 'Profiller', path: '/staff-profiles', translationKey: 'nav.staffProfiles' },
-  { icon: Bot, label: 'AI Agent', path: '/ai-agent', translationKey: 'nav.ai-agent' },
-  { icon: Ticket, label: 'Biletler', path: '/tickets', translationKey: 'nav.tickets' },
-  { icon: Scale, label: 'İtirazlar', path: '/appeals', translationKey: 'nav.appeals' },
-  { icon: FileText, label: 'Başvurular', path: '/applications', translationKey: 'nav.applications' },
-  { icon: Shield, label: 'Erişim', path: '/access', translationKey: 'nav.access' },
-  { icon: Megaphone, label: 'Duyurular', path: '/announcements', translationKey: 'nav.announcements' },
-  { icon: Sliders, label: 'Bot Ayarları', path: '/bot-setup', translationKey: 'nav.botSetup' },
+const NAV_SECTIONS = [
+  {
+    id: 'genel',
+    label: 'GENEL',
+    items: [
+      { icon: LayoutDashboard, label: 'Home', path: '/home', translationKey: 'nav.home' },
+      { icon: ShieldAlert, label: 'Cezalar', path: '/cases', translationKey: 'nav.cases' },
+      { icon: User, label: 'Profilim', path: '/profile', translationKey: 'nav.profile' },
+      { icon: Scale, label: 'İtirazlar', path: '/appeals', translationKey: 'nav.appeals' },
+      { icon: Ticket, label: 'Biletler', path: '/tickets', translationKey: 'nav.tickets' },
+    ]
+  },
+  {
+    id: 'yetkililer',
+    label: 'YETKİLİLER',
+    items: [
+      { icon: Users, label: 'Staff', path: '/staff', translationKey: 'nav.staff' },
+      { icon: UserCheck, label: 'Profiller', path: '/staff-profiles', translationKey: 'nav.staffProfiles' },
+      { icon: Bot, label: 'AI Agent', path: '/ai-agent', translationKey: 'nav.ai-agent' },
+    ]
+  },
+  {
+    id: 'forms',
+    label: 'FORMS',
+    items: [
+      { icon: SettingsIcon, label: 'Formlar', path: '/manage-forms', translationKey: 'nav.manageForms' },
+      { icon: FileText, label: 'Başvurular', path: '/applications', translationKey: 'nav.applications' },
+      { icon: GraduationCap, label: 'YSYM Kontrol', path: '/ysym', translationKey: 'nav.ysym' },
+      { icon: FileText, label: 'Başvuru Yap', path: '/apply', translationKey: 'nav.apply', isPublic: true },
+      { icon: GraduationCap, label: 'YSYM Sınavı', path: '/ysym-exam', translationKey: 'nav.ysymExam', isPublic: true },
+    ]
+  },
+  {
+    id: 'sistem',
+    label: 'SİSTEM',
+    items: [
+      { icon: Shield, label: 'Erişim', path: '/access', translationKey: 'nav.access' },
+      { icon: Sliders, label: 'Bot Ayarları', path: '/bot-setup', translationKey: 'nav.botSetup' },
+      { icon: Megaphone, label: 'Duyurular', path: '/announcements', translationKey: 'nav.announcements' },
+    ]
+  },
 ];
+
+
+// Flat list of all nav items derived from sections (used for mobile nav & auth checks)
+const ALL_NAV_ITEMS = NAV_SECTIONS.flatMap(s => s.items);
 
 export default function AppLayout() {
   const navigate = useNavigate();
@@ -37,9 +69,37 @@ export default function AppLayout() {
   const { session, logout, loading, refreshSession } = useAuth();
   const { t, language } = useLanguage();
   
+  const userRole = session?.role?.toLowerCase() || '';
+  const isCandidate = ['pending', 'eski_yetkili'].includes(userRole);
+  const isMgmt = ['kurucu', 'admin', 'yonetici', 'yönetici', 'genel_sorumlu', 'discord_yoneticisi', 'discord_yöneticisi', 'kidemli', 'kıdemli', 'kidemli_discord_moderatoru', 'kidemli_discord_moderatörü', 'senior_moderator'].includes(userRole);
+
+
+  
+  useEffect(() => {
+    if (!loading && isCandidate) {
+      const allowedPaths = ['/apply', '/ysym-exam', '/basvuru', '/ysym-sinavi'];
+      if (!allowedPaths.includes(location.pathname)) {
+        navigate('/apply');
+      }
+    }
+
+  }, [loading, isCandidate, location.pathname, navigate]);
+  
   const isExt = typeof chrome !== 'undefined' && !!chrome.runtime?.getURL;
-  const logoUrl = isExt ? 'icon128.png' : '/dashboard/icon128.png';
-  const bannerUrl = isExt ? 'banner.png' : '/dashboard/banner.png';
+  // Determine the correct base path for static assets
+  // - Chrome extension: relative 'icon128.png' (at extension root)
+  // - Web server at /dashboard/: '/dashboard/icon128.png'
+  // - Local file:// dist: './icon128.png' (relative to html)
+  const getAssetBase = () => {
+    if (isExt) return ''; // extension, relative path
+    const loc = window.location;
+    if (loc.protocol === 'file:') return './'; // opened as file
+    if (loc.pathname.startsWith('/dashboard')) return '/dashboard/'; // web server
+    return './'; // fallback
+  };
+  const assetBase = getAssetBase();
+  const logoUrl = isExt ? 'icon128.png' : `${assetBase}icon128.png`;
+  const bannerUrl = isExt ? 'banner.png' : `${assetBase}banner.png`;
 
   const [profileOpen, setProfileOpen] = useState(false);
   const [notificationCenterOpen, setNotificationCenterOpen] = useState(false);
@@ -73,6 +133,21 @@ export default function AppLayout() {
     const nextState = !isCollapsed;
     setIsCollapsed(nextState);
     localStorage.setItem('lutheus-isCollapsed', String(nextState));
+  };
+
+  // Section collapse state (persisted)
+  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>(() => {
+    try {
+      return JSON.parse(localStorage.getItem('lutheus-nav-sections') || '{}');
+    } catch { return {}; }
+  });
+
+  const toggleSection = (id: string) => {
+    setCollapsedSections(prev => {
+      const next = { ...prev, [id]: !prev[id] };
+      localStorage.setItem('lutheus-nav-sections', JSON.stringify(next));
+      return next;
+    });
   };
 
   // Sidebar resizable state
@@ -136,17 +211,34 @@ export default function AppLayout() {
   const isAuthorized = (path: string) => {
     const role = session?.role?.toLowerCase() || '';
     console.log("[Lutheus AppLayout Auth Debug] Current user role: ", role, "for path: ", path);
-    const isMgmt = ['kurucu', 'admin', 'yonetici', 'genel_sorumlu', 'discord_yoneticisi', 'kidemli', 'kidemli_discord_moderatoru', 'senior_moderator'].includes(role);
     const isSenior = ['kidemli', 'kidemli_discord_moderatoru', 'senior_moderator'].includes(role);
-    const isStaff = ['kurucu', 'admin', 'yonetici', 'genel_sorumlu', 'discord_yoneticisi', 'kidemli', 'kidemli_discord_moderatoru', 'senior_moderator', 'moderator', 'discord_moderatoru', 'support', 'discord_destek_ekibi'].includes(role);
 
+    const isStaff = ['kurucu', 'admin', 'yonetici', 'genel_sorumlu', 'discord_yoneticisi', 'kidemli', 'kidemli_discord_moderatoru', 'senior_moderator', 'moderator', 'discord_moderatoru', 'support', 'discord_destek_ekibi'].includes(role);
+    const isCandidate = ['pending', 'eski_yetkili'].includes(role);
+
+    if (isCandidate) {
+      return ['/apply', '/ysym-exam', '/basvuru', '/ysym-sinavi'].includes(path);
+    }
+
+    if (['/apply', '/ysym-exam', '/basvuru', '/ysym-sinavi'].includes(path)) {
+      // For /ysym-exam, check visibility flag for non-management staff
+      if (path === '/ysym-exam') {
+        const isExamVisible = localStorage.getItem('ysym-is-exam-visible') !== 'false';
+        return isMgmt || isExamVisible;
+      }
+      return true;
+    }
+    if (path === '/manage-forms' || path === '/applications' || path === '/ysym') {
+      return isMgmt;
+    }
     if (path === '/appeals') {
       return isMgmt;
     }
     if (path === '/tickets') {
       return isStaff;
     }
-    if (path === '/access' || path === '/rules' || path === '/announcements' || path === '/bot-setup' || path === '/staff-profiles' || path === '/applications') {
+
+    if (path === '/access' || path === '/rules' || path === '/announcements' || path === '/bot-setup' || path === '/staff-profiles') {
       return isMgmt;
     }
     if (path === '/pointtrain' || path === '/scan') {
@@ -154,6 +246,7 @@ export default function AppLayout() {
     }
     return true;
   };
+
 
   // Block close / reload if there are unsaved changes
   useEffect(() => {
@@ -290,9 +383,8 @@ export default function AppLayout() {
     );
   }
 
-  // Block dashboard access entirely for Former Staff (eski_yetkili), Blocked (blocked), or Pending (pending) role
-  const userRole = session?.role?.toLowerCase() || '';
-  if (userRole === 'eski_yetkili' || userRole === 'blocked' || userRole === 'pending') {
+
+  if (userRole === 'blocked') {
     return (
       <div className="flex flex-col items-center justify-center h-screen w-screen bg-[#050506] text-white p-6 relative">
         <div className="bg-overlay" />
@@ -303,44 +395,11 @@ export default function AppLayout() {
           <div className="space-y-2">
             <h1 className="text-2xl font-bold tracking-tight text-white">{t('nav.accessDenied')}</h1>
             <p className="text-sm text-white/60">
-              {userRole === 'blocked' 
-                ? (language === 'tr' ? 'Hesabınız engellendiği için moderasyon paneline erişim izniniz bulunmamaktadır.' : 'You do not have permission to access the moderation panel because your account has been blocked.')
-                : userRole === 'eski_yetkili'
-                  ? (language === 'tr' ? 'Eski yetkili rütbesine sahip olduğunuz için moderasyon paneline erişim izniniz bulunmamaktadır.' : 'You do not have permission to access the moderation panel because you have the Former Staff role.')
-                  : (language === 'tr' ? 'Hesabınız henüz onaylanmadığı için moderasyon paneline erişim izniniz bulunmamaktadır.' : 'You do not have permission to access the moderation panel because your account has not been approved yet.')}
+              {language === 'tr' ? 'Hesabınız engellendiği için moderasyon paneline erişim izniniz bulunmamaktadır.' : 'You do not have permission to access the moderation panel because your account has been blocked.'}
             </p>
           </div>
 
           <div className="flex flex-col gap-2.5">
-            {userRole === 'pending' && (
-              <button
-                onClick={handleRequestAccess}
-                disabled={requestingAccess || accessRequested}
-                className={cn(
-                  "w-full flex items-center justify-center gap-2 h-11 px-4 rounded-[14px] font-semibold transition-all shadow-lg cursor-pointer",
-                  accessRequested 
-                    ? "bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 cursor-not-allowed shadow-none"
-                    : "bg-[#5E5CE6] text-white hover:bg-[#5E5CE6]/90 shadow-[#5E5CE6]/25"
-                )}
-              >
-                {requestingAccess ? (
-                  <span className="flex gap-1 items-center justify-center">
-                    <span className="w-1.5 h-1.5 rounded-full bg-white animate-bounce" style={{ animationDelay: '0ms' }} />
-                    <span className="w-1.5 h-1.5 rounded-full bg-white animate-bounce" style={{ animationDelay: '150ms' }} />
-                    <span className="w-1.5 h-1.5 rounded-full bg-white animate-bounce" style={{ animationDelay: '300ms' }} />
-                  </span>
-                ) : accessRequested ? (
-                  <>
-                    <Check className="w-4 h-4" /> Erişim Talebi Gönderildi
-                  </>
-                ) : (
-                  <>
-                    <Shield className="w-4 h-4" /> Erişim Talep Et
-                  </>
-                )}
-              </button>
-            )}
-
             <button
               onClick={() => logout()}
               className="w-full flex items-center justify-center gap-2 h-11 px-4 rounded-[14px] bg-[#FF453A] text-white font-semibold hover:bg-[#FF453A]/90 transition-colors shadow-lg shadow-[#FF453A]/20 cursor-pointer"
@@ -453,25 +512,100 @@ export default function AppLayout() {
         </div>
 
         {/* Navigation panel */}
-        <nav className={`flex-1 overflow-y-auto hide-scrollbar py-6 ${isCollapsed ? 'px-2 space-y-3' : 'px-3 space-y-1.5'} select-none`}>
-          {NAV_ITEMS.filter((item) => isAuthorized(item.path)).map((item) => (
-            <NavItem
-              key={item.path}
-              to={item.path}
-              icon={item.icon}
-              label={t(item.translationKey)}
-              isCollapsed={isCollapsed}
-              theme={theme}
-              onClick={(e) => handleNavClick(e, item.path)}
-            />
-          ))}
-          {isCollapsed && (
-            <button 
-              onClick={toggleSidebar}
-              className="w-11 h-11 mx-auto flex items-center justify-center rounded-xl text-white/30 hover:text-white/60 hover:bg-white/5 border border-transparent transition-all cursor-pointer"
-            >
-              <ChevronLeft size={16} className="rotate-180" />
-            </button>
+        <nav className={`flex-1 overflow-y-auto hide-scrollbar py-3 ${isCollapsed ? 'px-2' : 'px-3'} select-none`}>
+          {isCollapsed ? (
+            // Collapsed sidebar: render all authorized items as icon-only, no section headers
+            <div className="space-y-3">
+              {ALL_NAV_ITEMS.filter(item => {
+                if (item.path === '/apply') {
+                  if (isCandidate) return true;
+                  if (isMgmt) return true;
+                  return false;
+                }
+                if (item.path === '/ysym-exam') {
+                  if (isMgmt) return true;
+                  const isExamVisible = localStorage.getItem('ysym-is-exam-visible') !== 'false';
+                  return isExamVisible && !isCandidate;
+                }
+                if (item.isPublic) return !isCandidate;
+                return isAuthorized(item.path);
+              }).map(item => (
+
+
+                <NavItem
+                  key={item.path}
+                  to={item.path}
+                  icon={item.icon}
+                  label={t(item.translationKey)}
+                  isCollapsed={isCollapsed}
+                  theme={theme}
+                  onClick={(e) => handleNavClick(e, item.path)}
+                />
+              ))}
+              <button
+                onClick={toggleSidebar}
+                className="w-11 h-11 mx-auto flex items-center justify-center rounded-xl text-white/30 hover:text-white/60 hover:bg-white/5 border border-transparent transition-all cursor-pointer"
+              >
+                <ChevronLeft size={16} className="rotate-180" />
+              </button>
+            </div>
+          ) : (
+            // Expanded sidebar: render section groups with collapsible headers
+            <div>
+              {NAV_SECTIONS.map(section => {
+                const visibleItems = section.items.filter(item => {
+                  if (item.path === '/apply') {
+                    if (isCandidate) return true;
+                    if (isMgmt) return true;
+                    return false;
+                  }
+                  if (item.path === '/ysym-exam') {
+                    if (isMgmt) return true;
+                    const isExamVisible = localStorage.getItem('ysym-is-exam-visible') !== 'false';
+                    return isExamVisible && !isCandidate;
+                  }
+                  if (item.isPublic) return !isCandidate;
+                  return isAuthorized(item.path);
+                });
+
+                if (visibleItems.length === 0) return null;
+
+                const isCollapsedSection = !!collapsedSections[section.id];
+                return (
+                  <div key={section.id}>
+                    {/* Section header */}
+                    <button
+                      onClick={() => toggleSection(section.id)}
+                      className="w-full flex items-center justify-between px-2 py-1 mb-1 mt-3 group cursor-pointer"
+                    >
+                      <span className="text-[9px] font-mono uppercase tracking-widest text-white/20 group-hover:text-white/35 transition-colors">
+                        {section.label}
+                      </span>
+                      <ChevronUp
+                        size={10}
+                        className={`text-white/20 group-hover:text-white/35 transition-all ${isCollapsedSection ? 'rotate-180' : ''}`}
+                      />
+                    </button>
+                    {/* Section items */}
+                    {!isCollapsedSection && (
+                      <div className="space-y-1.5">
+                        {visibleItems.map(item => (
+                          <NavItem
+                            key={item.path}
+                            to={item.path}
+                            icon={item.icon}
+                            label={t(item.translationKey)}
+                            isCollapsed={isCollapsed}
+                            theme={theme}
+                            onClick={(e) => handleNavClick(e, item.path)}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           )}
         </nav>
 
@@ -627,7 +761,7 @@ export default function AppLayout() {
           {/* Page Routing Authorization Check wrapper */}
           <div className="flex-1 flex flex-col w-full">
             {(() => {
-              const currentNav = NAV_ITEMS.find((n) => location.pathname.startsWith(n.path));
+              const currentNav = ALL_NAV_ITEMS.find((n) => location.pathname.startsWith(n.path));
               const isPageAuthorized = !currentNav || isAuthorized(currentNav.path);
 
               if (!isPageAuthorized) {
@@ -671,7 +805,20 @@ export default function AppLayout() {
       {/* Premium Floating Bottom Navigation (flex md:hidden) */}
       <nav className="fixed bottom-4 left-4 right-4 h-16 bg-[#0D0D11]/80 backdrop-blur-2xl border border-white/10 rounded-2xl flex items-center justify-around px-4 shadow-[0_8px_32px_rgba(0,0,0,0.5)] z-40 md:hidden select-none">
         {(() => {
-          const allowedNavItems = NAV_ITEMS.filter((item) => isAuthorized(item.path));
+          const allowedNavItems = ALL_NAV_ITEMS.filter((item) => {
+            if (item.path === '/apply') {
+              if (isCandidate) return true;
+              if (isMgmt) return true;
+              return false;
+            }
+            if (item.path === '/ysym-exam') {
+              if (isMgmt) return true;
+              const isExamVisible = localStorage.getItem('ysym-is-exam-visible') !== 'false';
+              return isExamVisible && !isCandidate;
+            }
+            return item.isPublic ? !isCandidate : isAuthorized(item.path);
+          });
+
           const mobileMainItems = allowedNavItems.slice(0, 4);
           const mobileMoreItems = allowedNavItems.slice(4);
 

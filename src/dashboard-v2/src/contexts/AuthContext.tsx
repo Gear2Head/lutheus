@@ -49,6 +49,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
           // Set JWT on supabase client for authenticated requests
           setAuthToken(s.idToken);
+
+          // Pre-fetch live profile state to prevent "Access Denied" flash on page refresh
+          try {
+            const { supabaseFetch } = await import('../lib/supabase');
+            const data = await supabaseFetch<any[]>('staff_profiles', 'GET', `discord_id=eq.${s.profile.discordId}`);
+            const profile = data?.[0];
+            if (profile) {
+              const newRole = profile.staff_rank || 'pending';
+              const isApproved = profile.access_status === 'approved' && profile.is_active_staff === true;
+              
+              s = {
+                ...s,
+                role: newRole,
+                profile: {
+                  ...s.profile,
+                  role: newRole,
+                  status: isApproved ? 'active' : 'pending'
+                }
+              };
+              
+              const SESSION_KEY = 'lutheusAuthSession';
+              if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+                chrome.storage.local.set({ [SESSION_KEY]: s });
+              } else {
+                localStorage.setItem(SESSION_KEY, JSON.stringify(s));
+              }
+            }
+          } catch (e) {
+            console.warn('[Lutheus Auth] Failed to pre-fetch profile role:', e);
+          }
+
           setSession(s);
         } else {
           redirectToLogin();

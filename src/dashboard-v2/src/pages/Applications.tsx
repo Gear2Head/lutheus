@@ -89,6 +89,7 @@ export default function Applications() {
   
   // Sheet sync states
   const [sheetUrl, setSheetUrl] = useState(() => localStorage.getItem('lutheus-sync-sheet-url') || '');
+  const [scriptUrl, setScriptUrl] = useState(() => localStorage.getItem('lutheus-google-script-url') || '');
   const [syncingSheet, setSyncingSheet] = useState(false);
   const [showSyncConfig, setShowSyncConfig] = useState(false);
 
@@ -155,7 +156,7 @@ export default function Applications() {
     }
   };
 
-  // Google Sheets Direct Sync Logic (Bypasses Google Apps Script network issues)
+  // Google Sheets Sync Logic via Next.js Backend (Avoids CORS issues)
   const handleSheetSync = async () => {
     if (!sheetUrl) {
       showToast('Lütfen geçerli bir Google Tablosu linki girin', 'error');
@@ -167,84 +168,26 @@ export default function Applications() {
       showToast('Geçersiz Google Sheet bağlantısı formatı', 'error');
       return;
     }
-    const spreadsheetId = matches[1];
     localStorage.setItem('lutheus-sync-sheet-url', sheetUrl);
+    localStorage.setItem('lutheus-google-script-url', scriptUrl);
 
     setSyncingSheet(true);
-    let totalSynced = 0;
-
-    const sheetsToSync = [
-      { name: "Başvurular", defaultStatus: "Yeni Başvuru" },
-      { name: "Spam", defaultStatus: "Spam" },
-      { name: "BlackList", defaultStatus: "BlackList" },
-      { name: "Arşiv", defaultStatus: "Arşiv" }
-    ];
 
     try {
-      for (const s of sheetsToSync) {
-        // Query as CSV format directly via Google Visualization API
-        const csvUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(s.name)}`;
-        const response = await fetch(csvUrl);
-        if (!response.ok) {
-          console.warn(`Could not sync sheet ${s.name}, checking next...`);
-          continue;
-        }
-        const csvText = await response.text();
-        const rows = parseCSV(csvText);
+      const response = await fetch('/api/forms/sync-sheet', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ sheetUrl })
+      });
 
-        if (rows.length <= 1) continue;
-
-        const records = [];
-        for (let i = 1; i < rows.length; i++) {
-          const row = rows[i];
-          const id = row[0];
-          const status = row[1] || s.defaultStatus;
-          const dateStr = row[2];
-          const email = row[3];
-          const fullName = row[4];
-          const discordTag = row[6];
-
-          if (!id || !email) continue;
-
-          // Align with sheet column settings
-          const rawAnswers = {
-            id: id,
-            email: email,
-            fullName: fullName,
-            birthDate: row[5],
-            discordInfo: discordTag,
-            discordUsage: row[7],
-            penaltyHistory: row[8],
-            micQuality: row[9],
-            motivation: row[10],
-            teamwork: row[11],
-            moderationPurpose: row[12],
-            experience: row[13],
-            regret: row[14],
-            availability: row[15],
-            timeWindows: row[16]
-          };
-
-          records.push({
-            applicant_id: id,
-            status: status,
-            form_type: 'application',
-            full_name: fullName || null,
-            discord_tag: discordTag || null,
-            email: email || null,
-            raw_answers: rawAnswers,
-            created_at: parseSheetDate(dateStr)
-          });
-        }
-
-        // Direct upsert to Supabase
-        for (const record of records) {
-          await upsertStaffApplication(record);
-          totalSynced++;
-        }
+      if (!response.ok) {
+        throw new Error(await response.text());
       }
 
-      showToast(`${totalSynced} başvuru başarıyla Google Tablosundan çekilerek senkronize edildi!`, 'success');
+      const result = await response.json();
+      showToast(`${result.totalSynced} başvuru başarıyla Google Tablosundan çekilerek senkronize edildi!`, 'success');
       setShowSyncConfig(false);
       fetchApps();
     } catch (err: any) {
@@ -370,7 +313,7 @@ export default function Applications() {
               <div className="flex items-center justify-between border-b border-white/[0.04] pb-2.5">
                 <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
                   <Download size={15} className="text-primary" />
-                  E-Tablo Verilerini Çek
+                  İki Yönlü E-Tablo Eşitleme
                 </h3>
                 <button
                   onClick={() => setShowSyncConfig(false)}
@@ -382,13 +325,13 @@ export default function Applications() {
 
               <div className="space-y-3.5 text-xs text-white/70">
                 <p>
-                  Google Apps Script yetkilendirme sorunlarını atlatmak için verileri doğrudan tarayıcınız üzerinden Google E-Tablonuzdan çekebilirsiniz.
+                  E-Tablo verilerini Vercel sunucumuz üzerinden çekerek CORS engellerini tamamen aşabilirsiniz.
                 </p>
-                <div className="p-3.5 rounded-xl bg-amber-500/5 border border-amber-500/10 text-amber-400 flex gap-2">
+                <div className="p-3 rounded-xl bg-amber-500/5 border border-amber-500/10 text-amber-400 flex gap-2">
                   <Info size={16} className="shrink-0 mt-0.5" />
                   <div>
-                    <strong className="font-bold block mb-0.5">Önemli Gereksinim:</strong>
-                    Google E-Tablonuzda sağ üstteki **Paylaş** butonuna basın ve Genel Erişim ayarını **"Bağlantıya sahip olan herkes görüntüleyebilir"** olarak değiştirin.
+                    <strong className="font-bold block mb-0.5">1. Okuma İzni (Zorunlu):</strong>
+                    E-Tablonuzda sağ üstteki **Paylaş** butonuna basın ve Genel Erişim ayarını **"Bağlantıya sahip olan herkes görüntüleyebilir"** yapın.
                   </div>
                 </div>
 
@@ -401,6 +344,27 @@ export default function Applications() {
                     onChange={(e) => setSheetUrl(e.target.value)}
                     className="w-full h-9 px-3 rounded-xl bg-white/5 border border-white/[0.06] text-white text-xs outline-none focus:border-primary/40"
                   />
+                </div>
+
+                <div className="border-t border-white/[0.04] pt-3.5 space-y-3">
+                  <div className="p-3 rounded-xl bg-blue-500/5 border border-blue-500/10 text-blue-400 flex gap-2">
+                    <Shield size={16} className="shrink-0 mt-0.5" />
+                    <div>
+                      <strong className="font-bold block mb-0.5">2. Geri Yazma İzni (Opsiyonel):</strong>
+                      Siteden veya eklentiden onay/ret/spam durumunu değiştirdiğinizde tablonuzun da otomatik güncellenmesini istiyorsanız, Apps Script projenizi **Web Uygulaması** olarak dağıtıp URL'sini buraya yapıştırın.
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-white/40 uppercase tracking-wider">Apps Script Web Uygulama URL'si</label>
+                    <input
+                      type="text"
+                      placeholder="https://script.google.com/macros/s/.../exec"
+                      value={scriptUrl}
+                      onChange={(e) => setScriptUrl(e.target.value)}
+                      className="w-full h-9 px-3 rounded-xl bg-white/5 border border-white/[0.06] text-white text-xs outline-none focus:border-primary/40"
+                    />
+                  </div>
                 </div>
               </div>
 

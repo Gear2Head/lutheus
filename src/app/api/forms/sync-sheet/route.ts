@@ -1,0 +1,161 @@
+import { NextResponse } from 'next/server';
+import { supabase } from '@/lib/supabase';
+
+export async function POST(req: Request) {
+  try {
+    const { sheetUrl } = await req.json();
+    if (!sheetUrl) {
+      return NextResponse.json({ error: 'Missing sheetUrl' }, { status: 400 });
+    }
+
+    const matches = sheetUrl.match(/\/d\/([a-zA-Z0-9-_]+)/);
+    if (!matches) {
+      return NextResponse.json({ error: 'Invalid Google Sheet URL' }, { status: 400 });
+    }
+    const spreadsheetId = matches[1];
+
+    const sheetsToSync = [
+      { name: "Başvurular", defaultStatus: "Yeni Başvuru" },
+      { name: "Spam", defaultStatus: "Spam" },
+      { name: "BlackList", defaultStatus: "BlackList" },
+      { name: "Arşiv", defaultStatus: "Arşiv" }
+    ];
+
+    let totalSynced = 0;
+
+    for (const s of sheetsToSync) {
+      const csvUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(s.name)}`;
+      const response = await fetch(csvUrl);
+      if (!response.ok) {
+        console.warn(`Could not sync sheet ${s.name}: ${response.statusText}`);
+        continue;
+      }
+      const csvText = await response.text();
+      const rows = parseCSV(csvText);
+
+      if (rows.length <= 1) continue;
+
+      const records = [];
+      for (let i = 1; i < rows.length; i++) {
+        const row = rows[i];
+        const id = row[0];
+        const status = row[1] || s.defaultStatus;
+        const dateStr = row[2];
+        const email = row[3];
+        const fullName = row[4];
+        const discordTag = row[6];
+
+        if (!id || !email) continue;
+
+        const rawAnswers = {
+          id: id,
+          email: email,
+          fullName: fullName,
+          birthDate: row[5],
+          discordInfo: discordTag,
+          discordUsage: row[7],
+          penaltyHistory: row[8],
+          micQuality: row[9],
+          motivation: row[10],
+          teamwork: row[11],
+          moderationPurpose: row[12],
+          experience: row[13],
+          regret: row[14],
+          availability: row[15],
+          timeWindows: row[16]
+        };
+
+        records.push({
+          applicant_id: id,
+          status: status,
+          form_type: 'application',
+          full_name: fullName || null,
+          discord_tag: discordTag || null,
+          email: email || null,
+          raw_answers: rawAnswers,
+          created_at: parseSheetDate(dateStr)
+        });
+      }
+
+      if (records.length > 0) {
+        const { error } = await supabase
+          .from('staff_applications')
+          .upsert(records, { onConflict: 'applicant_id' });
+        
+        if (error) {
+          console.error(`Error upserting sheet ${s.name}:`, error);
+        } else {
+          totalSynced += records.length;
+        }
+      }
+    }
+
+    return NextResponse.json({ success: true, totalSynced });
+  } catch (err: any) {
+    console.error('Sync sheet error:', err);
+    return NextResponse.json({ error: err.message || 'Internal Server Error' }, { status: 500 });
+  }
+}
+
+// Simple CSV parser
+function parseCSV(text: string): string[][] {
+  const lines: string[][] = [];
+  let row: string[] = [];
+  let inQuotes = false;
+  let currentField = '';
+
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    const nextChar = text[i + 1];
+
+    if (char === '"') {
+      if (inQuotes && nextChar === '"') {
+        currentField += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (char === ',' && !inQuotes) {
+      row.push(currentField.trim());
+      currentField = '';
+    } else if ((char === '\n' || char === '\r') && !inQuotes) {
+      if (char === '\r' && nextChar === '\n') {
+        i++;
+      }
+      row.push(currentField.trim());
+      lines.push(row);
+      row = [];
+      currentField = '';
+    } else {
+      currentField += char;
+    }
+  }
+  if (row.length > 0 || currentField) {
+    row.push(currentField.trim());
+    lines.push(row);
+  }
+  return lines;
+}
+
+function parseSheetDate(dateStr: string): string {
+  if (!dateStr) return new Date().toISOString();
+  try {
+    const parts = dateStr.split(' ');
+    if (parts.length < 2) return new Date().toISOString();
+    const dParts = parts[0].split('.');
+    const tParts = parts[1].split(':');
+    if (dParts.length < 3 || tParts.length < 2) return new Date().toISOString();
+    
+    const date = new Date(
+      parseInt(dParts[2], 10),
+      parseInt(dParts[1], 10) - 1,
+      parseInt(dParts[0], 10),
+      parseInt(tParts[0], 10),
+      parseInt(tParts[1], 10),
+      tParts[2] ? parseInt(tParts[2], 10) : 0
+    );
+    return date.toISOString();
+  } catch {
+    return new Date().toISOString();
+  }
+}

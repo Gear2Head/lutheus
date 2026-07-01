@@ -861,6 +861,23 @@ export async function updateStaffApplicationStatus(
       `applicant_id=eq.${encodeURIComponent(applicantId)}`,
       { status: newStatus }
     );
+
+    // Sync status change back to Google Sheet if Google Script URL is configured
+    const scriptUrl = localStorage.getItem('lutheus-google-script-url');
+    if (scriptUrl) {
+      fetch(scriptUrl, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          action: 'updateStatus',
+          applicantId: applicantId,
+          status: newStatus
+        })
+      }).catch(err => console.error("Google Sheets sync status request failed:", err));
+    }
   } catch (error) {
     console.error("Lutheus DB Error: Failed to update staff_application status.", error);
     throw error;

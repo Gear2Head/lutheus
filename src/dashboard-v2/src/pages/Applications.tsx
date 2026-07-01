@@ -273,7 +273,12 @@ export default function Applications() {
   };
 
   return (
-    <div className="space-y-6">
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3 }}
+      className="p-6 md:p-8 w-full space-y-6 md:space-y-8 select-none text-left"
+    >
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
@@ -738,6 +743,6 @@ export default function Applications() {
           </>
         )}
       </AnimatePresence>
-    </div>
+    </motion.div>
   );
 }

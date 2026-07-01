@@ -29,45 +29,46 @@ function StatCard({
 
 function getStatusClasses(status: string) {
   const norm = (status || '').toLowerCase();
+  
   if (norm.includes('yeni')) {
     return {
-      bg: 'bg-gradient-to-r from-blue-500/10 to-indigo-500/10 border-blue-500/20',
-      text: 'text-blue-400',
-      dot: 'bg-blue-500'
+      bg: 'bg-gradient-to-r from-blue-500/20 to-indigo-500/20 border-blue-500/30',
+      text: 'text-blue-400 font-semibold',
+      dot: 'bg-blue-400'
     };
   }
   if (norm.includes('incele')) {
     return {
-      bg: 'bg-gradient-to-r from-cyan-500/10 to-blue-500/10 border-cyan-500/25',
-      text: 'text-cyan-300',
+      bg: 'bg-gradient-to-r from-cyan-500/20 to-blue-500/20 border-cyan-500/30',
+      text: 'text-cyan-400 font-semibold',
       dot: 'bg-cyan-400'
     };
   }
   if (norm.includes('spam')) {
     return {
-      bg: 'bg-gradient-to-r from-orange-500/10 to-amber-500/10 border-orange-500/20',
-      text: 'text-orange-400',
+      bg: 'bg-gradient-to-r from-orange-500/20 to-amber-500/20 border-orange-500/30',
+      text: 'text-orange-400 font-semibold',
       dot: 'bg-orange-500'
     };
   }
-  if (norm.includes('blacklist') || norm.includes('kara')) {
+  if (norm.includes('blacklist') || norm.includes('kara') || norm.includes('reddedildi')) {
     return {
       bg: 'blacklist-shimmer border-zinc-800/80',
       text: 'text-zinc-300 font-bold',
       dot: 'bg-zinc-400'
     };
   }
-  if (norm.includes('basarili') || norm.includes('onay')) {
+  if (norm.includes('basarili') || norm.includes('başarılı') || norm.includes('onay')) {
     return {
-      bg: 'bg-gradient-to-r from-emerald-500/10 to-teal-500/10 border-emerald-500/20',
-      text: 'text-emerald-400',
-      dot: 'bg-emerald-500'
+      bg: 'bg-gradient-to-r from-emerald-500/20 to-teal-500/20 border-emerald-500/30',
+      text: 'text-emerald-400 font-semibold',
+      dot: 'bg-emerald-400'
     };
   }
-  if (norm.includes('basarisiz') || norm.includes('red')) {
+  if (norm.includes('basarisiz') || norm.includes('başarısız') || norm.includes('red')) {
     return {
-      bg: 'bg-gradient-to-r from-rose-500/10 to-red-500/10 border-rose-500/20',
-      text: 'text-rose-400',
+      bg: 'bg-gradient-to-r from-rose-500/20 to-red-500/20 border-rose-500/30',
+      text: 'text-rose-400 font-semibold',
       dot: 'bg-rose-500'
     };
   }

@@ -174,7 +174,7 @@ export default function Applications() {
     setSyncingSheet(true);
 
     try {
-      const response = await fetch('/api/forms/sync-sheet', {
+      const response = await fetch('https://lutheus.vercel.app/api/forms/sync-sheet', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'

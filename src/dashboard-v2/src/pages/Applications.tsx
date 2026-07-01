@@ -2,10 +2,10 @@ import { useEffect, useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   FileText, CheckCircle2, XCircle, Clock, Loader2,
-  ChevronDown, X, User, Shield, Info, Filter, RefreshCw, AlertTriangle
+  ChevronDown, X, User, Shield, Info, Filter, RefreshCw, AlertTriangle, Link2, Download
 } from 'lucide-react';
 import { useToast } from '../contexts/ToastContext';
-import { getStaffApplications, updateStaffApplicationStatus, StaffApplication } from '../lib/supabase';
+import { getStaffApplications, updateStaffApplicationStatus, StaffApplication, supabaseFetch } from '../lib/supabase';
 import { formatDate } from '../lib/utils';
 
 // Metric Card Component
@@ -27,7 +27,6 @@ function StatCard({
   );
 }
 
-// Helper to get status color classes
 function getStatusClasses(status: string) {
   const norm = (status || '').toLowerCase();
   if (norm.includes('yeni')) {
@@ -87,6 +86,11 @@ export default function Applications() {
   const [selectedApp, setSelectedApp] = useState<StaffApplication | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
+  
+  // Sheet sync states
+  const [sheetUrl, setSheetUrl] = useState(() => localStorage.getItem('lutheus-sync-sheet-url') || '');
+  const [syncingSheet, setSyncingSheet] = useState(false);
+  const [showSyncConfig, setShowSyncConfig] = useState(false);
 
   const fetchApps = async () => {
     setLoading(true);
@@ -104,7 +108,6 @@ export default function Applications() {
     fetchApps();
   }, []);
 
-  // Compute metrics
   const stats = useMemo(() => {
     const total = apps.length;
     const activeNew = apps.filter(a => (a.status || '').toLowerCase().includes('yeni')).length;
@@ -114,7 +117,6 @@ export default function Applications() {
     return { total, activeNew, reviewing, spam, blacklist };
   }, [apps]);
 
-  // Filter list
   const filteredApps = useMemo(() => {
     return apps.filter(a => {
       const matchStatus = statusFilter === 'all' || 
@@ -142,7 +144,6 @@ export default function Applications() {
       await updateStaffApplicationStatus(applicantId, newStatus);
       showToast(`Başvuru durumu başarıyla güncellendi: ${newStatus}`, 'success');
       
-      // Update local state
       setApps(prev => prev.map(a => a.applicant_id === applicantId ? { ...a, status: newStatus } : a));
       if (selectedApp && selectedApp.applicant_id === applicantId) {
         setSelectedApp(prev => prev ? { ...prev, status: newStatus } : null);
@@ -151,6 +152,171 @@ export default function Applications() {
       showToast('Durum güncellenirken hata oluştu', 'error');
     } finally {
       setUpdatingId(null);
+    }
+  };
+
+  // Google Sheets Direct Sync Logic (Bypasses Google Apps Script network issues)
+  const handleSheetSync = async () => {
+    if (!sheetUrl) {
+      showToast('Lütfen geçerli bir Google Tablosu linki girin', 'error');
+      return;
+    }
+
+    const matches = sheetUrl.match(/\/d\/([a-zA-Z0-9-_]+)/);
+    if (!matches) {
+      showToast('Geçersiz Google Sheet bağlantısı formatı', 'error');
+      return;
+    }
+    const spreadsheetId = matches[1];
+    localStorage.setItem('lutheus-sync-sheet-url', sheetUrl);
+
+    setSyncingSheet(true);
+    let totalSynced = 0;
+
+    const sheetsToSync = [
+      { name: "Başvurular", defaultStatus: "Yeni Başvuru" },
+      { name: "Spam", defaultStatus: "Spam" },
+      { name: "BlackList", defaultStatus: "BlackList" },
+      { name: "Arşiv", defaultStatus: "Arşiv" }
+    ];
+
+    try {
+      for (const s of sheetsToSync) {
+        // Query as CSV format directly via Google Visualization API
+        const csvUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(s.name)}`;
+        const response = await fetch(csvUrl);
+        if (!response.ok) {
+          console.warn(`Could not sync sheet ${s.name}, checking next...`);
+          continue;
+        }
+        const csvText = await response.text();
+        const rows = parseCSV(csvText);
+
+        if (rows.length <= 1) continue;
+
+        const records = [];
+        for (let i = 1; i < rows.length; i++) {
+          const row = rows[i];
+          const id = row[0];
+          const status = row[1] || s.defaultStatus;
+          const dateStr = row[2];
+          const email = row[3];
+          const fullName = row[4];
+          const discordTag = row[6];
+
+          if (!id || !email) continue;
+
+          // Align with sheet column settings
+          const rawAnswers = {
+            id: id,
+            email: email,
+            fullName: fullName,
+            birthDate: row[5],
+            discordInfo: discordTag,
+            discordUsage: row[7],
+            penaltyHistory: row[8],
+            micQuality: row[9],
+            motivation: row[10],
+            teamwork: row[11],
+            moderationPurpose: row[12],
+            experience: row[13],
+            regret: row[14],
+            availability: row[15],
+            timeWindows: row[16]
+          };
+
+          records.push({
+            applicant_id: id,
+            status: status,
+            form_type: 'application',
+            full_name: fullName || null,
+            discord_tag: discordTag || null,
+            email: email || null,
+            raw_answers: rawAnswers,
+            created_at: parseSheetDate(dateStr)
+          });
+        }
+
+        // Direct upsert to Supabase
+        for (const record of records) {
+          // Use upsert by using PUT or POST check
+          await supabaseFetch('staff_applications', 'POST', '', record);
+          totalSynced++;
+        }
+      }
+
+      showToast(`${totalSynced} başvuru başarıyla Google Tablosundan çekilerek senkronize edildi!`, 'success');
+      setShowSyncConfig(false);
+      fetchApps();
+    } catch (err: any) {
+      showToast('Eşitleme sırasında hata oluştu. Tablo paylaşım ayarlarını ("Bağlantıya sahip olan herkes görüntüleyebilir") kontrol edin.', 'error');
+      console.error(err);
+    } finally {
+      setSyncingSheet(false);
+    }
+  };
+
+  // Helper CSV parser
+  const parseCSV = (text: string): string[][] => {
+    const lines: string[][] = [];
+    let row: string[] = [];
+    let inQuotes = false;
+    let currentField = '';
+
+    for (let i = 0; i < text.length; i++) {
+      const char = text[i];
+      const nextChar = text[i + 1];
+
+      if (char === '"') {
+        if (inQuotes && nextChar === '"') {
+          currentField += '"';
+          i++;
+        } else {
+          inQuotes = !inQuotes;
+        }
+      } else if (char === ',' && !inQuotes) {
+        row.push(currentField.trim());
+        currentField = '';
+      } else if ((char === '\n' || char === '\r') && !inQuotes) {
+        if (char === '\r' && nextChar === '\n') {
+          i++;
+        }
+        row.push(currentField.trim());
+        lines.push(row);
+        row = [];
+        currentField = '';
+      } else {
+        currentFieldchar => { currentField += char; };
+        currentField += char;
+      }
+    }
+    if (row.length > 0 || currentField) {
+      row.push(currentField.trim());
+      lines.push(row);
+    }
+    return lines;
+  };
+
+  const parseSheetDate = (dateStr: string): string => {
+    if (!dateStr) return new Date().toISOString();
+    try {
+      const parts = dateStr.split(' ');
+      if (parts.length < 2) return new Date().toISOString();
+      const dParts = parts[0].split('.');
+      const tParts = parts[1].split(':');
+      if (dParts.length < 3 || tParts.length < 2) return new Date().toISOString();
+      
+      const date = new Date(
+        parseInt(dParts[2], 10),
+        parseInt(dParts[1], 10) - 1,
+        parseInt(dParts[0], 10),
+        parseInt(tParts[0], 10),
+        parseInt(tParts[1], 10),
+        tParts[2] ? parseInt(tParts[2], 10) : 0
+      );
+      return date.toISOString();
+    } catch {
+      return new Date().toISOString();
     }
   };
 
@@ -167,15 +333,108 @@ export default function Applications() {
             Yetkili alım formu üzerinden gelen tüm müracaatları buradan izleyin ve yönetin.
           </p>
         </div>
-        <button
-          onClick={fetchApps}
-          disabled={loading}
-          className="flex items-center gap-1.5 h-9 px-3.5 rounded-xl bg-white/5 hover:bg-white/10 text-white/80 hover:text-white border border-white/[0.06] transition-all text-xs font-semibold cursor-pointer shrink-0"
-        >
-          {loading ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
-          Yenile
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setShowSyncConfig(true)}
+            className="flex items-center gap-1.5 h-9 px-3.5 rounded-xl bg-primary/10 hover:bg-primary/20 border border-primary/20 text-primary hover:text-white transition-all text-xs font-semibold cursor-pointer shrink-0"
+          >
+            <Link2 size={13} />
+            E-Tablo ile Eşitle
+          </button>
+          <button
+            onClick={fetchApps}
+            disabled={loading}
+            className="flex items-center gap-1.5 h-9 px-3.5 rounded-xl bg-white/5 hover:bg-white/10 text-white/80 hover:text-white border border-white/[0.06] transition-all text-xs font-semibold cursor-pointer shrink-0"
+          >
+            {loading ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
+            Yenile
+          </button>
+        </div>
       </div>
+
+      {/* Sync Google Sheets Configuration Overlay */}
+      <AnimatePresence>
+        {showSyncConfig && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40"
+              onClick={() => setShowSyncConfig(false)}
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-md bg-[#0D0D11]/95 border border-white/[0.08] rounded-2xl p-5 shadow-2xl z-50 space-y-4"
+            >
+              <div className="flex items-center justify-between border-b border-white/[0.04] pb-2.5">
+                <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
+                  <Download size={15} className="text-primary" />
+                  E-Tablo Verilerini Çek
+                </h3>
+                <button
+                  onClick={() => setShowSyncConfig(false)}
+                  className="w-6 h-6 rounded-lg bg-white/5 hover:bg-white/10 text-white/50 hover:text-white flex items-center justify-center cursor-pointer"
+                >
+                  <X size={12} />
+                </button>
+              </div>
+
+              <div className="space-y-3.5 text-xs text-white/70">
+                <p>
+                  Google Apps Script yetkilendirme sorunlarını atlatmak için verileri doğrudan tarayıcınız üzerinden Google E-Tablonuzdan çekebilirsiniz.
+                </p>
+                <div className="p-3.5 rounded-xl bg-amber-500/5 border border-amber-500/10 text-amber-400 flex gap-2">
+                  <Info size={16} className="shrink-0 mt-0.5" />
+                  <div>
+                    <strong className="font-bold block mb-0.5">Önemli Gereksinim:</strong>
+                    Google E-Tablonuzda sağ üstteki **Paylaş** butonuna basın ve Genel Erişim ayarını **"Bağlantıya sahip olan herkes görüntüleyebilir"** olarak değiştirin.
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-white/40 uppercase tracking-wider">E-Tablo Bağlantı Linki</label>
+                  <input
+                    type="text"
+                    placeholder="https://docs.google.com/spreadsheets/d/.../edit"
+                    value={sheetUrl}
+                    onChange={(e) => setSheetUrl(e.target.value)}
+                    className="w-full h-9 px-3 rounded-xl bg-white/5 border border-white/[0.06] text-white text-xs outline-none focus:border-primary/40"
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2 border-t border-white/[0.04]">
+                <button
+                  onClick={() => setShowSyncConfig(false)}
+                  className="h-8.5 px-3 rounded-xl bg-white/5 hover:bg-white/10 text-xs text-white/60 font-semibold cursor-pointer"
+                >
+                  İptal
+                </button>
+                <button
+                  disabled={syncingSheet}
+                  onClick={handleSheetSync}
+                  className="h-8.5 px-4 rounded-xl bg-primary hover:bg-primary/95 text-xs text-white font-bold transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                >
+                  {syncingSheet ? (
+                    <>
+                      <Loader2 size={13} className="animate-spin" />
+                      Eşitleniyor...
+                    </>
+                  ) : (
+                    <>
+                      <Download size={13} />
+                      Şimdi Eşitle
+                    </>
+                  )}
+                </button>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
 
       {/* Metrics Grid */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
@@ -277,7 +536,7 @@ export default function Applications() {
                       </td>
                       <td className="px-5 py-3.5">
                         <div className="flex justify-center">
-                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5.5 rounded-full border text-[10px] font-bold ${sc.bg} ${sc.text}`}>
+                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border text-[10px] font-bold ${sc.bg} ${sc.text}`}>
                             <span className={`w-1.5 h-1.5 rounded-full ${sc.dot}`} />
                             {a.status}
                           </span>

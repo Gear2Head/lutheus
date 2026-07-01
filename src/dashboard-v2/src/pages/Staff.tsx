@@ -511,9 +511,10 @@ export default function Staff() {
       ) : (() => {
         const isSelfManagement = session ? isManagementKadrosu(session.role) : false;
 
-        const activeManagement = filtered.filter((s) => s.role !== 'eski_yetkili' && isManagementKadrosu(s.role));
-        const activeStaff = filtered.filter((s) => s.role !== 'eski_yetkili' && !isManagementKadrosu(s.role));
+        const activeManagement = filtered.filter((s) => s.role !== 'eski_yetkili' && s.role !== 'pending' && s.role !== 'blocked' && isManagementKadrosu(s.role));
+        const activeStaff = filtered.filter((s) => s.role !== 'eski_yetkili' && s.role !== 'pending' && s.role !== 'blocked' && !isManagementKadrosu(s.role));
         const formerStaff = filtered.filter((s) => s.role === 'eski_yetkili');
+        const accessRequests = filtered.filter((s) => s.role === 'pending' || s.role === 'blocked');
         
         const renderStaffCard = (s: StaffWithStats) => {
           const roleColor = getRoleColor(s.role);
@@ -593,6 +594,19 @@ export default function Staff() {
 
         return (
           <div className="space-y-8">
+            {/* Erişim Talepleri & Engellenenler (Sadece Yönetim Görebilir) */}
+            {isSelfManagement && accessRequests.length > 0 && (
+              <div className="space-y-4 p-5 rounded-2xl bg-amber-500/[0.02] border border-amber-500/10">
+                <h2 className="text-sm font-bold text-amber-500 uppercase tracking-wider flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-lg bg-amber-500 animate-pulse" />
+                  Erişim Talepleri & Engellenenler ({accessRequests.length})
+                </h2>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {accessRequests.map(renderStaffCard)}
+                </div>
+              </div>
+            )}
+
             {/* Active Management */}
             <div className="space-y-4">
               <h2 className="text-sm font-bold text-[#A259FE] uppercase tracking-wider flex items-center gap-2">

@@ -5,7 +5,7 @@ import {
   ChevronDown, X, User, Shield, Info, Filter, RefreshCw, AlertTriangle, Link2, Download
 } from 'lucide-react';
 import { useToast } from '../contexts/ToastContext';
-import { getStaffApplications, updateStaffApplicationStatus, StaffApplication, supabaseFetch } from '../lib/supabase';
+import { getStaffApplications, updateStaffApplicationStatus, StaffApplication, supabaseFetch, upsertStaffApplication } from '../lib/supabase';
 import { formatDate } from '../lib/utils';
 
 // Metric Card Component
@@ -239,8 +239,7 @@ export default function Applications() {
 
         // Direct upsert to Supabase
         for (const record of records) {
-          // Use upsert by using PUT or POST check
-          await supabaseFetch('staff_applications', 'POST', '', record);
+          await upsertStaffApplication(record);
           totalSynced++;
         }
       }
@@ -286,7 +285,6 @@ export default function Applications() {
         row = [];
         currentField = '';
       } else {
-        currentFieldchar => { currentField += char; };
         currentField += char;
       }
     }

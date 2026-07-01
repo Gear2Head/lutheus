@@ -115,11 +115,12 @@ export async function supabaseFetch<T = unknown>(
   method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
   queryParams?: string,
   body?: unknown,
+  customHeaders?: Record<string, string>
 ): Promise<T | null> {
   const url = `${SUPABASE_URL}/${table}${queryParams ? `?${queryParams}` : ''}`;
   const response = await fetch(url, {
     method,
-    headers: buildHeaders(),
+    headers: { ...buildHeaders(), ...customHeaders },
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
 
@@ -865,4 +866,20 @@ export async function updateStaffApplicationStatus(
     throw error;
   }
 }
+
+export async function upsertStaffApplication(record: Partial<StaffApplication>): Promise<void> {
+  try {
+    await supabaseFetch(
+      'staff_applications',
+      'POST',
+      '',
+      record,
+      { 'Prefer': 'resolution=merge-duplicates' }
+    );
+  } catch (error) {
+    console.error("Lutheus DB Error: Failed to upsert staff_application.", error);
+    throw error;
+  }
+}
+
 

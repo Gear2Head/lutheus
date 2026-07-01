@@ -39,6 +39,7 @@ const translations: Record<Language, Record<string, string>> = {
     'nav.unauthorizedDesc': 'You do not have permission to view or manage data on this page. Please contact administration.',
     'nav.appeals': 'Appeals',
     'nav.tickets': 'Tickets',
+    'nav.applications': 'Applications',
     
     // Home Page
     'home.title': 'Overview',
@@ -267,6 +268,7 @@ const translations: Record<Language, Record<string, string>> = {
     'nav.unauthorizedDesc': 'Bu sayfadaki verileri görüntüleme veya yönetme yetkiniz bulunmamaktadır. Lütfen yönetim ile iletişime geçin.',
     'nav.appeals': 'İtirazlar',
     'nav.tickets': 'Biletler',
+    'nav.applications': 'Başvurular',
     
     // Home Page
     'home.title': 'Genel Bakış',

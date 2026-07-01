@@ -820,3 +820,49 @@ export async function getTickets(options?: {
     throw error;
   }
 }
+
+// ─── Staff Applications ──────────────────────────────────────────────────────
+
+export interface StaffApplication {
+  id: string;
+  applicant_id: string;
+  status: string;
+  form_type: string;
+  full_name: string | null;
+  discord_tag: string | null;
+  email: string | null;
+  raw_answers: any;
+  created_at: string;
+}
+
+export async function getStaffApplications(limit = 500): Promise<StaffApplication[]> {
+  try {
+    const data = await supabaseFetch<StaffApplication[]>(
+      'staff_applications',
+      'GET',
+      `order=created_at.desc&limit=${limit}`
+    );
+    return data || [];
+  } catch (error) {
+    console.error("Lutheus DB Error: Failed to fetch staff_applications.", error);
+    throw error;
+  }
+}
+
+export async function updateStaffApplicationStatus(
+  applicantId: string,
+  newStatus: string
+): Promise<void> {
+  try {
+    await supabaseFetch(
+      'staff_applications',
+      'PATCH',
+      `applicant_id=eq.${encodeURIComponent(applicantId)}`,
+      { status: newStatus }
+    );
+  } catch (error) {
+    console.error("Lutheus DB Error: Failed to update staff_application status.", error);
+    throw error;
+  }
+}
+

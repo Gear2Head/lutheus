@@ -3,7 +3,7 @@ import {
   LayoutDashboard, Users, ShieldAlert, Activity, Settings as SettingsIcon,
   LogOut, Zap, BookOpen, Bot, User, ChevronUp, Shield, RefreshCw,
   WifiOff, Wifi, Megaphone, Sliders, ChevronLeft, Bell, Check, UserCheck,
-  Scale, Ticket
+  Scale, Ticket, FileText
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import React, { useState, useRef, useEffect } from 'react';
@@ -25,6 +25,7 @@ const NAV_ITEMS = [
   { icon: Bot, label: 'AI Agent', path: '/ai-agent', translationKey: 'nav.ai-agent' },
   { icon: Ticket, label: 'Biletler', path: '/tickets', translationKey: 'nav.tickets' },
   { icon: Scale, label: 'İtirazlar', path: '/appeals', translationKey: 'nav.appeals' },
+  { icon: FileText, label: 'Başvurular', path: '/applications', translationKey: 'nav.applications' },
   { icon: Shield, label: 'Erişim', path: '/access', translationKey: 'nav.access' },
   { icon: Megaphone, label: 'Duyurular', path: '/announcements', translationKey: 'nav.announcements' },
   { icon: Sliders, label: 'Bot Ayarları', path: '/bot-setup', translationKey: 'nav.botSetup' },
@@ -145,7 +146,7 @@ export default function AppLayout() {
     if (path === '/tickets') {
       return isStaff;
     }
-    if (path === '/access' || path === '/rules' || path === '/announcements' || path === '/bot-setup' || path === '/staff-profiles') {
+    if (path === '/access' || path === '/rules' || path === '/announcements' || path === '/bot-setup' || path === '/staff-profiles' || path === '/applications') {
       return isMgmt;
     }
     if (path === '/pointtrain' || path === '/scan') {
